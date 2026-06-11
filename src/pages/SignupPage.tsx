@@ -1,26 +1,26 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gavel, Lock, Mail } from 'lucide-react';
+import { Gavel, Mail, User, Lock } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth } from '../context/AuthContext';
 
-export const LoginPage: React.FC = () => {
+export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
+  const auth = useAuth();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  const auth = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await auth.login(email, password);
+      await auth.signup(name, email, password);
       navigate('/dashboard');
-    } catch (err) {
-      alert('Login failed');
+    } catch (e) {
+      alert('Signup failed');
     } finally {
       setIsLoading(false);
     }
@@ -29,34 +29,33 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="flex justify-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center shadow-2xl shadow-blue-500/20">
             <Gavel size={40} className="text-slate-950" />
           </div>
         </div>
 
-        {/* Content */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2 gradient-text">Hathap.AI</h1>
-          <p className="text-slate-400">Debate & Collaboration Platform</p>
+          <p className="text-slate-400">Create your account</p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="glassmorphism p-6 space-y-4 border-slate-700">
+            <div>
+              <label className="block text-sm font-semibold text-slate-200 mb-2">
+                <User size={16} className="inline mr-2" />
+                Full name
+              </label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-slate-200 mb-2">
                 <Mail size={16} className="inline mr-2" />
                 Email
               </label>
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
 
             <div>
@@ -64,32 +63,16 @@ export const LoginPage: React.FC = () => {
                 <Lock size={16} className="inline mr-2" />
                 Password
               </label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
 
             <Button type="submit" isLoading={isLoading} className="w-full justify-center">
-              Sign In
-            </Button>
-            <Button type="button" variant="outline" onClick={() => navigate('/signup')} className="w-full justify-center">
-              Create account
+              Create Account
             </Button>
           </div>
 
-          <p className="text-center text-slate-400 text-sm">
-            Don't have an account? <button onClick={() => navigate('/signup')} className="text-blue-400 hover:underline">Sign up</button>
-          </p>
+          <p className="text-center text-slate-400 text-sm">Already have an account? <a className="text-blue-400 hover:underline" href="/">Sign in</a></p>
         </form>
-
-        {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-slate-700 text-center text-slate-500 text-sm">
-          <p>🚀 Powered by AI Collaboration</p>
-        </div>
       </div>
     </div>
   );

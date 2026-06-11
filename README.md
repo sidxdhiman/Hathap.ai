@@ -1,4 +1,4 @@
-# AI Courtroom - Debate & Collaboration Platform
+# Hathap.AI - Debate & Collaboration Platform
 
 A modern web application for creating debate rooms ("Courtrooms") where multiple AI agents and AI models collaborate, debate, and reach consensus on complex topics.
 
@@ -152,14 +152,21 @@ The optimized build will be in the `dist` directory.
 - Responsive design (mobile, tablet, desktop)
 - Professional SaaS aesthetic
 
-## 📊 Mock Data
+## 📊 Initial State
 
-The application includes comprehensive mock data:
-- **5 AI Models** (OpenAI, Anthropic, Google, DeepSeek, Ollama)
-- **6 Agent Templates** with unique personalities
-- **3 Courtrooms** with different statuses and modes
-- **Sample debates** with realistic conversation flow
-- **Consensus data** with agreements and recommendations
+This frontend now starts with no models, agents, or courtrooms. Data is persisted per-user via the backend API (MongoDB). When you first sign up, your workspace will be empty so you can connect models and create agents and courtrooms.
+
+## 🔧 Backend (Dev)
+
+A minimal Node.js + Express + TypeScript backend is included in the `server/` folder. It provides JWT-based auth and per-user CRUD endpoints for models, agents, and courtrooms using MongoDB.
+
+Quick start:
+
+- copy `.env.example` to `.env` and set `MONGODB_URI` and `JWT_SECRET`
+- from `server/` run `npm install` then `npm run dev`
+- the dev server defaults to port `4000` and exposes `/api/auth`, `/api/models`, `/api/agents`, `/api/courtrooms`.
+
+Frontend expects the API at `/api/*` — when running dev you can proxy or run both servers on the same host (CORS is enabled in the backend).
 
 ## 🔄 State Management
 

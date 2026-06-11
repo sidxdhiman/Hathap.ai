@@ -20,7 +20,7 @@ export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div className={`pb-4 border-b border-white/10 mb-4 ${className}`} {...props}>
+  <div className={`pb-4 border-b border-slate-700 mb-4 ${className}`} {...props}>
     {children}
   </div>
 );
@@ -40,7 +40,7 @@ export const CardFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   ...props
 }) => (
-  <div className={`pt-4 border-t border-white/10 mt-4 flex gap-2 ${className}`} {...props}>
+  <div className={`pt-4 border-t border-slate-700 mt-4 flex gap-2 ${className}`} {...props}>
     {children}
   </div>
 );

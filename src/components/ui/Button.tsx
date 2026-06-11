@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
 }
@@ -15,12 +15,13 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseClasses = 'font-medium transition-all duration-200 rounded-lg flex items-center gap-2';
+  const baseClasses = 'font-semibold transition-all duration-150 flex items-center gap-2 border';
 
   const variantClasses = {
     primary: 'btn-primary',
     secondary: 'btn-secondary',
-    danger: 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30',
+    danger: 'btn-danger',
+    ghost: 'btn-ghost',
   };
 
   const sizeClasses = {
@@ -35,7 +36,7 @@ export const Button: React.FC<ButtonProps> = ({
       disabled={disabled || isLoading}
       {...props}
     >
-      {isLoading && <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
+      {isLoading && <div className="w-4 h-4 border-2 border-current border-t-transparent animate-spin" />}
       {children}
     </button>
   );

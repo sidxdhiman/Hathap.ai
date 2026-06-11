@@ -19,7 +19,6 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
-import { mockMessages, mockConsensus, mockDebates } from '../data/mockData';
 import { formatTime } from '../utils/helpers';
 
 export const CourtroomDetailPage: React.FC = () => {
@@ -54,9 +53,15 @@ export const CourtroomDetailPage: React.FC = () => {
     }
   });
 
-  const messages = mockMessages;
-  const consensus = mockConsensus;
-  const debates = mockDebates;
+  const messages: any[] = [];
+  const consensus: any = {
+    agreements: [],
+    disagreements: [],
+    risks: [],
+    recommendedSolution: '',
+    confidenceScore: 0,
+  };
+  const debates: any[] = [];
 
   const handleToggleStatus = () => {
     const newStatus = courtroom.status === 'active' ? 'paused' : 'active';

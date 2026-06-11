@@ -56,11 +56,11 @@ export const DashboardPage: React.FC = () => {
       <Container>
         <PageHeader
           title="Dashboard"
-          description="Manage your courtrooms, models, and agents"
+          description="Manage your debates, models, and agents with Hathap.AI"
           action={
             <Button onClick={() => navigate('/courtrooms/new')}>
               <Plus size={20} />
-              Create Courtroom
+              Create Debate
             </Button>
           }
         />
@@ -75,11 +75,11 @@ export const DashboardPage: React.FC = () => {
                 <Card key={stat.label} hover>
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-slate-400 text-sm mb-1">{stat.label}</p>
+                      <p className="text-slate-400 text-sm mb-1 font-medium">{stat.label}</p>
                       <p className="text-4xl font-bold">{stat.value}</p>
                     </div>
                     <div
-                      className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center`}
+                      className={`w-12 h-12 bg-gradient-to-br ${stat.color} flex items-center justify-center`}
                     >
                       <Icon size={24} className="text-white" />
                     </div>
@@ -100,11 +100,11 @@ export const DashboardPage: React.FC = () => {
               onClick={() => navigate('/courtrooms/new')}
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                <div className="w-12 h-12 bg-blue-500/20 border border-blue-600 flex items-center justify-center">
                   <Gavel size={24} className="text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Create Courtroom</h3>
+                  <h3 className="font-semibold">Create Debate</h3>
                   <p className="text-sm text-slate-400">Start a new debate</p>
                 </div>
               </div>
@@ -116,7 +116,7 @@ export const DashboardPage: React.FC = () => {
               onClick={() => navigate('/models')}
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                <div className="w-12 h-12 bg-purple-500/20 border border-purple-600 flex items-center justify-center">
                   <Zap size={24} className="text-purple-400" />
                 </div>
                 <div>
@@ -132,7 +132,7 @@ export const DashboardPage: React.FC = () => {
               onClick={() => navigate('/agents')}
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                <div className="w-12 h-12 bg-green-500/20 border border-green-600 flex items-center justify-center">
                   <Layers size={24} className="text-green-400" />
                 </div>
                 <div>
@@ -144,11 +144,11 @@ export const DashboardPage: React.FC = () => {
           </Grid>
         </div>
 
-        {/* Recent Courtrooms */}
+        {/* Recent Debates */}
         {recentCourtrooms.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">Recent Courtrooms</h2>
+              <h2 className="text-2xl font-bold">Recent Debates</h2>
               <Button variant="secondary" onClick={() => navigate('/courtrooms')}>
                 View All
               </Button>
@@ -166,20 +166,20 @@ export const DashboardPage: React.FC = () => {
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="text-lg font-semibold">{courtroom.name}</h3>
                         {courtroom.status === 'active' && (
-                          <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full flex items-center gap-1">
-                            <TrendingUp size={12} />
+                          <span className="text-xs status-badge status-badge-active">
+                            <TrendingUp className="inline" size={12} />
                             Active
                           </span>
                         )}
                         {courtroom.status === 'paused' && (
-                          <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded-full flex items-center gap-1">
-                            <Pause size={12} />
+                          <span className="text-xs status-badge bg-yellow-500/20 text-yellow-300 border-yellow-600">
+                            <Pause className="inline" size={12} />
                             Paused
                           </span>
                         )}
                         {courtroom.status === 'completed' && (
-                          <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full flex items-center gap-1">
-                            <CheckCircle size={12} />
+                          <span className="text-xs status-badge bg-blue-500/20 text-blue-300 border-blue-600">
+                            <CheckCircle className="inline" size={12} />
                             Completed
                           </span>
                         )}
@@ -197,7 +197,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                      <div className="w-12 h-12 bg-blue-500/10 border border-blue-600 flex items-center justify-center">
                         <Gavel size={24} className="text-blue-400" />
                       </div>
                     </div>

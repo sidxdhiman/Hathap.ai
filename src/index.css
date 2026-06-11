@@ -2,34 +2,109 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Remove all default rounded corners */
+* {
+  @apply rounded-none;
+}
+
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
   body {
-    @apply bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100;
+    @apply bg-slate-950 text-slate-100 font-sans;
+  }
+  
+  /* Theme variables */
+  :root {
+    --color-primary: #3b82f6;
+    --color-primary-dark: #1e40af;
+    --color-accent: #06b6d4;
+    --color-accent-dark: #0891b2;
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #334155;
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #cbd5e1;
+    --color-border: #475569;
+  }
+  
+  body.theme-light {
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f8fafc;
+    --color-bg-tertiary: #e2e8f0;
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #334155;
+    --color-border: #cbd5e1;
+    @apply bg-white text-slate-950;
   }
 }
 
 @layer components {
   .glassmorphism {
-    @apply bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl;
+    background-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    @apply border border-slate-700 shadow-lg;
   }
   
   .card-hover {
-    @apply transition-all duration-300 hover:bg-white/15 hover:border-white/30;
+    @apply transition-all duration-200 hover:shadow-lg;
+  }
+  
+  .card-hover:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
   }
   
   .btn-primary {
-    @apply bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl;
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-md hover:shadow-lg;
   }
   
   .btn-secondary {
-    @apply bg-white/10 hover:bg-white/20 text-slate-100 border border-white/20 hover:border-white/30 font-medium py-2 px-4 rounded-lg transition-all duration-200;
+    @apply bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 font-semibold px-4 py-2 transition-all duration-150;
+  }
+  
+  .btn-ghost {
+    @apply bg-transparent hover:bg-slate-800 text-slate-300 hover:text-slate-100 border border-transparent hover:border-slate-600 font-medium px-4 py-2 transition-all duration-150;
+  }
+  
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-red-500;
   }
   
   .input-field {
-    @apply w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-colors;
+    @apply w-full bg-slate-900 border border-slate-700 px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:bg-slate-800 transition-colors;
+  }
+  
+  .input-field:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
   
   .gradient-text {
     @apply bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent;
+  }
+  
+  .section-divider {
+    @apply border-t border-slate-700;
+  }
+  
+  .status-badge {
+    @apply inline-block px-3 py-1 text-xs font-semibold border;
+  }
+  
+  .status-badge-active {
+    background-color: rgba(34, 197, 94, 0.2);
+    @apply text-green-300 border-green-600;
+  }
+  
+  .status-badge-inactive {
+    background-color: rgba(100, 116, 139, 0.2);
+    @apply text-slate-300 border-slate-600;
+  }
+  
+  .status-badge-error {
+    background-color: rgba(239, 68, 68, 0.2);
+    @apply text-red-300 border-red-600;
   }
 }
