@@ -10,18 +10,28 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const stored = localStorage.getItem('hathap-theme');
+      return (stored as Theme) || 'dark';
+    } catch (e) {
+      return 'dark';
+    }
+  });
 
   useEffect(() => {
     // Apply theme to document
-    const root = document.documentElement;
     if (theme === 'light') {
       document.body.classList.add('theme-light');
     } else {
       document.body.classList.remove('theme-light');
     }
     // Store theme preference
-    localStorage.setItem('hathap-theme', theme);
+    try {
+      localStorage.setItem('hathap-theme', theme);
+    } catch (e) {
+      // ignore
+    }
   }, [theme]);
 
   const toggleTheme = () => {

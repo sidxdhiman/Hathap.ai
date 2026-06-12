@@ -19,35 +19,38 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 glassmorphism border-b border-slate-700">
       <div className="px-4 py-4 lg:px-6">
-        <div className="flex items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center transform group-hover:scale-110 transition-transform">
-              <Gavel size={24} className="text-slate-950" />
-            </div>
-            <div className="hidden md:block">
-              <h1 className="text-xl font-bold gradient-text">Hathap.AI</h1>
-              <p className="text-xs text-slate-400">Debate & Collaboration</p>
-            </div>
-          </Link>
+        <div className="max-w-6xl mx-auto flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <Gavel size={24} className="text-slate-950" />
+              </div>
+              <div className="hidden md:block">
+                <h1 className="text-lg font-bold gradient-text">Hathap.AI</h1>
+              </div>
+            </Link>
+          </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`px-4 py-2 transition-all ${
-                  isActive(item.path)
-                    ? 'bg-blue-500/20 text-blue-300 border border-blue-600'
-                    : 'text-slate-300 hover:bg-slate-800 border border-transparent'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+          {/* Centered navigation */}
+          <nav className="hidden md:flex flex-1 justify-center items-center">
+            <div className="inline-flex bg-transparent rounded px-2 py-1">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`mx-1 px-3 py-2 text-sm transition-all ${
+                    isActive(item.path)
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-600'
+                      : 'text-slate-300 hover:bg-slate-800 border border-transparent'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
           </nav>
 
-          {/* Desktop Actions */}
+          {/* Actions on the right */}
           <div className="hidden md:flex items-center gap-3">
             <Link to="/profile">
               <button className="p-2 hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-700">
@@ -62,7 +65,7 @@ export const Header: React.FC = () => {
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
+            className="md:hidden p-2 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700 ml-auto"
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>

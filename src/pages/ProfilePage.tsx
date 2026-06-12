@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useTheme } from '../context/ThemeContext';
+import { useApp } from '../context/AppContext';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ export const ProfilePage: React.FC = () => {
     organization: 'AI Research Lab',
     role: 'Researcher',
   });
+
+  const { models, agentTemplates, courtrooms } = useApp();
 
   const handleSave = () => {
     setIsSaved(true);
@@ -101,7 +104,7 @@ export const ProfilePage: React.FC = () => {
                         ? 'bg-blue-500/20 border-blue-600'
                         : 'bg-slate-800 border-slate-700 hover:border-slate-600'
                     }`}
-                    onClick={() => theme === 'light' && toggleTheme()}
+                    onClick={() => theme !== 'dark' && toggleTheme()}
                   >
                     <div className="flex items-center gap-3">
                       <Moon size={24} className={theme === 'dark' ? 'text-blue-400' : 'text-slate-400'} />
@@ -118,7 +121,7 @@ export const ProfilePage: React.FC = () => {
                         ? 'bg-blue-500/20 border-blue-600'
                         : 'bg-slate-800 border-slate-700 hover:border-slate-600'
                     }`}
-                    onClick={() => theme === 'dark' && toggleTheme()}
+                    onClick={() => theme !== 'light' && toggleTheme()}
                   >
                     <div className="flex items-center gap-3">
                       <Sun size={24} className={theme === 'light' ? 'text-blue-400' : 'text-slate-400'} />
@@ -140,15 +143,15 @@ export const ProfilePage: React.FC = () => {
               <CardBody className="space-y-3">
                 <div className="flex justify-between items-center p-2 bg-slate-800 border border-slate-700">
                   <span className="text-slate-400">Debates Created</span>
-                  <span className="font-bold">12</span>
+                  <span className="font-bold">{courtrooms.length}</span>
                 </div>
                 <div className="flex justify-between items-center p-2 bg-slate-800 border border-slate-700">
                   <span className="text-slate-400">Models Connected</span>
-                  <span className="font-bold">5</span>
+                  <span className="font-bold">{models.length}</span>
                 </div>
                 <div className="flex justify-between items-center p-2 bg-slate-800 border border-slate-700">
                   <span className="text-slate-400">Agents Created</span>
-                  <span className="font-bold">8</span>
+                  <span className="font-bold">{agentTemplates.length}</span>
                 </div>
               </CardBody>
             </Card>

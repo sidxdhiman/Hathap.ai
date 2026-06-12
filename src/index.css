@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Remove all default rounded corners */
+/* Global corner radius: 4px */
 * {
-  @apply rounded-none;
+  @apply rounded;
 }
 
 @layer base {
