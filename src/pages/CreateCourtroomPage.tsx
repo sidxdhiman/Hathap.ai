@@ -16,6 +16,7 @@ export const CreateCourtroomPage: React.FC = () => {
   const navigate = useNavigate();
   const { addCourtroom } = useApp();
   const [step, setStep] = useState(1);
+  const [isCreating, setIsCreating] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -52,8 +53,10 @@ export const CreateCourtroomPage: React.FC = () => {
     },
   ];
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formData.name || !formData.objective) return;
+
+    setIsCreating(true);
 
     const newCourtroom: Courtroom = {
       id: generateId('courtroom'),
@@ -67,8 +70,14 @@ export const CreateCourtroomPage: React.FC = () => {
       updatedAt: new Date(),
     };
 
-    addCourtroom(newCourtroom);
-    navigate(`/courtrooms/${newCourtroom.id}`);
+    // simulate small creation delay for UX while backend processes
+    try {
+      addCourtroom(newCourtroom);
+      await new Promise((r) => setTimeout(r, 700));
+      navigate(`/courtrooms/${newCourtroom.id}`);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -80,7 +89,7 @@ export const CreateCourtroomPage: React.FC = () => {
           Back
         </Button>
 
-        <div className="max-w-2xl">
+        <div className="max-w-2xl mx-auto min-h-[60vh] flex flex-col justify-start lg:justify-center">
           {/* Progress */}
           <div className="flex items-center justify-between mb-12">
             {[1, 2].map((s) => (
@@ -158,7 +167,7 @@ export const CreateCourtroomPage: React.FC = () => {
                 </CardHeader>
               </Card>
 
-              <div className="space-y-3 mb-8">
+              <div className="space-y-3 mb-8 max-h-[48vh] overflow-auto pr-2 no-scrollbar">
                 {modes.map((mode) => (
                   <Card
                     key={mode.id}
@@ -197,13 +206,25 @@ export const CreateCourtroomPage: React.FC = () => {
                 <Button variant="secondary" onClick={() => setStep(1)} className="flex-1">
                   Back
                 </Button>
-                <Button onClick={handleCreate} className="flex-1">
-                  Create Courtroom
+                <Button onClick={handleCreate} className="flex-1" disabled={isCreating}>
+                  {isCreating ? 'Creating...' : 'Create Courtroom'}
                 </Button>
               </div>
             </>
           )}
         </div>
+        {isCreating && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" />
+            <div className="relative bg-slate-900 text-slate-100 p-6 rounded shadow-lg w-full max-w-sm text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-8 h-8 border-4 border-current border-t-transparent rounded-full animate-spin" />
+              </div>
+              <div className="text-lg font-semibold">Creating your courtroom</div>
+              <div className="text-sm text-slate-400 mt-2">Please wait a moment while we set things up.</div>
+            </div>
+          </div>
+        )}
       </Container>
     </Layout>
   );
