@@ -38,6 +38,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const API = (import.meta.env.VITE_API_URL as string) || '';
+  if (!API) {
+    console.debug('VITE_API_URL not set — using relative /api paths (Vite proxy recommended)');
+  } else {
+    console.debug('API base:', API);
+  }
 
   const login = async (email: string, password: string) => {
     const res = await fetch(`${API}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
