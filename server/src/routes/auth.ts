@@ -2,6 +2,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
+import Agent from '../models/Agent';
+import { defaultAgents } from '../utils/defaultAgents';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
@@ -15,6 +17,18 @@ router.post('/signup', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const user = new User({ email, name, passwordHash: hash });
     await user.save();
+
+    // Automatically create 10 pre-built AI agents for the newly signed up user
+    try {
+      const agentsToCreate = defaultAgents.map(agent => ({
+        ...agent,
+        userId: user._id
+      }));
+      await Agent.insertMany(agentsToCreate);
+    } catch (err) {
+      console.error('Failed to create default agents on signup:', err);
+    }
+
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
   } catch (e) {
