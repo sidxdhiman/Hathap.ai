@@ -82,8 +82,8 @@ export const CourtroomDetailPage: React.FC = () => {
           <div className="flex items-start justify-between gap-6 mb-6">
             <div>
               <h1 className="text-4xl font-bold mb-2">{courtroom.name}</h1>
-              <p className="text-slate-400 text-lg">{courtroom.description}</p>
-              <div className="flex items-center gap-4 mt-3 text-sm text-slate-400">
+              <p className="text-theme-text-secondary text-lg">{courtroom.description}</p>
+              <div className="flex items-center gap-4 mt-3 text-sm text-theme-text-secondary">
                 <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10">
                   {courtroom.mode}
                 </span>
@@ -138,7 +138,7 @@ export const CourtroomDetailPage: React.FC = () => {
                     <span className="text-2xl">{p.avatar}</span>
                     <div className="flex-1">
                       <p className="text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-slate-500">{p.type}</p>
+                      <p className="text-xs text-theme-text-muted">{p.type}</p>
                     </div>
                   </div>
                 ))}
@@ -174,7 +174,7 @@ export const CourtroomDetailPage: React.FC = () => {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm">Round {debate.roundNumber}</p>
-                      <p className="text-xs text-slate-500 capitalize">{debate.status}</p>
+                      <p className="text-xs text-theme-text-muted capitalize">{debate.status}</p>
                     </div>
                   </div>
                 ))}
@@ -197,10 +197,10 @@ export const CourtroomDetailPage: React.FC = () => {
                         <span className="text-lg">{participant?.avatar}</span>
                         <div className="flex-1">
                           <p className="text-sm font-medium">{participant?.name}</p>
-                          <p className="text-xs text-slate-500">{formatTime(message.timestamp)}</p>
+                          <p className="text-xs text-theme-text-muted">{formatTime(message.timestamp)}</p>
                         </div>
                       </div>
-                      <p className="text-sm text-slate-300 ml-8 leading-relaxed">{message.content}</p>
+                      <p className="text-sm text-theme-text-secondary ml-8 leading-relaxed">{message.content}</p>
                     </div>
                   );
                 })}
@@ -220,7 +220,7 @@ export const CourtroomDetailPage: React.FC = () => {
               <CardBody className="space-y-4 text-sm">
                 <div>
                   <p className="font-medium text-green-400 mb-2">Agreements</p>
-                  <ul className="space-y-1 text-slate-300">
+                  <ul className="space-y-1 text-theme-text-secondary">
                     {consensus.agreements.map((item, i) => (
                       <li key={i} className="text-xs flex gap-2">
                         <CheckCircle size={12} className="text-green-400 flex-shrink-0 mt-0.5" />
@@ -232,7 +232,7 @@ export const CourtroomDetailPage: React.FC = () => {
 
                 <div>
                   <p className="font-medium text-orange-400 mb-2">Disagreements</p>
-                  <ul className="space-y-1 text-slate-300">
+                  <ul className="space-y-1 text-theme-text-secondary">
                     {consensus.disagreements.map((item, i) => (
                       <li key={i} className="text-xs flex gap-2">
                         <AlertCircle size={12} className="text-orange-400 flex-shrink-0 mt-0.5" />
@@ -244,7 +244,7 @@ export const CourtroomDetailPage: React.FC = () => {
 
                 <div>
                   <p className="font-medium text-red-400 mb-2">Risks</p>
-                  <ul className="space-y-1 text-slate-300">
+                  <ul className="space-y-1 text-theme-text-secondary">
                     {consensus.risks.slice(0, 2).map((item, i) => (
                       <li key={i} className="text-xs flex gap-2">
                         <AlertCircle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
@@ -256,7 +256,7 @@ export const CourtroomDetailPage: React.FC = () => {
 
                 <div className="pt-3 border-t border-white/10">
                   <p className="font-medium text-blue-400 mb-2">Recommendation</p>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-xs text-theme-text-secondary leading-relaxed">
                     {consensus.recommendedSolution}
                   </p>
                 </div>
@@ -281,15 +281,15 @@ export const CourtroomDetailPage: React.FC = () => {
               </CardHeader>
               <CardBody className="text-sm space-y-3">
                 <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-slate-400">Messages</span>
+                  <span className="text-theme-text-secondary">Messages</span>
                   <span className="font-semibold">{messages.length}</span>
                 </div>
                 <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-slate-400">Rounds</span>
+                  <span className="text-theme-text-secondary">Rounds</span>
                   <span className="font-semibold">{debates.length}</span>
                 </div>
                 <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-slate-400">Status</span>
+                  <span className="text-theme-text-secondary">Status</span>
                   <span className="font-semibold capitalize">{courtroom.status}</span>
                 </div>
               </CardBody>

@@ -79,7 +79,7 @@ export const AgentsPage: React.FC = () => {
                       <div className="text-3xl">{agent.avatar}</div>
                       <div>
                         <h3 className="font-semibold">{agent.name}</h3>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-theme-text-secondary">
                           {assignedModel?.displayName || 'No model'}
                         </p>
                       </div>
@@ -88,8 +88,8 @@ export const AgentsPage: React.FC = () => {
                   </div>
                 </CardHeader>
                 <CardBody>
-                  <p className="text-sm text-slate-300 mb-3">{agent.description}</p>
-                  <p className="text-xs text-slate-500 bg-white/5 rounded p-2 max-h-20 overflow-y-auto">
+                  <p className="text-sm text-theme-text-secondary mb-3">{agent.description}</p>
+                  <p className="text-xs text-theme-text-muted bg-white/5 rounded p-2 max-h-20 overflow-y-auto">
                     {agent.systemPrompt}
                   </p>
                 </CardBody>

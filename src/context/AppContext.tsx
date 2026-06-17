@@ -14,7 +14,8 @@ interface AppContextType {
   updateAgentTemplate: (id: string, agent: Partial<AgentTemplate>) => void;
   deleteAgentTemplate: (id: string) => void;
   addCourtroom: (courtroom: Courtroom) => void;
-  updateCourtroom: (id: string, courtroom: Partial<Courtroom>) => void;
+  updateCourtrooms: (id: string, courtroom: Partial<Courtroom>) => void;
+  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -24,32 +25,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [courtrooms, setCourtrooms] = useState<Courtroom[]>([]);
 
-  // Fetch initial data from backend if available
+  const refreshData = async () => {
+    try {
+      const API = (import.meta.env.VITE_API_URL as string) || '';
+      const token = localStorage.getItem('hathap_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const [mRes, aRes, cRes] = await Promise.all([
+        fetch(`${API}/api/models`, { headers }).then((r) => r.ok ? r.json() : []),
+        fetch(`${API}/api/agents`, { headers }).then((r) => r.ok ? r.json() : []),
+        fetch(`${API}/api/courtrooms`, { headers }).then((r) => r.ok ? r.json() : []),
+      ]);
+      setModels(Array.isArray(mRes) ? mRes.map((m: any) => ({ ...m, id: m._id })) : []);
+      setAgentTemplates(Array.isArray(aRes) ? aRes.map((a: any) => ({ ...a, id: a._id })) : []);
+      setCourtrooms(Array.isArray(cRes) ? cRes.map((c: any) => ({ ...c, id: c._id })) : []);
+    } catch (e) {
+      console.error('Failed to refresh data', e);
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        const API = (import.meta.env.VITE_API_URL as string) || '';
-        const token = localStorage.getItem('hathap_token');
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const [mRes, aRes, cRes] = await Promise.all([
-          fetch(`${API}/api/models`, { headers }).then((r) => r.ok ? r.json() : []),
-          fetch(`${API}/api/agents`, { headers }).then((r) => r.ok ? r.json() : []),
-          fetch(`${API}/api/courtrooms`, { headers }).then((r) => r.ok ? r.json() : []),
-        ]);
-        setModels(Array.isArray(mRes) ? mRes : []);
-        setAgentTemplates(Array.isArray(aRes) ? aRes : []);
-        setCourtrooms(Array.isArray(cRes) ? cRes : []);
-      } catch (e) {
-        // backend may not be running — start with empty lists
-        setModels([]);
-        setAgentTemplates([]);
-        setCourtrooms([]);
-      }
-    };
-
-    load();
+    refreshData();
   }, []);
 
   const addModel = (model: Model) => {
@@ -138,6 +135,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteAgentTemplate,
         addCourtroom,
         updateCourtroom,
+        refreshData,
       }}
     >
       {children}

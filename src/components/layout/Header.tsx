@@ -17,7 +17,7 @@ export const Header: React.FC = () => {
   ];
 
   return (
-    <header className="sticky top-0 z-40 glassmorphism border-b border-slate-700">
+    <header className="sticky top-0 z-40 glassmorphism border-b border-theme-border">
       <div className="px-4 py-4 lg:px-6">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -41,7 +41,7 @@ export const Header: React.FC = () => {
                   className={`mx-1 px-3 py-2 text-sm transition-all ${
                     isActive(item.path)
                       ? 'bg-blue-500/20 text-blue-300 border border-blue-600'
-                      : 'text-slate-300 hover:bg-slate-800 border border-transparent'
+                      : 'text-theme-text-secondary hover:bg-theme-bg-secondary border border-transparent'
                   }`}
                 >
                   {item.label}
@@ -53,11 +53,11 @@ export const Header: React.FC = () => {
           {/* Actions on the right */}
           <div className="hidden md:flex items-center gap-3">
             <Link to="/profile">
-              <button className="p-2 hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-700">
+              <button className="p-2 hover:bg-theme-bg-secondary transition-colors text-theme-text-secondary hover:text-theme-text-primary border border-transparent hover:border-theme-border">
                 <User size={20} />
               </button>
             </Link>
-            <button className="p-2 hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-700">
+            <button className="p-2 hover:bg-theme-bg-secondary transition-colors text-theme-text-secondary hover:text-theme-text-primary border border-transparent hover:border-theme-border">
               <LogOut size={20} />
             </button>
           </div>
@@ -65,7 +65,7 @@ export const Header: React.FC = () => {
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700 ml-auto"
+            className="md:hidden p-2 hover:bg-theme-bg-secondary transition-colors border border-transparent hover:border-theme-border ml-auto"
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -73,7 +73,7 @@ export const Header: React.FC = () => {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <nav className="md:hidden mt-4 space-y-2 border-t border-slate-700 pt-4">
+          <nav className="md:hidden mt-4 space-y-2 border-t border-theme-border pt-4">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -82,14 +82,14 @@ export const Header: React.FC = () => {
                 className={`block px-4 py-2 transition-all border ${
                   isActive(item.path)
                     ? 'bg-blue-500/20 text-blue-300 border-blue-600'
-                    : 'text-slate-300 hover:bg-slate-800 border-transparent'
+                    : 'text-theme-text-secondary hover:bg-theme-bg-secondary border-transparent'
                 }`}
               >
                 {item.label}
               </Link>
             ))}
             <Link to="/profile" onClick={() => setMobileMenuOpen(false)}>
-              <button className="w-full text-left px-4 py-2 transition-all border text-slate-300 hover:bg-slate-800 border-transparent hover:border-slate-700 flex items-center gap-2">
+              <button className="w-full text-left px-4 py-2 transition-all border text-theme-text-secondary hover:bg-theme-bg-secondary border-transparent hover:border-theme-border flex items-center gap-2">
                 <User size={18} />
                 Profile
               </button>

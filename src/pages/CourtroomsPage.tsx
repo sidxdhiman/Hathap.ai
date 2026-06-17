@@ -25,7 +25,7 @@ export const CourtroomsPage: React.FC = () => {
     active: { label: 'Active', icon: TrendingUp, color: 'text-green-400', bgColor: 'bg-green-500/20' },
     paused: { label: 'Paused', icon: Pause, color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
     completed: { label: 'Completed', icon: CheckCircle, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
-    draft: { label: 'Draft', icon: Gavel, color: 'text-slate-400', bgColor: 'bg-slate-500/20' },
+    draft: { label: 'Draft', icon: Gavel, color: 'text-theme-text-secondary', bgColor: 'bg-theme-bg-tertiary' },
   };
 
   const modeLabels = {
@@ -54,8 +54,8 @@ export const CourtroomsPage: React.FC = () => {
         <div className="space-y-4">
           {courtrooms.length === 0 ? (
             <Card className="text-center py-12">
-              <Gavel className="mx-auto mb-4 text-slate-400" size={48} />
-              <p className="text-slate-400">No courtrooms yet</p>
+              <Gavel className="mx-auto mb-4 text-theme-text-secondary" size={48} />
+              <p className="text-theme-text-secondary">No courtrooms yet</p>
               <Button className="mt-4" onClick={() => navigate('/courtrooms/new')}>
                 Create Your First Courtroom
               </Button>
@@ -85,9 +85,9 @@ export const CourtroomsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <p className="text-slate-300 mb-4">{courtroom.description}</p>
+                      <p className="text-theme-text-secondary mb-4">{courtroom.description}</p>
 
-                      <div className="flex items-center gap-6 text-sm text-slate-400">
+                      <div className="flex items-center gap-6 text-sm text-theme-text-secondary">
                         <div className="flex items-center gap-2">
                           <Users size={16} />
                           <span>{courtroom.participants.length} participants</span>
@@ -101,7 +101,7 @@ export const CourtroomsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 text-xs text-slate-500">
+                      <div className="mt-3 text-xs text-theme-text-muted">
                         <strong>Objective:</strong> {courtroom.objective}
                       </div>
                     </div>
@@ -109,9 +109,9 @@ export const CourtroomsPage: React.FC = () => {
                     <div className="flex-shrink-0 flex items-center gap-4">
                       <div className="text-right">
                         <div className="text-2xl font-bold">{courtroom.participants.length}</div>
-                        <div className="text-xs text-slate-500">Participants</div>
+                        <div className="text-xs text-theme-text-muted">Participants</div>
                       </div>
-                      <ChevronRight size={24} className="text-slate-500" />
+                      <ChevronRight size={24} className="text-theme-text-muted" />
                     </div>
                   </div>
                 </Card>

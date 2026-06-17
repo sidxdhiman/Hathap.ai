@@ -75,7 +75,7 @@ export const DashboardPage: React.FC = () => {
                 <Card key={stat.label} hover>
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-slate-400 text-sm mb-1 font-medium">{stat.label}</p>
+                      <p className="text-theme-text-secondary text-sm mb-1 font-medium">{stat.label}</p>
                       <p className="text-4xl font-bold">{stat.value}</p>
                     </div>
                     <div
@@ -105,7 +105,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold">Create Debate</h3>
-                  <p className="text-sm text-slate-400">Start a new debate</p>
+                  <p className="text-theme-text-secondary text-sm">Start a new debate</p>
                 </div>
               </div>
             </Card>
@@ -121,7 +121,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold">Manage Models</h3>
-                  <p className="text-sm text-slate-400">Add/edit models</p>
+                  <p className="text-theme-text-secondary text-sm">Add/edit models</p>
                 </div>
               </div>
             </Card>
@@ -137,7 +137,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold">Agent Templates</h3>
-                  <p className="text-sm text-slate-400">Create agents</p>
+                  <p className="text-theme-text-secondary text-sm">Create agents</p>
                 </div>
               </div>
             </Card>
@@ -184,8 +184,8 @@ export const DashboardPage: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-slate-400 text-sm mb-3">{courtroom.description}</p>
-                      <div className="flex items-center gap-4 text-sm text-slate-500">
+                      <p className="text-theme-text-secondary text-sm mb-3">{courtroom.description}</p>
+                      <div className="flex items-center gap-4 text-sm text-theme-text-muted">
                         <div className="flex items-center gap-1">
                           <Gavel size={14} />
                           {courtroom.participants.length} participants

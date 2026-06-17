@@ -50,7 +50,7 @@ export const Loading: React.FC<{ message?: string }> = ({ message = 'Loading...'
   return (
     <div className="flex flex-col items-center justify-center py-12 gap-4">
       <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
-      <p className="text-slate-400">{message}</p>
+      <p className="text-theme-text-secondary">{message}</p>
     </div>
   );
 };

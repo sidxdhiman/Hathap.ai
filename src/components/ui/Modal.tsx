@@ -28,9 +28,18 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-slate-900 border border-slate-700 shadow-2xl ${sizeClasses[size]} w-full mx-4`}>
-        <div className="flex items-center justify-between p-6 border-b border-slate-700">
-          <h2 className="text-xl font-bold text-white">{title}</h2>
+      <div
+        className={`relative border shadow-2xl rounded-[10px] ${sizeClasses[size]} w-full mx-4`}
+        style={{
+          backgroundColor: 'var(--color-bg-primary)',
+          borderColor: 'var(--color-border)'
+        }}
+      >
+        <div
+          className="flex items-center justify-between p-6 border-b"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <h2 className="text-xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{title}</h2>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-white transition-colors"

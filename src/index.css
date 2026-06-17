@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global corner radius: 4px */
+/* Global corner radius removed for consistency */
 * {
-  @apply rounded;
+  @apply rounded-none;
 }
 
 @layer base {
@@ -27,25 +27,32 @@
     --color-bg-tertiary: #334155;
     --color-text-primary: #f1f5f9;
     --color-text-secondary: #cbd5e1;
+    --color-text-muted: #64748b;
     --color-border: #475569;
+    --color-glass-bg: rgba(255, 255, 255, 0.08);
+    --color-glass-border: #475569;
   }
-  
+
   body.theme-light {
     --color-bg-primary: #ffffff;
     --color-bg-secondary: #f8fafc;
     --color-bg-tertiary: #e2e8f0;
     --color-text-primary: #0f172a;
     --color-text-secondary: #334155;
+    --color-text-muted: #94a3b8;
     --color-border: #cbd5e1;
+    --color-glass-bg: rgba(0, 0, 0, 0.05);
+    --color-glass-border: #cbd5e1;
     @apply bg-white text-slate-950;
   }
 }
 
 @layer components {
   .glassmorphism {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--color-glass-bg);
     backdrop-filter: blur(16px);
-    @apply border border-slate-700 shadow-lg;
+    border-color: var(--color-glass-border);
+    @apply border shadow-lg rounded-[10px];
   }
   
   .card-hover {
@@ -74,10 +81,17 @@
   }
   
   .input-field {
-    @apply w-full bg-slate-900 border border-slate-700 px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:bg-slate-800 transition-colors;
+    background-color: var(--color-bg-secondary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    @apply w-full border px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors rounded-[10px];
   }
-  
+  .input-field::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 0.7;
+  }
   .input-field:focus {
+    background-color: var(--color-bg-tertiary);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
   

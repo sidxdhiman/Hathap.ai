@@ -6,7 +6,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-theme-bg-primary">
       {children}
     </div>
   );
@@ -32,7 +32,7 @@ export const PageHeader: React.FC<{
     <div className="flex items-start justify-between gap-4 mb-8">
       <div>
         <h1 className="text-4xl font-bold mb-2">{title}</h1>
-        {description && <p className="text-slate-400 text-lg">{description}</p>}
+        {description && <p className="text-theme-text-secondary text-lg">{description}</p>}
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </div>

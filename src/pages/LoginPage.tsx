@@ -12,12 +12,14 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const auth = useAuth();
+  const { refreshData } = useApp();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
       await auth.login(email, password);
+      refreshData();
       navigate('/dashboard');
     } catch (err) {
       alert('Login failed');
@@ -27,7 +29,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-theme-bg-primary flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex justify-center mb-8">
@@ -39,14 +41,14 @@ export const LoginPage: React.FC = () => {
         {/* Content */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2 gradient-text">Hathap.AI</h1>
-          <p className="text-slate-400">Debate & Collaboration Platform</p>
+          <p className="text-theme-text-secondary">Debate & Collaboration Platform</p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="glassmorphism p-6 space-y-4 border-slate-700">
+          <div className="glassmorphism p-6 space-y-4 border-theme-border">
             <div>
-              <label className="block text-sm font-semibold text-slate-200 mb-2">
+              <label className="block text-sm font-semibold text-theme-text-primary mb-2">
                 <Mail size={16} className="inline mr-2" />
                 Email
               </label>
@@ -60,7 +62,7 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-200 mb-2">
+              <label className="block text-sm font-semibold text-theme-text-primary mb-2">
                 <Lock size={16} className="inline mr-2" />
                 Password
               </label>
@@ -81,13 +83,13 @@ export const LoginPage: React.FC = () => {
             </Button>
           </div>
 
-          <p className="text-center text-slate-400 text-sm">
+          <p className="text-center text-theme-text-secondary text-sm">
             Don't have an account? <button onClick={() => navigate('/signup')} className="text-blue-400 hover:underline">Sign up</button>
           </p>
         </form>
 
         {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-slate-700 text-center text-slate-500 text-sm">
+        <div className="mt-8 pt-6 border-t border-theme-border text-center text-theme-text-muted text-sm">
           <p>🚀 Powered by AI Collaboration</p>
         </div>
       </div>
