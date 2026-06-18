@@ -14,7 +14,7 @@ interface AppContextType {
   updateAgentTemplate: (id: string, agent: Partial<AgentTemplate>) => void;
   deleteAgentTemplate: (id: string) => void;
   addCourtroom: (courtroom: Courtroom) => void;
-  updateCourtrooms: (id: string, courtroom: Partial<Courtroom>) => void;
+  updateCourtroom: (id: string, courtroom: Partial<Courtroom>) => void;
   refreshData: () => Promise<void>;
 }
 

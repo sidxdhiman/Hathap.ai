@@ -5,6 +5,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
+import { LandingPage } from './pages/LandingPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ModelsPage } from './pages/ModelsPage';
 import { AgentsPage } from './pages/AgentsPage';
@@ -17,7 +18,7 @@ import './index.css';
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const auth = useAuth();
 
-  if (!auth?.token) return <Navigate to="/" replace />;
+  if (!auth?.token) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 };
@@ -29,7 +30,8 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <AppProvider>
           <Routes>
-            <Route path="/" element={<LoginPage />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route
               path="/dashboard"

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,37 +15,45 @@
   }
   
   body {
-    @apply bg-slate-950 text-slate-100 font-sans;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   
-  /* Theme variables */
+  /* Theme variables - Dark Mode (Pure Black Default) */
   :root {
     --color-primary: #3b82f6;
     --color-primary-dark: #1e40af;
     --color-accent: #06b6d4;
     --color-accent-dark: #0891b2;
-    --color-bg-primary: #0f172a;
-    --color-bg-secondary: #1e293b;
-    --color-bg-tertiary: #334155;
-    --color-text-primary: #f1f5f9;
-    --color-text-secondary: #cbd5e1;
-    --color-text-muted: #64748b;
-    --color-border: #475569;
-    --color-glass-bg: rgba(255, 255, 255, 0.08);
-    --color-glass-border: #475569;
+    --color-bg-primary: #000000;       /* Pure Black background */
+    --color-bg-secondary: #0a0a0a;     /* Very dark secondary gray */
+    --color-bg-tertiary: #171717;      /* Lighter gray for highlights */
+    --color-bg-card: #0a0a0a;          /* Cards are very dark gray */
+    --color-bg-card-hover: #121212;    /* Lighter on hover */
+    --color-text-primary: #f5f5f5;     /* Near white text */
+    --color-text-secondary: #a3a3a3;   /* Muted grey text */
+    --color-text-muted: #525252;       /* Dimmed grey text */
+    --color-border: #1a1a1a;           /* Dark borders */
+    --color-glass-bg: rgba(255, 255, 255, 0.03);
+    --color-glass-border: rgba(255, 255, 255, 0.08);
+    --color-header-bg: rgba(0, 0, 0, 0.85);
   }
 
+  /* Theme variables - Light Mode (Clean White/Slate) */
   body.theme-light {
-    --color-bg-primary: #ffffff;
-    --color-bg-secondary: #f8fafc;
-    --color-bg-tertiary: #e2e8f0;
-    --color-text-primary: #0f172a;
-    --color-text-secondary: #334155;
-    --color-text-muted: #94a3b8;
-    --color-border: #cbd5e1;
-    --color-glass-bg: rgba(0, 0, 0, 0.05);
-    --color-glass-border: #cbd5e1;
-    @apply bg-white text-slate-950;
+    --color-bg-primary: #ffffff;       /* Pure White background */
+    --color-bg-secondary: #f8fafc;     /* Light slate secondary */
+    --color-bg-tertiary: #f1f5f9;      /* Light gray */
+    --color-bg-card: #ffffff;          /* White card backgrounds */
+    --color-bg-card-hover: #f8fafc;    /* Hover effect */
+    --color-text-primary: #0f172a;     /* Slate-900 text */
+    --color-text-secondary: #475569;   /* Slate-600 secondary text */
+    --color-text-muted: #94a3b8;       /* Slate-400 muted text */
+    --color-border: #e2e8f0;           /* Light gray borders */
+    --color-glass-bg: rgba(0, 0, 0, 0.02);
+    --color-glass-border: rgba(0, 0, 0, 0.06);
+    --color-header-bg: rgba(255, 255, 255, 0.85);
   }
 }
 
@@ -52,39 +62,42 @@
     background-color: var(--color-glass-bg);
     backdrop-filter: blur(16px);
     border-color: var(--color-glass-border);
-    @apply border shadow-lg rounded-[10px];
+    @apply border shadow-sm rounded-[15px];
   }
   
   .card-hover {
-    @apply transition-all duration-200 hover:shadow-lg;
+    @apply transition-all duration-200 hover:shadow-md;
   }
   
   .card-hover:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.25);
+    background-color: var(--color-bg-card-hover);
+    border-color: var(--color-border);
   }
   
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-md hover:shadow-lg;
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-sm hover:shadow-md rounded-[15px];
   }
   
   .btn-secondary {
-    @apply bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 font-semibold px-4 py-2 transition-all duration-150;
+    background-color: var(--color-bg-secondary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    @apply hover:bg-theme-bg-tertiary font-semibold px-4 py-2 transition-all duration-150 border rounded-[15px];
   }
   
   .btn-ghost {
-    @apply bg-transparent hover:bg-slate-800 text-slate-300 hover:text-slate-100 border border-transparent hover:border-slate-600 font-medium px-4 py-2 transition-all duration-150;
+    @apply bg-transparent hover:bg-theme-bg-secondary text-theme-text-secondary hover:text-theme-text-primary border border-transparent hover:border-theme-border font-medium px-4 py-2 transition-all duration-150 rounded-[15px];
   }
   
   .btn-danger {
-    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-red-500;
+    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-red-500 rounded-[15px];
   }
   
   .input-field {
     background-color: var(--color-bg-secondary);
     border-color: var(--color-border);
     color: var(--color-text-primary);
-    @apply w-full border px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors rounded-[10px];
+    @apply w-full border px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors rounded-[15px];
   }
   .input-field::placeholder {
     color: var(--color-text-secondary);
@@ -130,5 +143,13 @@
   .no-scrollbar::-webkit-scrollbar {
     width: 0;
     height: 0;
+  }
+  
+  .cta-gradient-box {
+    background-image: linear-gradient(to bottom right, rgba(30, 58, 138, 0.2), rgba(30, 27, 75, 0.2), rgba(22, 78, 99, 0.2));
+    border-color: var(--color-border);
+  }
+  body.theme-light .cta-gradient-box {
+    background-image: linear-gradient(to bottom right, rgba(219, 234, 254, 0.4), rgba(224, 231, 255, 0.4), rgba(207, 250, 254, 0.4));
   }
 }

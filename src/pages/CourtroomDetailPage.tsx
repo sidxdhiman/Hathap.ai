@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Play,
   Pause,
-  Square,
   UserPlus,
   Settings,
   MessageSquare,
@@ -24,9 +23,39 @@ import { formatTime } from '../utils/helpers';
 export const CourtroomDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { courtrooms, agentTemplates, models, updateCourtroom } = useApp();
+  const { courtrooms, agentTemplates, models, updateCourtroom, refreshData } = useApp();
   const courtroom = courtrooms.find((c) => c.id === id);
+
   const [showParticipantModal, setShowParticipantModal] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [verdict, setVerdict] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDebateData = async () => {
+    try {
+      const API = (import.meta.env.VITE_API_URL as string) || '';
+      const token = localStorage.getItem('hathap_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const [msgRes, verdictRes] = await Promise.all([
+        fetch(`${API}/api/courtrooms/${id}/messages`, { headers }).then((r) => r.ok ? r.json() : []),
+        fetch(`${API}/api/courtrooms/${id}/verdict`, { headers }).then((r) => r.ok ? r.json() : null),
+      ]);
+
+      setMessages(msgRes);
+      setVerdict(verdictRes);
+    } catch (err) {
+      console.error('Failed to load debate data', err);
+    }
+  };
+
+  useEffect(() => {
+    if (id) {
+      fetchDebateData();
+    }
+  }, [id, courtroom?.status]);
 
   if (!courtroom) {
     return (
@@ -53,19 +82,55 @@ export const CourtroomDetailPage: React.FC = () => {
     }
   });
 
-  const messages: any[] = [];
-  const consensus: any = {
-    agreements: [],
-    disagreements: [],
-    risks: [],
-    recommendedSolution: '',
-    confidenceScore: 0,
-  };
-  const debates: any[] = [];
+  const availableAgents = agentTemplates.filter(
+    (agent) => !courtroom.participants.some((p) => p.agentId === agent.id)
+  );
 
-  const handleToggleStatus = () => {
-    const newStatus = courtroom.status === 'active' ? 'paused' : 'active';
-    updateCourtroom(courtroom.id, { status: newStatus });
+  const rounds = Array.from(new Set(messages.map((m) => m.roundNumber))).sort((a, b) => a - b);
+
+  const handleStartDebate = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const API = (import.meta.env.VITE_API_URL as string) || '';
+      const token = localStorage.getItem('hathap_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API}/api/courtrooms/${id}/start`, {
+        method: 'POST',
+        headers,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to run debate engine');
+      }
+
+      await fetchDebateData();
+      await refreshData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddAgent = (agent: any) => {
+    const newParticipant = {
+      id: `part_${Date.now()}`,
+      courtroomId: courtroom.id,
+      type: 'agent' as const,
+      agentId: agent.id || agent._id,
+    };
+    const updatedParticipants = [...courtroom.participants, newParticipant];
+    updateCourtroom(courtroom.id, { participants: updatedParticipants });
+    setShowParticipantModal(false);
+  };
+
+  const handleRemoveParticipant = (participantId: string) => {
+    const updatedParticipants = courtroom.participants.filter((p) => p.id !== participantId);
+    updateCourtroom(courtroom.id, { participants: updatedParticipants });
   };
 
   return (
@@ -84,37 +149,48 @@ export const CourtroomDetailPage: React.FC = () => {
               <h1 className="text-4xl font-bold mb-2">{courtroom.name}</h1>
               <p className="text-theme-text-secondary text-lg">{courtroom.description}</p>
               <div className="flex items-center gap-4 mt-3 text-sm text-theme-text-secondary">
-                <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10">
-                  {courtroom.mode}
+                <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10 capitalize">
+                  Mode: {courtroom.mode}
                 </span>
-                <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10">
-                  {courtroom.status}
+                <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10 capitalize">
+                  Status: {courtroom.status}
                 </span>
               </div>
             </div>
 
             <div className="flex gap-2">
               <Button
-                onClick={handleToggleStatus}
-                variant={courtroom.status === 'active' ? 'secondary' : 'primary'}
+                onClick={handleStartDebate}
+                variant="primary"
+                disabled={isLoading || courtroom.participants.length === 0}
               >
-                {courtroom.status === 'active' ? (
+                {isLoading ? (
                   <>
-                    <Pause size={16} />
-                    Pause
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2 inline-block" />
+                    Running...
+                  </>
+                ) : courtroom.status === 'completed' ? (
+                  <>
+                    <Play size={16} />
+                    Rerun Debate
                   </>
                 ) : (
                   <>
                     <Play size={16} />
-                    Start
+                    Start Debate
                   </>
                 )}
               </Button>
-              <Button variant="secondary">
-                <Settings size={16} />
-              </Button>
             </div>
           </div>
+
+          {error && (
+            <div className="mb-4">
+              <Alert variant="error">
+                {error}
+              </Alert>
+            </div>
+          )}
 
           <Alert variant="info">
             <strong>Objective:</strong> {courtroom.objective}
@@ -133,15 +209,29 @@ export const CourtroomDetailPage: React.FC = () => {
                 </h3>
               </CardHeader>
               <CardBody className="space-y-2">
-                {participants.map((p) => (
-                  <div key={p.id} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded">
-                    <span className="text-2xl">{p.avatar}</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-theme-text-muted">{p.type}</p>
+                {participants.length > 0 ? (
+                  participants.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between p-2 hover:bg-white/5 rounded group">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{p.avatar}</span>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{p.name}</p>
+                          <p className="text-xs text-theme-text-muted">{p.type}</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 min-w-0"
+                        onClick={() => handleRemoveParticipant(p.id)}
+                      >
+                        ✕
+                      </Button>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-theme-text-muted text-center py-4">No participants added yet.</p>
+                )}
               </CardBody>
               <CardFooter>
                 <Button
@@ -160,24 +250,30 @@ export const CourtroomDetailPage: React.FC = () => {
               <CardHeader>
                 <h3 className="font-semibold flex items-center gap-2">
                   <TrendingUp size={18} />
-                  Rounds
+                  Debate Rounds
                 </h3>
               </CardHeader>
               <CardBody className="space-y-2">
-                {debates.map((debate) => (
-                  <div
-                    key={debate.id}
-                    className="flex items-center gap-2 p-2 hover:bg-white/5 rounded cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-medium">
-                      {debate.roundNumber}
+                {rounds.length > 0 ? (
+                  rounds.map((roundNum) => (
+                    <div
+                      key={roundNum}
+                      className="flex items-center gap-2 p-2 bg-white/5 rounded"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-semibold text-blue-300">
+                        {roundNum}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Round {roundNum}</p>
+                        <p className="text-xs text-theme-text-muted font-normal">
+                          {messages.filter((m) => m.roundNumber === roundNum).length} contributions
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm">Round {debate.roundNumber}</p>
-                      <p className="text-xs text-theme-text-muted capitalize">{debate.status}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-theme-text-muted text-center py-4">No rounds completed yet.</p>
+                )}
               </CardBody>
             </Card>
           </div>
@@ -188,110 +284,178 @@ export const CourtroomDetailPage: React.FC = () => {
               <CardHeader>
                 <h3 className="font-semibold">Debate Thread</h3>
               </CardHeader>
-              <CardBody className="flex-1 overflow-y-auto space-y-4 max-h-96">
-                {messages.map((message) => {
-                  const participant = participants.find((p) => p.id === message.participantId);
-                  return (
-                    <div key={message.id} className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{participant?.avatar}</span>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{participant?.name}</p>
-                          <p className="text-xs text-theme-text-muted">{formatTime(message.timestamp)}</p>
+              <CardBody className="flex-1 overflow-y-auto space-y-4 max-h-[600px]">
+                {messages.length > 0 ? (
+                  messages.map((message) => {
+                    const agent = agentTemplates.find((a) => a.id === message.agentId);
+                    const avatar = agent?.avatar || '🤖';
+                    const name = message.agentName || agent?.name || 'Unknown Agent';
+
+                    return (
+                      <div key={message._id || message.id} className="space-y-2 border-b border-white/5 pb-3 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{avatar}</span>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-white flex items-center gap-2">
+                              {name}
+                              <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-normal">
+                                Round {message.roundNumber}
+                              </span>
+                            </p>
+                            <p className="text-xs text-theme-text-muted">
+                              {formatTime(message.createdAt)}
+                            </p>
+                          </div>
                         </div>
+
+                        {message.parsedResponse ? (
+                          <div className="ml-8 space-y-3 mt-1 text-sm text-theme-text-secondary leading-relaxed">
+                            <div>
+                              <strong className="text-theme-text-primary text-xs uppercase tracking-wider block mb-1">Stance / Position:</strong>
+                              <p className="bg-white/5 p-2 rounded border border-white/10 text-white font-medium">{message.parsedResponse.position}</p>
+                            </div>
+                            {message.parsedResponse.arguments && message.parsedResponse.arguments.length > 0 && (
+                              <div>
+                                <strong className="text-theme-text-primary text-xs uppercase tracking-wider block mb-1">Supporting Arguments:</strong>
+                                <ul className="list-disc list-inside space-y-1 pl-1">
+                                  {message.parsedResponse.arguments.map((arg: string, idx: number) => (
+                                    <li key={idx} className="text-xs">{arg}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {message.parsedResponse.risks && message.parsedResponse.risks.length > 0 && (
+                              <div>
+                                <strong className="text-orange-400 text-xs uppercase tracking-wider block mb-1">Identified Risks:</strong>
+                                <ul className="list-disc list-inside space-y-1 pl-1">
+                                  {message.parsedResponse.risks.map((risk: string, idx: number) => (
+                                    <li key={idx} className="text-xs text-orange-200/80">{risk}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-blue-400 text-xs uppercase tracking-wider block mb-1">Recommendation:</strong>
+                              <p className="text-xs italic text-blue-300">{message.parsedResponse.recommendation}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-theme-text-secondary ml-8 leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        )}
                       </div>
-                      <p className="text-sm text-theme-text-secondary ml-8 leading-relaxed">{message.content}</p>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-theme-text-muted text-center py-12">
+                    No contributions yet. Start the debate to run the courtroom engine.
+                  </p>
+                )}
               </CardBody>
             </Card>
           </div>
 
-          {/* Right Sidebar - Consensus */}
+          {/* Right Sidebar - Verdict */}
           <div className="space-y-4">
             <Card>
               <CardHeader>
                 <h3 className="font-semibold flex items-center gap-2">
                   <CheckCircle size={18} className="text-green-400" />
-                  Consensus
+                  Verdict & Consensus
                 </h3>
               </CardHeader>
               <CardBody className="space-y-4 text-sm">
-                <div>
-                  <p className="font-medium text-green-400 mb-2">Agreements</p>
-                  <ul className="space-y-1 text-theme-text-secondary">
-                    {consensus.agreements.map((item, i) => (
-                      <li key={i} className="text-xs flex gap-2">
-                        <CheckCircle size={12} className="text-green-400 flex-shrink-0 mt-0.5" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {verdict ? (
+                  <>
+                    <div>
+                      <p className="font-medium text-green-400 mb-2">Summary Decision</p>
+                      <p className="text-xs text-theme-text-secondary leading-relaxed bg-white/5 p-3 rounded border border-white/10">
+                        {verdict.summary}
+                      </p>
+                    </div>
 
-                <div>
-                  <p className="font-medium text-orange-400 mb-2">Disagreements</p>
-                  <ul className="space-y-1 text-theme-text-secondary">
-                    {consensus.disagreements.map((item, i) => (
-                      <li key={i} className="text-xs flex gap-2">
-                        <AlertCircle size={12} className="text-orange-400 flex-shrink-0 mt-0.5" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                    <div>
+                      <p className="font-medium text-blue-400 mb-2">Recommendation</p>
+                      <p className="text-xs text-theme-text-secondary leading-relaxed bg-blue-500/5 p-3 rounded border border-blue-500/10 italic">
+                        {verdict.recommendation}
+                      </p>
+                    </div>
 
-                <div>
-                  <p className="font-medium text-red-400 mb-2">Risks</p>
-                  <ul className="space-y-1 text-theme-text-secondary">
-                    {consensus.risks.slice(0, 2).map((item, i) => (
-                      <li key={i} className="text-xs flex gap-2">
-                        <AlertCircle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                    {verdict.pros && verdict.pros.length > 0 && (
+                      <div>
+                        <p className="font-medium text-emerald-400 mb-2">Key Pros / Benefits</p>
+                        <ul className="space-y-1 text-theme-text-secondary pl-1">
+                          {verdict.pros.map((item: string, i: number) => (
+                            <li key={i} className="text-xs flex gap-2">
+                              <CheckCircle size={12} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
-                <div className="pt-3 border-t border-white/10">
-                  <p className="font-medium text-blue-400 mb-2">Recommendation</p>
-                  <p className="text-xs text-theme-text-secondary leading-relaxed">
-                    {consensus.recommendedSolution}
+                    {verdict.cons && verdict.cons.length > 0 && (
+                      <div>
+                        <p className="font-medium text-orange-400 mb-2">Potential Drawbacks</p>
+                        <ul className="space-y-1 text-theme-text-secondary pl-1">
+                          {verdict.cons.map((item: string, i: number) => (
+                            <li key={i} className="text-xs flex gap-2">
+                              <AlertCircle size={12} className="text-orange-400 flex-shrink-0 mt-0.5" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {verdict.risks && verdict.risks.length > 0 && (
+                      <div>
+                        <p className="font-medium text-red-400 mb-2">Critical Risks</p>
+                        <ul className="space-y-1 text-theme-text-secondary pl-1">
+                          {verdict.risks.map((item: string, i: number) => (
+                            <li key={i} className="text-xs flex gap-2">
+                              <AlertCircle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {verdict.nextActions && verdict.nextActions.length > 0 && (
+                      <div>
+                        <p className="font-medium text-purple-400 mb-2">Next Actions</p>
+                        <ul className="space-y-1 text-theme-text-secondary pl-1">
+                          {verdict.nextActions.map((item: string, i: number) => (
+                            <li key={i} className="text-xs flex gap-2">
+                              <span className="text-purple-400 font-bold">•</span>
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="pt-3 border-t border-white/10">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-theme-text-secondary">Confidence Score</span>
+                        <span className="font-semibold text-blue-400">{verdict.confidenceScore}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-500 to-blue-500"
+                            style={{ width: `${verdict.confidenceScore}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-theme-text-muted text-center py-6">
+                    No verdict generated yet. Start the debate to run the courtroom engine.
                   </p>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2">
-                  <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-green-500 to-blue-500"
-                      style={{ width: `${consensus.confidenceScore * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-medium">
-                    {(consensus.confidenceScore * 100).toFixed(0)}%
-                  </span>
-                </div>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <h3 className="font-semibold">Status</h3>
-              </CardHeader>
-              <CardBody className="text-sm space-y-3">
-                <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-theme-text-secondary">Messages</span>
-                  <span className="font-semibold">{messages.length}</span>
-                </div>
-                <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-theme-text-secondary">Rounds</span>
-                  <span className="font-semibold">{debates.length}</span>
-                </div>
-                <div className="flex justify-between items-center p-2 bg-white/5 rounded">
-                  <span className="text-theme-text-secondary">Status</span>
-                  <span className="font-semibold capitalize">{courtroom.status}</span>
-                </div>
+                )}
               </CardBody>
             </Card>
           </div>
@@ -302,17 +466,35 @@ export const CourtroomDetailPage: React.FC = () => {
       <Modal
         isOpen={showParticipantModal}
         onClose={() => setShowParticipantModal(false)}
-        title="Add Participant"
+        title="Add Expert Participant"
       >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4">
-            <Button variant="primary" className="justify-center">
-              Add Model Directly
-            </Button>
-            <Button variant="secondary" className="justify-center">
-              Add Agent Template
-            </Button>
-          </div>
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          {availableAgents.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs text-theme-text-secondary mb-2">Select from your configured AI agents:</p>
+              {availableAgents.map((agent) => (
+                <div
+                  key={agent.id}
+                  className="flex items-center justify-between p-3 bg-white/5 border border-white/10 hover:border-blue-500/50 hover:bg-white/10 rounded-xl cursor-pointer transition-all"
+                  onClick={() => handleAddAgent(agent)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{agent.avatar || '👤'}</span>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{agent.name}</p>
+                      <p className="text-xs text-theme-text-muted truncate max-w-[200px]">{agent.description}</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="primary">Add</Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-sm text-theme-text-muted">
+              No available agents. Configure more templates in the Agents tab first.
+            </div>
+          )}
+          
           <Button variant="secondary" onClick={() => setShowParticipantModal(false)} className="w-full">
             Cancel
           </Button>

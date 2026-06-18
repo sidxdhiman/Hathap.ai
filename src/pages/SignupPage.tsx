@@ -4,6 +4,7 @@ import { Gavel, Mail, User, Lock } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();

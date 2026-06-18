@@ -4,6 +4,7 @@ import { Gavel, Lock, Mail } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,7 +79,7 @@ export const LoginPage: React.FC = () => {
             <Button type="submit" isLoading={isLoading} className="w-full justify-center">
               Sign In
             </Button>
-            <Button type="button" variant="outline" onClick={() => navigate('/signup')} className="w-full justify-center">
+            <Button type="button" variant="secondary" onClick={() => navigate('/signup')} className="w-full justify-center">
               Create account
             </Button>
           </div>
