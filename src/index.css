@@ -4,9 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global corner radius removed for consistency */
+/* Global corner radius set to 8px for consistency */
 * {
-  @apply rounded-none;
+  border-radius: 8px;
+}
+*::before, *::after {
+  border-radius: inherit;
 }
 
 @layer base {
@@ -62,7 +65,7 @@
     background-color: var(--color-glass-bg);
     backdrop-filter: blur(16px);
     border-color: var(--color-glass-border);
-    @apply border shadow-sm rounded-[15px];
+    @apply border shadow-sm rounded-[8px];
   }
   
   .card-hover {
@@ -75,29 +78,29 @@
   }
   
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-sm hover:shadow-md rounded-[15px];
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-sm hover:shadow-md rounded-[8px];
   }
   
   .btn-secondary {
     background-color: var(--color-bg-secondary);
     border-color: var(--color-border);
     color: var(--color-text-primary);
-    @apply hover:bg-theme-bg-tertiary font-semibold px-4 py-2 transition-all duration-150 border rounded-[15px];
+    @apply hover:bg-theme-bg-tertiary font-semibold px-4 py-2 transition-all duration-150 border rounded-[8px];
   }
   
   .btn-ghost {
-    @apply bg-transparent hover:bg-theme-bg-secondary text-theme-text-secondary hover:text-theme-text-primary border border-transparent hover:border-theme-border font-medium px-4 py-2 transition-all duration-150 rounded-[15px];
+    @apply bg-transparent hover:bg-theme-bg-secondary text-theme-text-secondary hover:text-theme-text-primary border border-transparent hover:border-theme-border font-medium px-4 py-2 transition-all duration-150 rounded-[8px];
   }
   
   .btn-danger {
-    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-red-500 rounded-[15px];
+    @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-red-500 rounded-[8px];
   }
   
   .input-field {
     background-color: var(--color-bg-secondary);
     border-color: var(--color-border);
     color: var(--color-text-primary);
-    @apply w-full border px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors rounded-[15px];
+    @apply w-full border px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors rounded-[8px];
   }
   .input-field::placeholder {
     color: var(--color-text-secondary);

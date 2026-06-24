@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import modelsRoutes from './routes/models';
 import agentsRoutes from './routes/agents';
 import courtroomsRoutes from './routes/courtrooms';
+import { setupA2A } from './a2a/setupA2A';
 
 dotenv.config();
 
@@ -27,6 +28,8 @@ app.use('/api/agents', agentsRoutes);
 app.use('/api/courtrooms', courtroomsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+setupA2A(app);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

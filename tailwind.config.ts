@@ -7,6 +7,17 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      borderRadius: {
+        DEFAULT: '8px',
+        none: '0',
+        sm: '8px',
+        md: '8px',
+        lg: '8px',
+        xl: '8px',
+        '2xl': '8px',
+        '3xl': '8px',
+        full: '9999px',
+      },
       colors: {
         slate: {
           950: '#03071e',

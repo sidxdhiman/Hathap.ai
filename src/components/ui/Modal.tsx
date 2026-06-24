@@ -29,7 +29,7 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`relative border shadow-2xl rounded-[10px] ${sizeClasses[size]} w-full mx-4`}
+        className={`relative border shadow-2xl rounded-[8px] ${sizeClasses[size]} w-full mx-4`}
         style={{
           backgroundColor: 'var(--color-bg-primary)',
           borderColor: 'var(--color-border)'

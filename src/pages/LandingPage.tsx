@@ -123,7 +123,7 @@ export const LandingPage: React.FC = () => {
           <div className="hidden md:flex items-center gap-4">
             <button 
               onClick={toggleTheme}
-              className="p-2 border border-theme-border rounded-[10px] hover:bg-theme-bg-secondary text-theme-text-secondary hover:text-theme-text-primary transition-all animate-none"
+              className="p-2 border border-theme-border rounded-[8px] hover:bg-theme-bg-secondary text-theme-text-secondary hover:text-theme-text-primary transition-all animate-none"
               aria-label="Toggle theme"
             >
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -136,7 +136,7 @@ export const LandingPage: React.FC = () => {
             </button>
             <button 
               onClick={() => navigate('/signup')}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-[12px] border border-blue-500 shadow-sm hover:shadow-md transition-all"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-[8px] border border-blue-500 shadow-sm hover:shadow-md transition-all"
             >
               Start Free
             </button>
@@ -146,13 +146,13 @@ export const LandingPage: React.FC = () => {
           <div className="flex items-center gap-3 md:hidden">
             <button 
               onClick={toggleTheme}
-              className="p-2 border border-theme-border rounded-[10px] hover:bg-theme-bg-secondary text-theme-text-secondary"
+              className="p-2 border border-theme-border rounded-[8px] hover:bg-theme-bg-secondary text-theme-text-secondary"
             >
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 border border-theme-border rounded-[10px] hover:bg-theme-bg-secondary"
+              className="p-2 border border-theme-border rounded-[8px] hover:bg-theme-bg-secondary"
             >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -173,13 +173,13 @@ export const LandingPage: React.FC = () => {
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}
-                className="w-full text-center py-2.5 font-semibold text-theme-text-secondary hover:text-theme-text-primary border border-theme-border rounded-[10px]"
+                className="w-full text-center py-2.5 font-semibold text-theme-text-secondary hover:text-theme-text-primary border border-theme-border rounded-[8px]"
               >
                 Sign In
               </button>
               <button 
                 onClick={() => { setMobileMenuOpen(false); navigate('/signup'); }}
-                className="w-full text-center py-2.5 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-[10px]"
+                className="w-full text-center py-2.5 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-[8px]"
               >
                 Start Free Discussion
               </button>
@@ -216,14 +216,14 @@ export const LandingPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
           <button 
             onClick={() => navigate('/signup')}
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-[15px] shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group transition-all"
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-[8px] shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group transition-all"
           >
             Start Free Discussion
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </button>
           <a 
             href="#discussion"
-            className="w-full sm:w-auto border border-theme-border bg-theme-bg-secondary hover:bg-theme-bg-tertiary text-theme-text-primary font-bold px-8 py-4 rounded-[15px] flex items-center justify-center gap-2 transition-all"
+            className="w-full sm:w-auto border border-theme-border bg-theme-bg-secondary hover:bg-theme-bg-tertiary text-theme-text-primary font-bold px-8 py-4 rounded-[8px] flex items-center justify-center gap-2 transition-all"
           >
             <Play size={18} className="text-theme-text-muted fill-current" />
             Watch Demo
@@ -231,8 +231,8 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Hero Collaboration Visual */}
-        <div className="max-w-4xl mx-auto p-6 md:p-8 rounded-[15px] border border-theme-border bg-theme-bg-card backdrop-blur-sm relative shadow-xl">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 rounded-t-[15px]" />
+        <div className="max-w-4xl mx-auto p-6 md:p-8 rounded-[8px] border border-theme-border bg-theme-bg-card backdrop-blur-sm relative shadow-xl">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 rounded-t-[8px]" />
           
           <div className="flex flex-col md:flex-row items-center gap-8 justify-between">
             {/* Visual left side - Agents map */}
@@ -250,7 +250,7 @@ export const LandingPage: React.FC = () => {
                   { name: "Principal Architect", status: "Auditing compliance requirements", color: "bg-blue-500" },
                   { name: "Product Owner", status: "Evaluating enterprise SSO friction", color: "bg-amber-500" }
                 ].map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 rounded-[12px] bg-theme-bg-secondary border border-theme-border text-left">
+                  <div key={idx} className="flex items-center gap-3 p-3 rounded-[8px] bg-theme-bg-secondary border border-theme-border text-left">
                     <span className={`w-2 h-2 rounded-full ${item.color} animate-pulse`} />
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-theme-text-primary">{item.name}</p>
@@ -321,8 +321,8 @@ export const LandingPage: React.FC = () => {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
-              <div className="w-12 h-12 rounded-[12px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
+              <div className="w-12 h-12 rounded-[8px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
                 <ShieldAlert size={24} />
               </div>
               <h3 className="text-xl font-bold mb-3 text-theme-text-primary">Execution Blindspots</h3>
@@ -331,8 +331,8 @@ export const LandingPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
-              <div className="w-12 h-12 rounded-[12px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
+              <div className="w-12 h-12 rounded-[8px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
                 <DollarSign size={24} />
               </div>
               <h3 className="text-xl font-bold mb-3 text-theme-text-primary">Financial Oversights</h3>
@@ -341,8 +341,8 @@ export const LandingPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
-              <div className="w-12 h-12 rounded-[12px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card hover:bg-theme-bg-card-hover transition-all duration-150">
+              <div className="w-12 h-12 rounded-[8px] bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-6">
                 <UserCheck size={24} />
               </div>
               <h3 className="text-xl font-bold mb-3 text-theme-text-primary">Confirmation Bias</h3>
@@ -369,11 +369,11 @@ export const LandingPage: React.FC = () => {
             return (
               <div 
                 key={index} 
-                className="p-6 rounded-[15px] border border-theme-border bg-theme-bg-card flex flex-col justify-between hover:bg-theme-bg-card-hover hover:border-theme-text-muted transition-all duration-150"
+                className="p-6 rounded-[8px] border border-theme-border bg-theme-bg-card flex flex-col justify-between hover:bg-theme-bg-card-hover hover:border-theme-text-muted transition-all duration-150"
               >
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2.5 rounded-[12px] border ${agent.color}`}>
+                    <div className={`p-2.5 rounded-[8px] border ${agent.color}`}>
                       <Icon size={20} />
                     </div>
                     <div>
@@ -387,7 +387,7 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <div className="pt-4 border-t border-theme-border">
                   <p className="text-xs font-semibold text-theme-text-muted uppercase tracking-wider mb-2">Signature Critique Focus</p>
-                  <p className="text-xs italic text-theme-text-secondary font-medium bg-theme-bg-secondary p-3 rounded-[10px] border border-theme-border">
+                  <p className="text-xs italic text-theme-text-secondary font-medium bg-theme-bg-secondary p-3 rounded-[8px] border border-theme-border">
                     "{agent.quote}"
                   </p>
                 </div>
@@ -446,7 +446,7 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Outer Frame */}
-        <div className="rounded-[15px] border border-theme-border bg-theme-bg-card shadow-xl overflow-hidden">
+        <div className="rounded-[8px] border border-theme-border bg-theme-bg-card shadow-xl overflow-hidden">
           
           {/* Header Panel */}
           <div className="bg-theme-bg-secondary px-6 py-4 border-b border-theme-border flex items-center justify-between">
@@ -474,7 +474,7 @@ export const LandingPage: React.FC = () => {
             
             {/* 1. Business Strategist */}
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-[10px] border border-purple-500/30 bg-purple-500/10 flex items-center justify-center text-purple-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-[8px] border border-purple-500/30 bg-purple-500/10 flex items-center justify-center text-purple-400 flex-shrink-0">
                 <Briefcase size={20} />
               </div>
               <div className="flex-1 space-y-1.5">
@@ -490,7 +490,7 @@ export const LandingPage: React.FC = () => {
 
             {/* 2. Financial Analyst */}
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-400 flex-shrink-0">
                 <DollarSign size={20} />
               </div>
               <div className="flex-1 space-y-1.5">
@@ -506,7 +506,7 @@ export const LandingPage: React.FC = () => {
 
             {/* 3. Product Owner */}
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-[10px] border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-amber-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-[8px] border border-amber-500/30 bg-amber-500/10 flex items-center justify-center text-amber-400 flex-shrink-0">
                 <Layers size={20} />
               </div>
               <div className="flex-1 space-y-1.5">
@@ -522,7 +522,7 @@ export const LandingPage: React.FC = () => {
 
             {/* 4. Principal Architect */}
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-[10px] border border-blue-500/30 bg-blue-500/10 flex items-center justify-center text-blue-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-[8px] border border-blue-500/30 bg-blue-500/10 flex items-center justify-center text-blue-400 flex-shrink-0">
                 <Database size={20} />
               </div>
               <div className="flex-1 space-y-1.5">
@@ -550,10 +550,10 @@ export const LandingPage: React.FC = () => {
                 </p>
               </div>
               <div className="flex gap-3">
-                <div className="px-4 py-2 border border-theme-border rounded-[12px] bg-theme-bg-primary text-xs font-semibold text-theme-text-primary">
+                <div className="px-4 py-2 border border-theme-border rounded-[8px] bg-theme-bg-primary text-xs font-semibold text-theme-text-primary">
                   Risk Level: 68%
                 </div>
-                <div className="px-4 py-2 bg-blue-600 text-white rounded-[12px] text-xs font-bold flex items-center gap-1.5">
+                <div className="px-4 py-2 bg-blue-600 text-white rounded-[8px] text-xs font-bold flex items-center gap-1.5">
                   <FileText size={14} />
                   Download Report
                 </div>
@@ -561,7 +561,7 @@ export const LandingPage: React.FC = () => {
             </div>
 
             {/* Action Items List */}
-            <div className="mt-4 p-4 rounded-[12px] border border-theme-border bg-theme-bg-primary space-y-2">
+            <div className="mt-4 p-4 rounded-[8px] border border-theme-border bg-theme-bg-primary space-y-2">
               <span className="text-xs font-bold text-theme-text-muted uppercase tracking-wider">Structured Action Items</span>
               <div className="grid sm:grid-cols-2 gap-3 mt-1.5">
                 <div className="flex items-start gap-2 text-xs text-theme-text-secondary">
@@ -598,8 +598,8 @@ export const LandingPage: React.FC = () => {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8">
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card flex gap-4">
-              <div className="w-12 h-12 rounded-[12px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card flex gap-4">
+              <div className="w-12 h-12 rounded-[8px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
                 <CheckCircle2 size={24} />
               </div>
               <div>
@@ -610,8 +610,8 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card flex gap-4">
-              <div className="w-12 h-12 rounded-[12px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card flex gap-4">
+              <div className="w-12 h-12 rounded-[8px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
                 <ShieldAlert size={24} />
               </div>
               <div>
@@ -622,8 +622,8 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card flex gap-4">
-              <div className="w-12 h-12 rounded-[12px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card flex gap-4">
+              <div className="w-12 h-12 rounded-[8px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
                 <UserCheck size={24} />
               </div>
               <div>
@@ -634,8 +634,8 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-8 rounded-[15px] border border-theme-border bg-theme-bg-card flex gap-4">
-              <div className="w-12 h-12 rounded-[12px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+            <div className="p-8 rounded-[8px] border border-theme-border bg-theme-bg-card flex gap-4">
+              <div className="w-12 h-12 rounded-[8px] bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
                 <FileText size={24} />
               </div>
               <div>
@@ -664,7 +664,7 @@ export const LandingPage: React.FC = () => {
             return (
               <div 
                 key={idx} 
-                className="border border-theme-border rounded-[15px] bg-theme-bg-card overflow-hidden transition-all duration-200"
+                className="border border-theme-border rounded-[8px] bg-theme-bg-card overflow-hidden transition-all duration-200"
               >
                 <button
                   onClick={() => setActiveFaq(isOpen ? null : idx)}
@@ -686,7 +686,7 @@ export const LandingPage: React.FC = () => {
 
       {/* 9. Final CTA */}
       <section className="py-24 px-6 max-w-6xl mx-auto">
-        <div className="relative rounded-[15px] border cta-gradient-box px-6 py-16 md:py-24 text-center overflow-hidden shadow-2xl">
+        <div className="relative rounded-[8px] border cta-gradient-box px-6 py-16 md:py-24 text-center overflow-hidden shadow-2xl">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/15 rounded-full blur-[80px] pointer-events-none -z-10" />
           
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight mb-6 max-w-3xl mx-auto leading-tight text-theme-text-primary">
@@ -699,7 +699,7 @@ export const LandingPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
             <button 
               onClick={() => navigate('/signup')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-[15px] shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-[8px] shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
             >
               Start Free Discussion
               <ArrowRight size={18} />
@@ -712,7 +712,7 @@ export const LandingPage: React.FC = () => {
       <footer className="border-t border-theme-border bg-theme-bg-primary py-12 px-6 transition-colors duration-200">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-theme-text-secondary">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-[6px] flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-[8px] flex items-center justify-center">
               <Gavel size={18} className="text-white" />
             </div>
             <span className="font-bold tracking-tight text-theme-text-primary">Hathap.AI</span>
