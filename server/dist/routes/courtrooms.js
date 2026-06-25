@@ -9,6 +9,7 @@ const Message_1 = __importDefault(require("../models/Message"));
 const Verdict_1 = __importDefault(require("../models/Verdict"));
 const debateEngine_1 = require("../engine/debateEngine");
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const debateValidation_1 = require("../services/debateValidation");
 const router = express_1.default.Router();
 router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
     const items = await Courtroom_1.default.find({ userId: req.userId });
@@ -32,6 +33,10 @@ router.delete('/:id', authMiddleware_1.requireAuth, async (req, res) => {
 router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
     const { id } = req.params;
     try {
+        const validation = await (0, debateValidation_1.validateDebateReady)(id, req.userId);
+        if (!validation.ok) {
+            return res.status(400).json({ error: validation.errors.join(' '), errors: validation.errors });
+        }
         const result = await debateEngine_1.debateEngine.runDebate(id, req.userId);
         res.json({ success: true, result });
     }

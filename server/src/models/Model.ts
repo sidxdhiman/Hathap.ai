@@ -5,6 +5,7 @@ export interface IModel extends Document {
   displayName: string;
   modelName: string;
   apiKey?: string;
+  apiKeyHint?: string;
   baseUrl?: string;
   status?: string;
   enabled?: boolean;
@@ -16,6 +17,7 @@ const ModelSchema: Schema = new Schema({
   displayName: String,
   modelName: String,
   apiKey: String,
+  apiKeyHint: String,
   baseUrl: String,
   status: { type: String, default: 'untested' },
   enabled: { type: Boolean, default: true },

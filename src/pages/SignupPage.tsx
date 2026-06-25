@@ -21,7 +21,7 @@ export const SignupPage: React.FC = () => {
     try {
       await auth.signup(name, email, password);
       refreshData();
-      navigate('/dashboard');
+      navigate('/onboarding');
     } catch (e) {
       alert('Signup failed');
     } finally {

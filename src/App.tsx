@@ -12,7 +12,9 @@ import { AgentsPage } from './pages/AgentsPage';
 import { CourtroomsPage } from './pages/CourtroomsPage';
 import { CourtroomDetailPage } from './pages/CourtroomDetailPage';
 import { CreateCourtroomPage } from './pages/CreateCourtroomPage';
+import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { ToastContainer } from './components/ui/Toast';
 import './index.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -66,6 +68,14 @@ export const App: React.FC = () => {
               }
             />
             <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <OnboardingPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/courtrooms/new"
               element={
                 <ProtectedRoute>
@@ -91,6 +101,7 @@ export const App: React.FC = () => {
             />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          <ToastContainer />
         </AppProvider>
         </BrowserRouter>
       </AuthProvider>

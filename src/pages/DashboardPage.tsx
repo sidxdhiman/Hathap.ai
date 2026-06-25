@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -19,7 +19,13 @@ import { formatDate } from '../utils/helpers';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { courtrooms, models, agentTemplates } = useApp();
+  const { courtrooms, models, agentTemplates, needsOnboarding, isLoading } = useApp();
+
+  useEffect(() => {
+    if (!isLoading && needsOnboarding) {
+      navigate('/onboarding', { replace: true });
+    }
+  }, [isLoading, needsOnboarding, navigate]);
 
   const stats = [
     {

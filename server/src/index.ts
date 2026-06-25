@@ -10,6 +10,13 @@ import { setupA2A } from './a2a/setupA2A';
 
 dotenv.config();
 
+if (!process.env.API_KEY_ENCRYPTION_SECRET || process.env.API_KEY_ENCRYPTION_SECRET.length < 32) {
+  console.error(
+    'FATAL: API_KEY_ENCRYPTION_SECRET must be set in server/.env and be at least 32 characters.'
+  );
+  process.exit(1);
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());

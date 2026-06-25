@@ -11,6 +11,7 @@ export interface Model {
   displayName: string;
   modelName: string;
   apiKey: string;
+  hasApiKey?: boolean;
   baseUrl: string;
   status: 'connected' | 'error' | 'untested';
   enabled: boolean;

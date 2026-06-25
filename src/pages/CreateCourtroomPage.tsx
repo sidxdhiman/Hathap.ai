@@ -9,7 +9,6 @@ import { Input } from '../components/ui/Input';
 import { TextArea } from '../components/ui/Input';
 import { Select } from '../components/ui/Input';
 import { useApp } from '../context/AppContext';
-import { generateId } from '../utils/helpers';
 import { Courtroom } from '../types';
 
 export const CreateCourtroomPage: React.FC = () => {
@@ -58,8 +57,7 @@ export const CreateCourtroomPage: React.FC = () => {
 
     setIsCreating(true);
 
-    const newCourtroom: Courtroom = {
-      id: generateId('courtroom'),
+    const newCourtroom: Omit<Courtroom, 'id'> = {
       name: formData.name,
       description: formData.description,
       objective: formData.objective,
@@ -70,12 +68,10 @@ export const CreateCourtroomPage: React.FC = () => {
       updatedAt: new Date(),
     };
 
-    // simulate small creation delay for UX while backend processes
     try {
-      addCourtroom(newCourtroom);
-      await new Promise((r) => setTimeout(r, 700));
-      navigate(`/courtrooms/${newCourtroom.id}`);
-    } finally {
+      const saved = await addCourtroom(newCourtroom);
+      navigate(`/courtrooms/${saved.id}`);
+    } catch (err: any) {
       setIsCreating(false);
     }
   };
