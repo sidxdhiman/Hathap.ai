@@ -23,7 +23,7 @@ import { formatTime } from '../utils/helpers';
 export const CourtroomDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { courtrooms, agentTemplates, models, updateCourtroom, refreshData } = useApp();
+  const { courtrooms, agentTemplates, models, updateCourtroom, refreshData, showToast } = useApp();
   const courtroom = courtrooms.find((c) => c.id === id);
 
   const [showParticipantModal, setShowParticipantModal] = useState(false);
@@ -86,6 +86,22 @@ export const CourtroomDetailPage: React.FC = () => {
     (agent) => !courtroom.participants.some((p) => p.agentId === agent.id)
   );
 
+  const enabledModels = models.filter((model) => model.enabled && model.hasApiKey);
+
+  const startBlockers: string[] = [];
+  if (courtroom.participants.length === 0) {
+    startBlockers.push('Add at least one agent participant.');
+  }
+  if (enabledModels.length === 0) {
+    startBlockers.push('Add and enable at least one model with an API key on the Models page.');
+  }
+
+  const canStartDebate = startBlockers.length === 0;
+  const setupWarnings: string[] = [];
+  if (models.some((model) => model.enabled && model.status !== 'connected')) {
+    setupWarnings.push('Some models have not passed a connection test yet.');
+  }
+
   const rounds = Array.from(new Set(messages.map((m) => m.roundNumber))).sort((a, b) => a - b);
 
   const handleStartDebate = async () => {
@@ -104,33 +120,47 @@ export const CourtroomDetailPage: React.FC = () => {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to run debate engine');
+        const message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
+        throw new Error(message);
       }
 
       await fetchDebateData();
       await refreshData();
+      showToast('success', 'Debate completed — verdict saved.');
     } catch (err: any) {
       setError(err.message);
+      showToast('error', err.message || 'Failed to start debate.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleAddAgent = (agent: any) => {
+    if (!courtroom) return;
     const newParticipant = {
-      id: `part_${Date.now()}`,
+      id: `part_${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       courtroomId: courtroom.id,
       type: 'agent' as const,
       agentId: agent.id || agent._id,
     };
     const updatedParticipants = [...courtroom.participants, newParticipant];
     updateCourtroom(courtroom.id, { participants: updatedParticipants });
+    showToast('success', `Added ${agent.name || 'agent'} to the courtroom.`);
     setShowParticipantModal(false);
   };
 
   const handleRemoveParticipant = (participantId: string) => {
+    if (!courtroom) return;
+    const participant = courtroom.participants.find((p) => p.id === participantId);
     const updatedParticipants = courtroom.participants.filter((p) => p.id !== participantId);
     updateCourtroom(courtroom.id, { participants: updatedParticipants });
+    if (participant) {
+      const name =
+        participant.type === 'agent'
+          ? agentTemplates.find((a) => a.id === participant.agentId)?.name || 'agent'
+          : models.find((m) => m.id === participant.modelId)?.displayName || 'model';
+      showToast('info', `Removed ${name} from the courtroom.`);
+    }
   };
 
   return (
@@ -162,7 +192,8 @@ export const CourtroomDetailPage: React.FC = () => {
               <Button
                 onClick={handleStartDebate}
                 variant="primary"
-                disabled={isLoading || courtroom.participants.length === 0}
+                disabled={isLoading || !canStartDebate}
+                title={!canStartDebate ? startBlockers.join(' ') : undefined}
               >
                 {isLoading ? (
                   <>
@@ -195,6 +226,23 @@ export const CourtroomDetailPage: React.FC = () => {
           <Alert variant="info">
             <strong>Objective:</strong> {courtroom.objective}
           </Alert>
+
+          {!canStartDebate && (
+            <Alert variant="warning" className="mt-4">
+              <strong>Before you can start:</strong>
+              <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+                {startBlockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+
+          {canStartDebate && setupWarnings.length > 0 && (
+            <Alert variant="info" className="mt-4">
+              {setupWarnings.join(' ')}
+            </Alert>
+          )}
         </div>
 
         {/* Main Content */}

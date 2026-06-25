@@ -13,6 +13,10 @@ const agents_1 = __importDefault(require("./routes/agents"));
 const courtrooms_1 = __importDefault(require("./routes/courtrooms"));
 const setupA2A_1 = require("./a2a/setupA2A");
 dotenv_1.default.config();
+if (!process.env.API_KEY_ENCRYPTION_SECRET || process.env.API_KEY_ENCRYPTION_SECRET.length < 32) {
+    console.error('FATAL: API_KEY_ENCRYPTION_SECRET must be set in server/.env and be at least 32 characters.');
+    process.exit(1);
+}
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());

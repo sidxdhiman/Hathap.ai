@@ -5,8 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callLLM = callLLM;
 const openai_1 = __importDefault(require("openai"));
+const encryption_1 = require("../utils/encryption");
 async function callLLM(model, messages, options = {}) {
-    const apiKey = model.apiKey || process.env.OPENAI_API_KEY || 'fake-key';
+    const storedKey = model.apiKey || process.env.OPENAI_API_KEY || '';
+    const apiKey = storedKey && (0, encryption_1.isEncrypted)(storedKey) ? (0, encryption_1.decryptApiKey)(storedKey) : storedKey;
+    if (!apiKey || apiKey === 'fake-key') {
+        throw new Error(`No API key configured for model "${model.displayName}".`);
+    }
     // Clean up baseURL to ensure it doesn't end with a trailing slash if openai library requires it
     let baseURL = model.baseUrl || undefined;
     if (baseURL && baseURL.endsWith('/')) {
@@ -29,6 +34,7 @@ async function callLLM(model, messages, options = {}) {
                 messages,
                 response_format: responseFormat,
                 temperature: 0.7,
+                max_tokens: options.maxTokens,
             });
             const responseContent = completion.choices[0]?.message?.content || '';
             console.log(`[LLM Response Success] Model: ${model.modelName}, Token usage:`, completion.usage);

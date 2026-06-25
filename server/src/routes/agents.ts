@@ -10,15 +10,31 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
-  const item = new Agent({ ...req.body, userId: req.userId });
-  await item.save();
-  res.json(item);
+  try {
+    const { _id, id: bodyId, ...rest } = req.body;
+    const item = new Agent({ ...rest, userId: req.userId });
+    await item.save();
+    res.json(item);
+  } catch (error: any) {
+    console.error('[Agents POST]', error);
+    res.status(500).json({ error: error.message || 'Failed to create agent.' });
+  }
 });
 
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  const updated = await Agent.findOneAndUpdate({ _id: id, userId: req.userId }, req.body, { new: true });
-  res.json(updated);
+  try {
+    const { id } = req.params;
+    const { _id, id: bodyId, ...updates } = req.body;
+    const updated = await Agent.findOneAndUpdate(
+      { _id: id, userId: req.userId },
+      updates,
+      { new: true }
+    );
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Agents PUT]', error);
+    res.status(500).json({ error: error.message || 'Failed to update agent.' });
+  }
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {

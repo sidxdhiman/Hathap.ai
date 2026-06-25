@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { TextArea } from '../components/ui/Input';
 import { Select } from '../components/ui/Input';
+import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
 import { AgentTemplate } from '../types';
 import { generateId } from '../utils/helpers';
@@ -61,12 +62,18 @@ export const AgentsPage: React.FC = () => {
           title="Agent Templates"
           description="Create and manage AI agent personas"
           action={
-            <Button onClick={() => setIsAddingAgent(true)}>
+            <Button onClick={() => setIsAddingAgent(true)} disabled={models.length === 0}>
               <Plus size={20} />
               Create Agent
             </Button>
           }
         />
+
+        {models.length === 0 && (
+          <Alert variant="warning" className="mb-6">
+            Add a model with an API key first before creating or assigning agents.
+          </Alert>
+        )}
 
         <Grid cols={3}>
           {agentTemplates.map((agent) => {

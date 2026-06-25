@@ -39,6 +39,7 @@ const ModelSchema = new mongoose_1.Schema({
     displayName: String,
     modelName: String,
     apiKey: String,
+    apiKeyHint: String,
     baseUrl: String,
     status: { type: String, default: 'untested' },
     enabled: { type: Boolean, default: true },

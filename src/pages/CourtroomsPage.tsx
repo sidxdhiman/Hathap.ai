@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -9,17 +9,22 @@ import {
   CheckCircle,
   Pause,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container, PageHeader } from '../components/layout/Layout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
+import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
 import { formatDate } from '../utils/helpers';
 
 export const CourtroomsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { courtrooms } = useApp();
+  const { courtrooms, deleteCourtroom, showToast } = useApp();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const statusConfig = {
     active: { label: 'Active', icon: TrendingUp, color: 'text-green-400', bgColor: 'bg-green-500/20' },
@@ -34,6 +39,21 @@ export const CourtroomsPage: React.FC = () => {
     'devils-advocate': "Devil's Advocate",
     judge: 'Judge Mode',
     open: 'Open Debate',
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    const { id, name } = confirmDelete;
+    setDeletingId(id);
+    try {
+      await deleteCourtroom(id);
+      showToast('success', `Deleted courtroom "${name}".`);
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to delete courtroom.');
+    } finally {
+      setDeletingId(null);
+      setConfirmDelete(null);
+    }
   };
 
   return (
@@ -106,11 +126,24 @@ export const CourtroomsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex-shrink-0 flex items-center gap-4">
+                    <div className="flex-shrink-0 flex items-center gap-3">
                       <div className="text-right">
                         <div className="text-2xl font-bold">{courtroom.participants.length}</div>
                         <div className="text-xs text-theme-text-muted">Participants</div>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        isLoading={deletingId === courtroom.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete({ id: courtroom.id, name: courtroom.name });
+                        }}
+                        title="Delete courtroom"
+                        className="p-2 min-w-0"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
                       <ChevronRight size={24} className="text-theme-text-muted" />
                     </div>
                   </div>
@@ -120,6 +153,38 @@ export const CourtroomsPage: React.FC = () => {
           )}
         </div>
       </Container>
+
+      <Modal
+        isOpen={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete Courtroom"
+      >
+        <div className="space-y-4">
+          <Alert variant="warning">
+            Are you sure you want to delete <strong>"{confirmDelete?.name}"</strong>? All messages
+            and the verdict for this courtroom will be removed. This action cannot be undone.
+          </Alert>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmDelete(null)}
+              className="flex-1"
+              disabled={deletingId !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfirmDelete}
+              className="flex-1"
+              isLoading={deletingId !== null}
+            >
+              <Trash2 size={16} />
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Layout>
   );
 };

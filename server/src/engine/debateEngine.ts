@@ -5,6 +5,7 @@ import Message from '../models/Message';
 import Verdict from '../models/Verdict';
 
 import { DebateContext, DebateStrategy, DebateResult } from './types';
+import { normalizeDebateMode, validateDebateReady } from '../services/debateValidation';
 import { ConsensusStrategy } from './strategies/consensus';
 import { MajorityVoteStrategy } from './strategies/majorityVote';
 import { DevilsAdvocateStrategy } from './strategies/devilsAdvocate';
@@ -41,6 +42,11 @@ class DebateEngine {
   async runDebate(courtroomId: string, userId: string): Promise<DebateResult> {
     console.log(`[DebateEngine] Running debate for courtroom: ${courtroomId}`);
 
+    const validation = await validateDebateReady(courtroomId, userId);
+    if (!validation.ok) {
+      throw new Error(validation.errors.join(' '));
+    }
+
     // 1. Fetch courtroom
     const courtroom = await Courtroom.findOne({ _id: courtroomId, userId });
     if (!courtroom) {
@@ -49,6 +55,12 @@ class DebateEngine {
 
     if (!courtroom.participants || courtroom.participants.length === 0) {
       throw new Error('Cannot start debate: no participants assigned to the courtroom.');
+    }
+
+    const normalizedMode = normalizeDebateMode(courtroom.mode);
+    if (normalizedMode !== courtroom.mode) {
+      courtroom.mode = normalizedMode;
+      await courtroom.save();
     }
 
     // 2. Fetch courtroom participants (Agents) and their Models

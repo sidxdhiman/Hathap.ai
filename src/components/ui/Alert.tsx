@@ -2,26 +2,29 @@ import React from 'react';
 import { AlertCircle, CheckCircle, InfoIcon } from 'lucide-react';
 
 interface AlertProps {
-  variant?: 'success' | 'error' | 'info';
+  variant?: 'success' | 'error' | 'info' | 'warning';
   children: React.ReactNode;
   icon?: React.ReactNode;
+  className?: string;
 }
 
-export const Alert: React.FC<AlertProps> = ({ variant = 'info', children, icon }) => {
+export const Alert: React.FC<AlertProps> = ({ variant = 'info', children, icon, className = '' }) => {
   const variantClasses = {
     success: 'bg-green-500/20 border-green-600 text-green-300',
     error: 'bg-red-500/20 border-red-600 text-red-300',
     info: 'bg-blue-500/20 border-blue-600 text-blue-300',
+    warning: 'bg-yellow-500/20 border-yellow-600 text-yellow-300',
   };
 
   const defaultIcon = {
     success: <CheckCircle size={20} />,
     error: <AlertCircle size={20} />,
     info: <InfoIcon size={20} />,
+    warning: <AlertCircle size={20} />,
   };
 
   return (
-    <div className={`border ${variantClasses[variant]} p-4 flex gap-3 items-start`}>
+    <div className={`border ${variantClasses[variant]} p-4 flex gap-3 items-start ${className}`}>
       <div className="flex-shrink-0 mt-0.5">{icon || defaultIcon[variant]}</div>
       <div className="flex-1">{children}</div>
     </div>

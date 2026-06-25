@@ -9,6 +9,7 @@ const Agent_1 = __importDefault(require("../models/Agent"));
 const Model_1 = __importDefault(require("../models/Model"));
 const Message_1 = __importDefault(require("../models/Message"));
 const Verdict_1 = __importDefault(require("../models/Verdict"));
+const debateValidation_1 = require("../services/debateValidation");
 const consensus_1 = require("./strategies/consensus");
 const majorityVote_1 = require("./strategies/majorityVote");
 const devilsAdvocate_1 = require("./strategies/devilsAdvocate");
@@ -40,6 +41,10 @@ class DebateEngine {
     }
     async runDebate(courtroomId, userId) {
         console.log(`[DebateEngine] Running debate for courtroom: ${courtroomId}`);
+        const validation = await (0, debateValidation_1.validateDebateReady)(courtroomId, userId);
+        if (!validation.ok) {
+            throw new Error(validation.errors.join(' '));
+        }
         // 1. Fetch courtroom
         const courtroom = await Courtroom_1.default.findOne({ _id: courtroomId, userId });
         if (!courtroom) {
@@ -47,6 +52,11 @@ class DebateEngine {
         }
         if (!courtroom.participants || courtroom.participants.length === 0) {
             throw new Error('Cannot start debate: no participants assigned to the courtroom.');
+        }
+        const normalizedMode = (0, debateValidation_1.normalizeDebateMode)(courtroom.mode);
+        if (normalizedMode !== courtroom.mode) {
+            courtroom.mode = normalizedMode;
+            await courtroom.save();
         }
         // 2. Fetch courtroom participants (Agents) and their Models
         // Each participant in courtroom.participants is either an Agent template object or has an agentId.
