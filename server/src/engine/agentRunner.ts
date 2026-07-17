@@ -83,7 +83,7 @@ Ensure your response is highly specific, professional, and directly addresses th
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    { responseFormatJson: true }
+    { responseFormatJson: true, maxTokens: 2000 }
   );
 
   const parsed = parseModelResponse(rawResponse);

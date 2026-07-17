@@ -176,6 +176,36 @@ export const ModelsPage: React.FC = () => {
           </div>
         </Alert>
 
+        <Card className="mb-6 border-orange-500/30 bg-orange-500/5">
+          <CardBody>
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-orange-300 flex items-center gap-2">
+                <AlertCircle size={18} />
+                💡 Token Budget & Debate Planning
+              </p>
+              <div className="text-sm text-theme-text-secondary space-y-2">
+                <p className="leading-relaxed">
+                  <strong>Each debate uses tokens based on the number of agents:</strong>
+                </p>
+                <ul className="space-y-1 ml-4">
+                  <li>✓ <strong>2 agents × 1 round</strong> ≈ 2,600 tokens (safe for most accounts)</li>
+                  <li>✓ <strong>3 agents × 1 round</strong> ≈ 3,900 tokens (fits budget limits)</li>
+                  <li>✗ <strong>2 agents × 2+ rounds</strong> ≈ 5,200+ tokens (may exceed limits)</li>
+                </ul>
+                <p className="mt-3">
+                  <strong>If you get a "Insufficient credits" error:</strong>
+                </p>
+                <ul className="space-y-1 ml-4">
+                  <li>1. Add credits to your API account</li>
+                  <li>2. Use fewer agents (start with 2)</li>
+                  <li>3. Use a faster model (GPT-3.5 instead of GPT-4)</li>
+                  <li>4. Try Ollama for free local model hosting</li>
+                </ul>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
         {models.length === 0 ? (
           <Card className="text-center py-12">
             <AlertCircle className="mx-auto mb-4 text-slate-400" size={48} />

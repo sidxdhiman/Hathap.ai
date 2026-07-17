@@ -45,19 +45,36 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 ## 📁 Project Structure
 
 ```
-src/
-├── components/
-│   ├── layout/          # Header, Layout components
-│   └── ui/              # Reusable UI components
-├── context/             # React Context for state management
-├── data/                # Mock data
-├── pages/               # Page components
-├── types/               # TypeScript type definitions
-├── utils/               # Helper functions
-├── App.tsx              # Main app with routing
-├── main.tsx             # Entry point
-└── index.css            # Global styles
-
+Hathap.ai/
+├── client/                 # Frontend React application
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── layout/    # Header, Layout components
+│   │   │   └── ui/        # Reusable UI components
+│   │   ├── context/       # React Context for state management
+│   │   ├── data/          # Mock data
+│   │   ├── pages/         # Page components
+│   │   ├── types/         # TypeScript type definitions
+│   │   ├── utils/         # Helper functions
+│   │   ├── App.tsx        # Main app with routing
+│   │   ├── main.tsx       # Entry point
+│   │   └── index.css      # Global styles
+│   ├── package.json       # Frontend dependencies
+│   ├── vite.config.ts     # Vite configuration
+│   └── tsconfig.json      # TypeScript config
+│
+└── server/                 # Backend Node.js + Express API
+    ├── src/
+    │   ├── a2a/           # Agent-to-Agent protocol
+    │   ├── engine/        # Debate engine and AI logic
+    │   ├── middleware/    # Express middleware
+    │   ├── models/        # MongoDB schemas
+    │   ├── routes/        # API routes
+    │   ├── services/      # Business logic
+    │   ├── utils/         # Helper functions
+    │   └── index.ts       # Server entry point
+    ├── package.json       # Backend dependencies
+    └── tsconfig.json      # TypeScript config
 ```
 
 ## 🚀 Getting Started
@@ -65,34 +82,64 @@ src/
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
+- MongoDB (local or Atlas)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd ai-courtroom
+cd Hathap.ai
 ```
 
-2. Install dependencies:
+2. Install frontend dependencies:
 ```bash
+cd client
 npm install
 ```
 
-3. Start the development server:
+3. Install backend dependencies:
+```bash
+cd ../server
+npm install
+```
+
+4. Configure environment variables:
+```bash
+# In server directory
+cp .env.example .env
+# Edit .env with your MongoDB URI, JWT secret, and encryption secret
+```
+
+5. Start the development servers:
+
+**Backend (from server directory):**
 ```bash
 npm run dev
 ```
+Server will run on `http://localhost:4000`
 
-The application will be available at `http://localhost:5173`
+**Frontend (from client directory):**
+```bash
+npm run dev
+```
+Frontend will run on `http://localhost:5173`
 
 ### Build for Production
 
+**Frontend:**
 ```bash
+cd client
 npm run build
 ```
+The optimized build will be in the `client/dist` directory.
 
-The optimized build will be in the `dist` directory.
+**Backend:**
+```bash
+cd server
+npm run build
+```
+The compiled build will be in the `server/dist` directory.
 
 ## 🔑 Key Pages
 
@@ -156,17 +203,25 @@ The optimized build will be in the `dist` directory.
 
 This frontend now starts with no models, agents, or courtrooms. Data is persisted per-user via the backend API (MongoDB). When you first sign up, your workspace will be empty so you can connect models and create agents and courtrooms.
 
-## 🔧 Backend (Dev)
+## 🔧 Backend API
 
-A minimal Node.js + Express + TypeScript backend is included in the `server/` folder. It provides JWT-based auth and per-user CRUD endpoints for models, agents, and courtrooms using MongoDB.
+The backend is a Node.js + Express + TypeScript server located in the `server/` directory. It provides:
 
-Quick start:
+- **JWT-based authentication**: Secure user authentication and authorization
+- **Per-user CRUD endpoints**: Models, agents, and courtrooms management
+- **MongoDB integration**: Data persistence with Mongoose ODM
+- **A2A Protocol**: Agent-to-Agent communication support
+- **Debate Engine**: Multi-agent debate orchestration with various strategies
+- **OpenAI Integration**: LLM-powered agent responses
 
-- copy `.env.example` to `.env` and set `MONGODB_URI` and `JWT_SECRET`
-- from `server/` run `npm install` then `npm run dev`
-- the dev server defaults to port `4000` and exposes `/api/auth`, `/api/models`, `/api/agents`, `/api/courtrooms`.
+### API Endpoints:
+- `/api/auth/*` - Authentication (login, signup)
+- `/api/models/*` - AI model management
+- `/api/agents/*` - Agent template CRUD
+- `/api/courtrooms/*` - Courtroom and debate management
 
-Frontend expects the API at `/api/*` — when running dev you can proxy or run both servers on the same host (CORS is enabled in the backend).
+The backend runs on port `4000` by default (configurable via PORT env variable).  
+CORS is enabled for development with the frontend.
 
 ## 🔄 State Management
 
@@ -207,11 +262,19 @@ MIT License - See LICENSE file for details
 
 ### Available Scripts
 
+**Frontend (client/):**
 ```bash
-npm run dev       # Start development server
+npm run dev       # Start Vite development server
 npm run build     # Build for production
 npm run preview   # Preview production build
 npm run lint      # Run ESLint
+```
+
+**Backend (server/):**
+```bash
+npm run dev       # Start development server with hot reload
+npm run build     # Compile TypeScript to JavaScript
+npm start         # Run compiled production build
 ```
 
 ### Code Quality
