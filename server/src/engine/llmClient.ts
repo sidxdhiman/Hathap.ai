@@ -153,9 +153,22 @@ export async function callLLM(
       }
       if (retries >= maxRetries) {
         const reason = status ? `HTTP ${status}` : errorName || 'unknown error';
+        
+        // Provide better error message for common credit/token issues
+        let detailedMessage = '';
+        if (status === 402) {
+          detailedMessage = '\n\nCredit Issue: Your API account has insufficient credits or cannot afford the max_tokens requested. Solutions:\n' +
+            '1. Add credits to your API account\n' +
+            '2. Reduce the number of agents in your debate (fewer agents = fewer API calls)\n' +
+            '3. Reduce max_tokens in debate settings (if available)\n' +
+            '4. Use a different, faster model that requires fewer tokens\n' +
+            '5. Try using a local model via Ollama instead of an API-based model';
+        }
+        
         throw new Error(
           `LLM call failed after ${maxRetries + 1} attempts (${reason}). ` +
-            (typeof body === 'string' ? body : error?.message || 'No further details.')
+            (typeof body === 'string' ? body : error?.message || 'No further details.') +
+            detailedMessage
         );
       }
       retries++;

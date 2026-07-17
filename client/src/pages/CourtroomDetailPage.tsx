@@ -31,6 +31,7 @@ export const CourtroomDetailPage: React.FC = () => {
   const [verdict, setVerdict] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorSuggestions, setErrorSuggestions] = useState<string[]>([]);
 
   const fetchDebateData = async () => {
     try {
@@ -107,6 +108,7 @@ export const CourtroomDetailPage: React.FC = () => {
   const handleStartDebate = async () => {
     setIsLoading(true);
     setError(null);
+    setErrorSuggestions([]);
     try {
       const API = (import.meta.env.VITE_API_URL as string) || '';
       const token = localStorage.getItem('hathap_token');
@@ -120,7 +122,29 @@ export const CourtroomDetailPage: React.FC = () => {
 
       if (!res.ok) {
         const data = await res.json();
-        const message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
+        let message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
+        
+        // Parse error message and provide suggestions
+        const suggestions: string[] = [];
+        
+        if (message.includes('402') || message.includes('credits') || message.includes('max_tokens')) {
+          suggestions.push('❌ Your API account has insufficient credits or cannot afford the tokens requested');
+          suggestions.push('💡 Solution 1: Add credits to your API account (visit your provider dashboard)');
+          suggestions.push('💡 Solution 2: Use fewer agents in your debate (fewer agents = fewer API calls)');
+          suggestions.push('💡 Solution 3: Use a faster/cheaper model that requires fewer tokens');
+          suggestions.push('💡 Solution 4: Try Ollama (local, free) instead of an API-based model');
+        } else if (message.includes('API key') || message.includes('No API key')) {
+          suggestions.push('❌ One or more agents have invalid or missing API keys');
+          suggestions.push('💡 Go to the Models page and verify all API keys are correctly configured');
+          suggestions.push('💡 Ensure at least one model is marked as enabled and has a valid API key');
+        } else if (message.includes('No available model') || message.includes('no model')) {
+          suggestions.push('❌ No models are available or configured');
+          suggestions.push('💡 Go to the Models page and add at least one AI model with a valid API key');
+          suggestions.push('💡 Make sure the model is enabled before starting the debate');
+        }
+        
+        setError(message);
+        setErrorSuggestions(suggestions);
         throw new Error(message);
       }
 
@@ -128,7 +152,6 @@ export const CourtroomDetailPage: React.FC = () => {
       await refreshData();
       showToast('success', 'Debate completed — verdict saved.');
     } catch (err: any) {
-      setError(err.message);
       showToast('error', err.message || 'Failed to start debate.');
     } finally {
       setIsLoading(false);
@@ -216,10 +239,34 @@ export const CourtroomDetailPage: React.FC = () => {
           </div>
 
           {error && (
-            <div className="mb-4">
+            <div className="mb-4 space-y-3">
               <Alert variant="error">
-                {error}
+                <div className="flex items-start gap-3">
+                  <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Debate Error:</strong>
+                    <p className="mt-1">{error}</p>
+                  </div>
+                </div>
               </Alert>
+              
+              {errorSuggestions.length > 0 && (
+                <Card className="border-orange-500/30 bg-orange-500/5">
+                  <CardBody className="space-y-2">
+                    <p className="text-sm font-semibold text-orange-300 flex items-center gap-2">
+                      <span>⚠️</span> How to Fix This
+                    </p>
+                    <ul className="space-y-2 text-sm text-theme-text-secondary">
+                      {errorSuggestions.map((suggestion, idx) => (
+                        <li key={idx} className="flex gap-2 items-start">
+                          <span className="flex-shrink-0 text-orange-400 font-bold min-w-fit">{suggestion.split(':')[0]}</span>
+                          <span>{suggestion.split(':').slice(1).join(':').trim()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardBody>
+                </Card>
+              )}
             </div>
           )}
 
