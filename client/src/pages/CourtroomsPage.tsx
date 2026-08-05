@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
-  Gavel,
   Clock,
   Users,
   TrendingUp,
@@ -30,7 +29,7 @@ export const CourtroomsPage: React.FC = () => {
     active: { label: 'Active', icon: TrendingUp, color: 'text-green-400', bgColor: 'bg-green-500/20' },
     paused: { label: 'Paused', icon: Pause, color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
     completed: { label: 'Completed', icon: CheckCircle, color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
-    draft: { label: 'Draft', icon: Gavel, color: 'text-theme-text-secondary', bgColor: 'bg-theme-bg-tertiary' },
+    draft: { label: 'Draft', icon: Clock, color: 'text-theme-text-secondary', bgColor: 'bg-theme-bg-tertiary' },
   };
 
   const modeLabels = {
@@ -74,7 +73,7 @@ export const CourtroomsPage: React.FC = () => {
         <div className="space-y-4">
           {courtrooms.length === 0 ? (
             <Card className="text-center py-12">
-              <Gavel className="mx-auto mb-4 text-theme-text-secondary" size={48} />
+              <Clock className="mx-auto mb-4 text-theme-text-secondary" size={48} />
               <p className="text-theme-text-secondary">No courtrooms yet</p>
               <Button className="mt-4" onClick={() => navigate('/courtrooms/new')}>
                 Create Your First Courtroom

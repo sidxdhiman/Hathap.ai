@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Check } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
@@ -13,9 +13,13 @@ import { Courtroom } from '../types';
 
 export const CreateCourtroomPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { addCourtroom } = useApp();
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Determine where to go back to (from state or default to /courtrooms)
+  const backPath = (location.state as any)?.from || '/courtrooms';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -80,7 +84,7 @@ export const CreateCourtroomPage: React.FC = () => {
     <Layout>
       <Header />
       <Container>
-        <Button variant="secondary" onClick={() => navigate('/courtrooms')} className="mb-8">
+        <Button variant="secondary" onClick={() => navigate(backPath)} className="mb-8">
           <ArrowLeft size={16} />
           Back
         </Button>

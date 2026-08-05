@@ -5,26 +5,26 @@ import { useApp, Toast } from '../../context/AppContext';
 const iconFor = (variant: Toast['variant']) => {
   switch (variant) {
     case 'success':
-      return <CheckCircle size={18} className="text-green-300" />;
+      return <CheckCircle size={18} className="text-white" />;
     case 'error':
-      return <AlertCircle size={18} className="text-red-300" />;
+      return <AlertCircle size={18} className="text-white" />;
     case 'warning':
-      return <AlertCircle size={18} className="text-yellow-300" />;
+      return <AlertCircle size={18} className="text-white" />;
     default:
-      return <Info size={18} className="text-blue-300" />;
+      return <Info size={18} className="text-white" />;
   }
 };
 
 const classesFor = (variant: Toast['variant']) => {
   switch (variant) {
     case 'success':
-      return 'bg-green-500/15 border-green-500/40 text-green-200';
+      return 'bg-green-500/15 border-green-500/40 text-white';
     case 'error':
-      return 'bg-red-500/15 border-red-500/40 text-red-200';
+      return 'bg-red-500/15 border-red-500/40 text-white';
     case 'warning':
-      return 'bg-yellow-500/15 border-yellow-500/40 text-yellow-200';
+      return 'bg-yellow-500/15 border-yellow-500/40 text-white';
     default:
-      return 'bg-blue-500/15 border-blue-500/40 text-blue-200';
+      return 'bg-sky-500/15 border-sky-500/40 text-white';
   }
 };
 

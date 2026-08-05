@@ -6,13 +6,13 @@ import {
   Check,
   KeyRound,
   Layers,
-  Gavel,
   Shield,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
 import { Card, CardBody, CardFooter, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import logo from '../assets/logo-1.png';
 import { Input } from '../components/ui/Input';
 import { TextArea } from '../components/ui/Input';
 import { Select } from '../components/ui/Input';
@@ -171,40 +171,40 @@ export const OnboardingPage: React.FC = () => {
     <Layout>
       <Header />
       <Container>
-        <div className="max-w-3xl mx-auto py-8">
-          <div className="mb-8 text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 text-sm mb-4">
-              <Shield size={14} />
+        <div className="max-w-2xl mx-auto py-4">
+          <div className="mb-6 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 text-xs mb-3">
+              <Shield size={12} />
               Secure setup — API keys are encrypted at rest
             </div>
-            <h1 className="text-3xl font-bold mb-2">Welcome to Hathap.AI</h1>
-            <p className="text-theme-text-secondary">
+            <h1 className="text-2xl font-bold mb-2">Welcome to Hathap.AI</h1>
+            <p className="text-sm text-theme-text-secondary">
               Connect your AI provider, assign agents, and launch your first courtroom debate.
             </p>
           </div>
 
-          <div className="flex items-center justify-center gap-4 mb-8">
+          <div className="flex items-center justify-center gap-3 mb-6 text-xs">
             {[
               { n: 1, label: 'Model', icon: KeyRound },
               { n: 2, label: 'Agents', icon: Layers },
-              { n: 3, label: 'Courtroom', icon: Gavel },
+              { n: 3, label: 'Courtroom', icon: Layers },
             ].map(({ n, label, icon: Icon }) => (
               <div key={n} className="flex items-center gap-2">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
                     step >= n ? 'bg-blue-500/20 text-blue-300' : 'bg-white/5 text-slate-500'
                   }`}
                 >
-                  {step > n ? <Check size={18} /> : <Icon size={18} />}
+                  {step > n ? <Check size={14} /> : <Icon size={14} />}
                 </div>
-                <span className={`text-sm ${step >= n ? 'text-white' : 'text-slate-500'}`}>{label}</span>
-                {n < 3 && <div className={`w-10 h-0.5 ${step > n ? 'bg-blue-500/40' : 'bg-white/10'}`} />}
+                <span className={`${step >= n ? 'text-white' : 'text-slate-500'}`}>{label}</span>
+                {n < 3 && <div className={`w-8 h-0.5 ${step > n ? 'bg-blue-500/40' : 'bg-white/10'}`} />}
               </div>
             ))}
           </div>
 
           {error && (
-            <div className="mb-6">
+            <div className="mb-4">
               <Alert variant="error">{error}</Alert>
             </div>
           )}
@@ -212,12 +212,12 @@ export const OnboardingPage: React.FC = () => {
           {step === 1 && (
             <Card>
               <CardHeader>
-                <h2 className="text-xl font-bold">Step 1: Connect your AI model</h2>
-                <p className="text-sm text-theme-text-secondary mt-1">
+                <h2 className="text-lg font-bold">Step 1: Connect your AI model</h2>
+                <p className="text-xs text-theme-text-secondary mt-1">
                   Your API key is encrypted with AES-256-GCM before storage and never returned to the browser.
                 </p>
               </CardHeader>
-              <CardBody className="space-y-4">
+              <CardBody className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   {PROVIDER_PRESETS.map((preset) => (
                     <Button
@@ -225,22 +225,24 @@ export const OnboardingPage: React.FC = () => {
                       size="sm"
                       variant={modelForm.provider === preset.provider ? 'primary' : 'secondary'}
                       onClick={() => applyPreset(preset)}
+                      className="text-xs"
                     >
                       {preset.provider}
                     </Button>
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Display Name</label>
+                    <label htmlFor="displayName" className="block text-xs font-medium mb-1">Display Name</label>
                     <Input
+                      id="displayName"
                       value={modelForm.displayName}
                       onChange={(e) => setModelForm({ ...modelForm, displayName: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Model</label>
+                    <label htmlFor="modelName" className="block text-xs font-medium mb-1">Model</label>
                     <ModelPicker
                       provider={modelForm.provider}
                       value={modelForm.modelName}
@@ -250,16 +252,18 @@ export const OnboardingPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Base URL</label>
+                  <label htmlFor="baseUrl" className="block text-xs font-medium mb-1">Base URL</label>
                   <Input
+                    id="baseUrl"
                     value={modelForm.baseUrl}
                     onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">API Key</label>
+                  <label htmlFor="apiKey" className="block text-xs font-medium mb-1">API Key</label>
                   <Input
+                    id="apiKey"
                     type="password"
                     placeholder="Paste your provider API key"
                     value={modelForm.apiKey}
@@ -269,13 +273,13 @@ export const OnboardingPage: React.FC = () => {
               </CardBody>
               <CardFooter className="gap-2">
                 <Button
-                  className="flex-1"
+                  className="flex-1 text-sm"
                   onClick={handleSaveModel}
                   disabled={isSaving || !modelForm.apiKey || !modelForm.modelName}
                   isLoading={isSaving}
                 >
                   Save & Test Connection
-                  <ArrowRight size={16} />
+                  <ArrowRight size={14} />
                 </Button>
               </CardFooter>
             </Card>
@@ -284,35 +288,35 @@ export const OnboardingPage: React.FC = () => {
           {step === 2 && (
             <Card>
               <CardHeader>
-                <h2 className="text-xl font-bold">Step 2: Assign agents to your model</h2>
-                <p className="text-sm text-theme-text-secondary mt-1">
+                <h2 className="text-lg font-bold">Step 2: Assign agents to your model</h2>
+                <p className="text-xs text-theme-text-secondary mt-1">
                   {agentTemplates.length} default agent personas will use{' '}
                   <strong>{primaryModel?.displayName}</strong> during debates.
                 </p>
               </CardHeader>
-              <CardBody className="space-y-3 max-h-80 overflow-y-auto">
+              <CardBody className="space-y-2 max-h-64 overflow-y-auto">
                 {agentTemplates.map((agent) => (
                   <div
                     key={agent.id}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+                    className="flex items-center gap-2 p-2 rounded-lg bg-white/5 border border-white/10"
                   >
-                    <span className="text-2xl">{agent.avatar || '👤'}</span>
-                    <div className="flex-1">
-                      <p className="font-medium">{agent.name}</p>
-                      <p className="text-xs text-theme-text-muted">{agent.description}</p>
+                    <span className="text-lg">{agent.avatar || '👤'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{agent.name}</p>
+                      <p className="text-xs text-theme-text-muted truncate">{agent.description}</p>
                     </div>
-                    <span className="text-xs text-blue-300">{primaryModel?.displayName}</span>
+                    <span className="text-xs text-blue-300 whitespace-nowrap">{primaryModel?.displayName}</span>
                   </div>
                 ))}
               </CardBody>
               <CardFooter className="gap-2">
-                <Button variant="secondary" onClick={() => setStep(1)}>
-                  <ArrowLeft size={16} />
+                <Button variant="secondary" onClick={() => setStep(1)} className="text-sm">
+                  <ArrowLeft size={14} />
                   Back
                 </Button>
-                <Button className="flex-1" onClick={handleAssignAgents} isLoading={isSaving}>
+                <Button className="flex-1 text-sm" onClick={handleAssignAgents} isLoading={isSaving}>
                   Assign All Agents
-                  <ArrowRight size={16} />
+                  <ArrowRight size={14} />
                 </Button>
               </CardFooter>
             </Card>
@@ -321,30 +325,33 @@ export const OnboardingPage: React.FC = () => {
           {step === 3 && (
             <Card>
               <CardHeader>
-                <h2 className="text-xl font-bold">Step 3: Create your first courtroom</h2>
-                <p className="text-sm text-theme-text-secondary mt-1">
+                <h2 className="text-lg font-bold">Step 3: Create your first courtroom</h2>
+                <p className="text-xs text-theme-text-secondary mt-1">
                   Pick agents to participate, then start the debate from the courtroom page.
                 </p>
               </CardHeader>
-              <CardBody className="space-y-4">
+              <CardBody className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Courtroom Name</label>
+                  <label htmlFor="courtroomName" className="block text-xs font-medium mb-1">Courtroom Name</label>
                   <Input
+                    id="courtroomName"
                     value={courtroomForm.name}
                     onChange={(e) => setCourtroomForm({ ...courtroomForm, name: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Debate Objective</label>
+                  <label htmlFor="objective" className="block text-xs font-medium mb-1">Debate Objective</label>
                   <TextArea
-                    rows={4}
+                    id="objective"
+                    rows={3}
                     value={courtroomForm.objective}
                     onChange={(e) => setCourtroomForm({ ...courtroomForm, objective: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Debate Mode</label>
+                  <label htmlFor="debateMode" className="block text-xs font-medium mb-1">Debate Mode</label>
                   <Select
+                    id="debateMode"
                     value={courtroomForm.mode}
                     onChange={(e) =>
                       setCourtroomForm({ ...courtroomForm, mode: e.target.value as typeof courtroomForm.mode })
@@ -358,45 +365,53 @@ export const OnboardingPage: React.FC = () => {
                   </Select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Participants</label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                  <label className="block text-xs font-medium mb-1">Participants</label>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
                     {agentTemplates.map((agent) => (
                       <label
                         key={agent.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
+                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
                       >
                         <input
                           type="checkbox"
                           checked={selectedAgents.includes(agent.id)}
                           onChange={() => toggleAgent(agent.id)}
+                          className="w-4 h-4"
                         />
-                        <span>{agent.avatar || '👤'}</span>
-                        <span className="text-sm">{agent.name}</span>
+                        <span className="text-lg">{agent.avatar || '👤'}</span>
+                        <span className="text-xs">{agent.name}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               </CardBody>
               <CardFooter className="gap-2">
-                <Button variant="secondary" onClick={() => setStep(2)}>
-                  <ArrowLeft size={16} />
+                <Button variant="secondary" onClick={() => setStep(2)} className="text-sm">
+                  <ArrowLeft size={14} />
                   Back
                 </Button>
                 <Button
-                  className="flex-1"
+                  className="flex-1 text-sm"
                   onClick={handleCreateCourtroom}
                   isLoading={isSaving}
                   disabled={!courtroomForm.name || !courtroomForm.objective}
                 >
                   Create Courtroom
-                  <Gavel size={16} />
+                  <Layers size={14} />
                 </Button>
               </CardFooter>
             </Card>
           )}
 
-          <div className="text-center mt-6">
-            <Button variant="secondary" onClick={() => navigate('/dashboard')}>
+          <div className="text-center mt-4">
+            <Button 
+              variant="secondary" 
+              onClick={() => {
+                localStorage.setItem('onboarding_skipped', 'true');
+                navigate('/dashboard');
+              }} 
+              className="text-sm"
+            >
               Skip for now
             </Button>
           </div>

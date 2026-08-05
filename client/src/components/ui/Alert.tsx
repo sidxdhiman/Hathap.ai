@@ -10,10 +10,10 @@ interface AlertProps {
 
 export const Alert: React.FC<AlertProps> = ({ variant = 'info', children, icon, className = '' }) => {
   const variantClasses = {
-    success: 'bg-green-500/20 border-green-600 text-green-300',
-    error: 'bg-red-500/20 border-red-600 text-red-300',
-    info: 'bg-blue-500/20 border-blue-600 text-blue-300',
-    warning: 'bg-yellow-500/20 border-yellow-600 text-yellow-300',
+    success: 'bg-green-500/20 border-green-600 text-white',
+    error: 'bg-red-500/20 border-red-600 text-white',
+    info: 'bg-sky-500/20 border-sky-600 text-white',
+    warning: 'bg-yellow-500/20 border-yellow-600 text-white',
   };
 
   const defaultIcon = {
@@ -36,10 +36,10 @@ export const Badge: React.FC<{ children: React.ReactNode; variant?: 'primary' | 
   variant = 'primary',
 }) => {
   const variantClasses = {
-    primary: 'bg-blue-500/20 text-blue-300 border border-blue-600',
-    success: 'bg-green-500/20 text-green-300 border border-green-600',
-    error: 'bg-red-500/20 text-red-300 border border-red-600',
-    warning: 'bg-yellow-500/20 text-yellow-300 border border-yellow-600',
+    primary: 'bg-sky-500/20 text-white border border-sky-600',
+    success: 'bg-green-500/20 text-white border border-green-600',
+    error: 'bg-red-500/20 text-white border border-red-600',
+    warning: 'bg-yellow-500/20 text-white border border-yellow-600',
   };
 
   return (
