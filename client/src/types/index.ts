@@ -25,6 +25,7 @@ export interface AgentTemplate {
   assignedModelId: string;
   avatar: string;
   colorTag: string;
+  logo?: string;
   createdAt: Date;
 }
 

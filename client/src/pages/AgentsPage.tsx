@@ -23,6 +23,7 @@ export const AgentsPage: React.FC = () => {
     systemPrompt: '',
     assignedModelId: '',
     avatar: '👤',
+    logo: '',
     colorTag: 'blue',
   });
 
@@ -38,6 +39,7 @@ export const AgentsPage: React.FC = () => {
       systemPrompt: formData.systemPrompt,
       assignedModelId: formData.assignedModelId,
       avatar: formData.avatar,
+      logo: formData.logo,
       colorTag: formData.colorTag,
       createdAt: new Date(),
     };
@@ -49,6 +51,7 @@ export const AgentsPage: React.FC = () => {
       systemPrompt: '',
       assignedModelId: '',
       avatar: '👤',
+      logo: '',
       colorTag: 'blue',
     });
     setIsAddingAgent(false);
@@ -83,6 +86,13 @@ export const AgentsPage: React.FC = () => {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3 flex-1">
+                      {agent.logo && (
+                        <img 
+                          src={agent.logo} 
+                          alt={agent.name} 
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                      )}
                       <div className="text-3xl">{agent.avatar}</div>
                       <div>
                         <h3 className="font-semibold">{agent.name}</h3>
@@ -167,8 +177,9 @@ export const AgentsPage: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Avatar</label>
+                <label htmlFor="avatar" className="block text-sm font-medium mb-2">Avatar</label>
                 <Input
+                  id="avatar"
                   maxLength={2}
                   value={formData.avatar}
                   onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
@@ -176,20 +187,30 @@ export const AgentsPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Color Tag</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {colors.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => setFormData({ ...formData, colorTag: color })}
-                      className={`w-full h-10 rounded-lg bg-${color}-500 ${
-                        formData.colorTag === color
-                          ? `ring-2 ring-${color}-300`
-                          : 'opacity-50'
-                      }`}
-                    />
-                  ))}
-                </div>
+                <label htmlFor="logo" className="block text-sm font-medium mb-2">Logo URL</label>
+                <Input
+                  id="logo"
+                  placeholder="https://example.com/logo.png"
+                  value={formData.logo}
+                  onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="colorTag" className="block text-sm font-medium mb-2">Color Tag</label>
+              <div className="grid grid-cols-4 gap-2">
+                {colors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setFormData({ ...formData, colorTag: color })}
+                    className={`w-full h-10 rounded-lg bg-${color}-500 ${
+                      formData.colorTag === color
+                        ? `ring-2 ring-${color}-300`
+                        : 'opacity-50'
+                    }`}
+                  />
+                ))}
               </div>
             </div>
 

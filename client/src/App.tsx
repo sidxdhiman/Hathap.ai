@@ -25,6 +25,14 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+const LoggedInRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const auth = useAuth();
+
+  if (auth?.token) return <Navigate to="/dashboard" replace />;
+
+  return <>{children}</>;
+};
+
 export const App: React.FC = () => {
   return (
     <ThemeProvider>
@@ -32,9 +40,9 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <AppProvider>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/" element={<LoggedInRoute><LandingPage /></LoggedInRoute>} />
+            <Route path="/login" element={<LoggedInRoute><LoginPage /></LoggedInRoute>} />
+            <Route path="/signup" element={<LoggedInRoute><SignupPage /></LoggedInRoute>} />
             <Route
               path="/dashboard"
               element={

@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
-  Gavel,
   Layers,
   Zap,
   TrendingUp,
@@ -10,6 +9,7 @@ import {
   CheckCircle,
   Pause,
 } from 'lucide-react';
+import logo from '../../assets/logo-1.png';
 import { Header } from '../components/layout/Header';
 import { Layout, Container, PageHeader, Grid } from '../components/layout/Layout';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -22,7 +22,7 @@ export const DashboardPage: React.FC = () => {
   const { courtrooms, models, agentTemplates, needsOnboarding, isLoading } = useApp();
 
   useEffect(() => {
-    if (!isLoading && needsOnboarding) {
+    if (!isLoading && needsOnboarding && !localStorage.getItem('onboarding_skipped')) {
       navigate('/onboarding', { replace: true });
     }
   }, [isLoading, needsOnboarding, navigate]);
@@ -31,7 +31,7 @@ export const DashboardPage: React.FC = () => {
     {
       label: 'Total Courtrooms',
       value: courtrooms.length,
-      icon: Gavel,
+      icon: Clock,
       color: 'from-blue-500 to-blue-600',
     },
     {
@@ -47,7 +47,7 @@ export const DashboardPage: React.FC = () => {
       color: 'from-green-500 to-green-600',
     },
     {
-      label: 'Active Debates',
+      label: 'Active Courtrooms',
       value: courtrooms.filter((c) => c.status === 'active').length,
       icon: TrendingUp,
       color: 'from-orange-500 to-orange-600',
@@ -62,11 +62,11 @@ export const DashboardPage: React.FC = () => {
       <Container>
         <PageHeader
           title="Dashboard"
-          description="Manage your debates, models, and agents with Hathap.AI"
+          description="Manage your courtrooms, models, and agents with Hathap.AI"
           action={
-            <Button onClick={() => navigate('/courtrooms/new')}>
+            <Button onClick={() => navigate('/courtrooms/new', { state: { from: '/dashboard' } })}>
               <Plus size={20} />
-              Create Debate
+              Create Courtroom
             </Button>
           }
         />
@@ -107,11 +107,11 @@ export const DashboardPage: React.FC = () => {
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-500/20 border border-blue-600 flex items-center justify-center">
-                  <Gavel size={24} className="text-blue-400" />
+                  <img src={logo} alt="Hathap Logo" className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Create Debate</h3>
-                  <p className="text-theme-text-secondary text-sm">Start a new debate</p>
+                  <h3 className="font-semibold">Create Courtroom</h3>
+                  <p className="text-theme-text-secondary text-sm">Start a new courtroom</p>
                 </div>
               </div>
             </Card>
@@ -150,11 +150,11 @@ export const DashboardPage: React.FC = () => {
           </Grid>
         </div>
 
-        {/* Recent Debates */}
+        {/* Recent Courtrooms */}
         {recentCourtrooms.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">Recent Debates</h2>
+              <h2 className="text-2xl font-bold">Recent Courtrooms</h2>
               <Button variant="secondary" onClick={() => navigate('/courtrooms')}>
                 View All
               </Button>
@@ -193,7 +193,7 @@ export const DashboardPage: React.FC = () => {
                       <p className="text-theme-text-secondary text-sm mb-3">{courtroom.description}</p>
                       <div className="flex items-center gap-4 text-sm text-theme-text-muted">
                         <div className="flex items-center gap-1">
-                          <Gavel size={14} />
+                          <Users size={14} />
                           {courtroom.participants.length} participants
                         </div>
                         <div className="flex items-center gap-1">
@@ -204,7 +204,7 @@ export const DashboardPage: React.FC = () => {
                     </div>
                     <div className="flex-shrink-0">
                       <div className="w-12 h-12 bg-blue-500/10 border border-blue-600 flex items-center justify-center">
-                        <Gavel size={24} className="text-blue-400" />
+                        <img src={logo} alt="Hathap Logo" className="w-6 h-6" />
                       </div>
                     </div>
                   </div>

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gavel, Lock, Mail } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import logo from '../../assets/logo-1.png';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,9 +35,11 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center shadow-2xl shadow-blue-500/20">
-            <Gavel size={40} className="text-slate-950" />
-          </div>
+          <img 
+            src={logo} 
+            alt="Hathap.AI Logo" 
+            className="w-16 h-16 shadow-2xl shadow-blue-500/20"
+          />
         </div>
 
         {/* Content */}

@@ -15,6 +15,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    scrollbar-gutter: stable;
   }
   
   body {
@@ -25,10 +26,10 @@
   
   /* Theme variables - Dark Mode (Pure Black Default) */
   :root {
-    --color-primary: #3b82f6;
-    --color-primary-dark: #1e40af;
-    --color-accent: #06b6d4;
-    --color-accent-dark: #0891b2;
+    --color-primary: #0EA5E9;
+    --color-primary-dark: #0284C7;
+    --color-accent: #06B6D4;
+    --color-accent-dark: #0891B2;
     --color-bg-primary: #000000;       /* Pure Black background */
     --color-bg-secondary: #0a0a0a;     /* Very dark secondary gray */
     --color-bg-tertiary: #171717;      /* Lighter gray for highlights */
@@ -78,7 +79,7 @@
   }
   
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-blue-500 shadow-sm hover:shadow-md rounded-[8px];
+    @apply bg-sky-600 hover:bg-sky-700 text-white font-semibold px-4 py-2 transition-all duration-150 border border-sky-500 shadow-sm hover:shadow-md rounded-[8px];
   }
   
   .btn-secondary {

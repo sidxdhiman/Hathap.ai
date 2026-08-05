@@ -22,8 +22,8 @@ import {
   Moon,
   Sun,
   FileText,
-  Gavel
 } from 'lucide-react';
+import logo from '../../assets/logo-1.png';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -104,9 +104,11 @@ export const LandingPage: React.FC = () => {
       <header className="sticky top-0 z-50 bg-theme-header-bg backdrop-blur-md border-b border-theme-border transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-[8px] flex items-center justify-center shadow-lg shadow-blue-500/10">
-              <Gavel className="text-white" size={22} />
-            </div>
+            <img 
+              src={logo} 
+              alt="Hathap.AI Logo" 
+              className="w-10 h-10 rounded-[8px] shadow-lg shadow-blue-500/10"
+            />
             <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Hathap.AI</span>
           </div>
 
@@ -712,9 +714,11 @@ export const LandingPage: React.FC = () => {
       <footer className="border-t border-theme-border bg-theme-bg-primary py-12 px-6 transition-colors duration-200">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-theme-text-secondary">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-[8px] flex items-center justify-center">
-              <Gavel size={18} className="text-white" />
-            </div>
+            <img 
+              src={logo} 
+              alt="Hathap.AI Logo" 
+              className="w-8 h-8 rounded-[8px]"
+            />
             <span className="font-bold tracking-tight text-theme-text-primary">Hathap.AI</span>
           </div>
 
