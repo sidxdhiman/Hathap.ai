@@ -284,14 +284,4 @@ npm start         # Run compiled production build
 - Responsive design tested
 - Cross-browser compatible
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📞 Support
-
-For support, please open an issue in the repository.
-
----
-
-**Built with ❤️ for AI collaboration and debate**
+### End of Document
