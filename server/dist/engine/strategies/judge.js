@@ -37,7 +37,7 @@ class JudgeStrategy {
         }
         console.log(`[JudgeStrategy] Generating final verdict`);
         const synthesisModel = ctx.models[0];
-        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel);
+        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel, ctx.onUsage);
         // Ensure the judge's ruling is emphasized in the summary
         const finalRuling = messages[messages.length - 1];
         verdict.summary = `[Judge's Decision: ${finalRuling.parsedResponse?.position || 'Issued'}] ${verdict.summary}`;

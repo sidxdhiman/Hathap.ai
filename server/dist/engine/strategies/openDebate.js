@@ -25,7 +25,7 @@ class OpenDebateStrategy {
         }
         console.log(`[OpenDebateStrategy] Generating final verdict`);
         const synthesisModel = ctx.models[0];
-        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel);
+        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel, ctx.onUsage);
         return {
             messages,
             verdict,

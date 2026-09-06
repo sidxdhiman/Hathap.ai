@@ -1,12 +1,22 @@
 import OpenAI from 'openai';
 import { IModel } from '../models/Model';
 import { decryptApiKey, isEncrypted } from '../utils/encryption';
+import { recordUsage, LLMUsageCallback } from '../decision/usage';
+import { TokenUsage } from '../decision/types';
+
+export interface LLMCallOptions {
+  responseFormatJson?: boolean;
+  maxTokens?: number;
+  _test?: boolean;
+  onUsage?: LLMUsageCallback;
+}
 
 export async function callLLM(
   model: IModel,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  options: { responseFormatJson?: boolean; maxTokens?: number; _test?: boolean } = {}
+  options: LLMCallOptions = {}
 ): Promise<string> {
+  const startedAt = Date.now();
   const storedKey = model.apiKey || process.env.OPENAI_API_KEY || '';
   const apiKey = storedKey && isEncrypted(storedKey) ? decryptApiKey(storedKey) : storedKey;
 
@@ -74,6 +84,18 @@ export async function callLLM(
 
       const responseContent = completion.choices[0]?.message?.content || '';
       console.log(`[LLM Response Success] Model: ${model.modelName}, Token usage:`, completion.usage);
+
+      if (options.onUsage && completion.usage) {
+        const latencyMs = Date.now() - startedAt;
+        const usage: TokenUsage = recordUsage({
+          inputTokens: completion.usage.prompt_tokens || 0,
+          outputTokens: completion.usage.completion_tokens || 0,
+          model: model.modelName,
+          provider: model.provider || 'unknown',
+          latencyMs,
+        });
+        options.onUsage(usage);
+      }
 
       if (options.responseFormatJson) {
         // Attempt to parse to verify it is valid JSON

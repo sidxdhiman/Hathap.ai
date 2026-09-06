@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateVerdict = generateVerdict;
 const llmClient_1 = require("./llmClient");
-async function generateVerdict(objective, messages, model) {
+async function generateVerdict(objective, messages, model, onUsage) {
     const defaultVerdict = {
         summary: 'Consensus synthesis failed to generate.',
         recommendation: 'Unable to derive recommendation.',
@@ -50,7 +50,7 @@ Based on the debate history, generate the final verdict.`;
         const rawResult = await (0, llmClient_1.callLLM)(model, [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
-        ], { responseFormatJson: true });
+        ], { responseFormatJson: true, onUsage });
         let cleanText = rawResult.trim();
         if (cleanText.startsWith('```')) {
             const match = cleanText.match(/^(?:```[a-z]*\s*)([\s\S]*?)(?:\s*```)$/i);

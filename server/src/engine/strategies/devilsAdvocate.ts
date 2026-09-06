@@ -76,7 +76,7 @@ export class DevilsAdvocateStrategy implements DebateStrategy {
 
     console.log(`[DevilsAdvocateStrategy] Generating final verdict`);
     const synthesisModel = ctx.models[0];
-    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel);
+    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel, ctx.onUsage);
 
     return {
       messages,

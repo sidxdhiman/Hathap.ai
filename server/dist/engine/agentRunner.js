@@ -69,7 +69,11 @@ Ensure your response is highly specific, professional, and directly addresses th
     const rawResponse = await (0, llmClient_1.callLLM)(model, [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
-    ], { responseFormatJson: true });
+    ], {
+        responseFormatJson: true,
+        maxTokens: 2000,
+        onUsage: context.onUsage,
+    });
     const parsed = (0, responseParser_1.parseModelResponse)(rawResponse);
     // Construct message content for display
     const content = `Position: ${parsed.position}\n\nRecommendation: ${parsed.recommendation}`;

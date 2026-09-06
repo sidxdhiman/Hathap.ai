@@ -5,6 +5,10 @@ import Verdict from '../models/Verdict';
 import { debateEngine } from '../engine/debateEngine';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { validateDebateReady } from '../services/debateValidation';
+import { decisionOrchestrator } from '../decision/orchestrator';
+import Execution, { IExecution } from '../models/Execution';
+import { TokenUsage } from '../decision/types';
+import { aggregateUsage } from '../decision/usage';
 
 const router = express.Router();
 
@@ -49,13 +53,36 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
+  const usageRecords: TokenUsage[] = [];
   try {
     const validation = await validateDebateReady(id, req.userId!);
     if (!validation.ok) {
       return res.status(400).json({ error: validation.errors.join(' '), errors: validation.errors });
     }
 
+    const courtroom = await Courtroom.findOne({ _id: id, userId: req.userId });
+
     const result = await debateEngine.runDebate(id, req.userId!);
+
+    // Bridge to Decision architecture: if a Courtroom ran a debate, create/update
+    // a corresponding Decision and Execution to record lifecycle and usage.
+    if (courtroom) {
+      try {
+        const execution = await decisionOrchestrator.createCourthouseExecution(
+          courtroom._id.toString(),
+          req.userId!,
+          result,
+          usageRecords
+        );
+        if (execution) {
+          res.json({ success: true, result, decisionId: execution.decisionId, executionId: execution._id });
+          return;
+        }
+      } catch (err: any) {
+        console.error('[Courtrooms:start] Failed to link decision:', err?.message);
+      }
+    }
+
     res.json({ success: true, result });
   } catch (error: any) {
     console.error(`[Start Debate API Error]`, error);

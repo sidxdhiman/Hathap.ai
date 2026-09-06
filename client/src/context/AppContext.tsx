@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision } from '../types';
 
 export type Toast = {
   id: string;
@@ -11,6 +11,7 @@ interface AppContextType {
   models: Model[];
   agentTemplates: AgentTemplate[];
   courtrooms: Courtroom[];
+  decisions: Decision[];
   isLoading: boolean;
   needsOnboarding: boolean;
   toasts: Toast[];
@@ -27,6 +28,14 @@ interface AppContextType {
   updateCourtroom: (id: string, courtroom: Partial<Courtroom>) => void;
   deleteCourtroom: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
+  refreshDecisions: () => Promise<void>;
+  getDecision: (id: string) => Decision | undefined;
+  fetchDecision: (id: string) => Promise<Decision>;
+  createDecision: (input: { title: string; objective: string; context?: string; configuration?: any; participants?: any[] }) => Promise<Decision>;
+  startDecision: (id: string) => Promise<any>;
+  pauseDecision: (id: string) => Promise<void>;
+  resumeDecision: (id: string) => Promise<void>;
+  getDecisionSnapshot: (id: string) => Promise<any>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -40,11 +49,13 @@ const mapModel = (m: any): Model => ({
 
 const mapAgent = (a: any): AgentTemplate => ({ ...a, id: a._id || a.id });
 const mapCourtroom = (c: any): Courtroom => ({ ...c, id: c._id || c.id });
+const mapDecision = (d: any): Decision => ({ ...d, id: d._id || d.id });
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [models, setModels] = useState<Model[]>([]);
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [courtrooms, setCourtrooms] = useState<Courtroom[]>([]);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -200,12 +211,93 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const refreshDecisions = useCallback(async () => {
+    try {
+      const { API, headers } = getHeaders();
+      const res = await fetch(`${API}/api/decisions`, { headers }).then((r) =>
+        r.ok ? r.json() : []
+      );
+      setDecisions(Array.isArray(res) ? res.map(mapDecision) : []);
+    } catch (e) {
+      console.error('Failed to refresh decisions', e);
+    }
+  }, []);
+
+  const getDecision = (id: string) => decisions.find((d) => d.id === id);
+
+  const fetchDecision = async (id: string): Promise<Decision> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch decision');
+    const saved = mapDecision(data);
+    setDecisions((prev) => {
+      const exists = prev.some((d) => d.id === saved.id);
+      return exists ? prev.map((d) => (d.id === saved.id ? saved : d)) : [saved, ...prev];
+    });
+    return saved;
+  };
+
+  const createDecision = async (input: {
+    title: string;
+    objective: string;
+    context?: string;
+    configuration?: any;
+    participants?: any[];
+  }): Promise<Decision> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create decision');
+    const saved = mapDecision(data);
+    setDecisions((prev) => [saved, ...prev]);
+    return saved;
+  };
+
+  const startDecision = async (id: string): Promise<any> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/start`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to start decision');
+    refreshDecisions();
+    return data;
+  };
+
+  const pauseDecision = async (id: string): Promise<void> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/pause`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to pause decision');
+    refreshDecisions();
+  };
+
+  const resumeDecision = async (id: string): Promise<void> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/resume`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to resume decision');
+    refreshDecisions();
+  };
+
+  const getDecisionSnapshot = async (id: string): Promise<any> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/snapshot`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch decision snapshot');
+    return data;
+  };
+
   return (
     <AppContext.Provider
       value={{
         models,
         agentTemplates,
         courtrooms,
+        decisions,
         isLoading,
         needsOnboarding,
         toasts,
@@ -222,6 +314,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateCourtroom,
         deleteCourtroom,
         refreshData,
+        refreshDecisions,
+        getDecision,
+        fetchDecision,
+        createDecision,
+        startDecision,
+        pauseDecision,
+        resumeDecision,
+        getDecisionSnapshot,
       }}
     >
       {children}
