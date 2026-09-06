@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractMessageText = extractMessageText;
 exports.parseDebateRequest = parseDebateRequest;
+exports.normalizeDebateRequest = normalizeDebateRequest;
 function extractMessageText(message) {
     return message.parts
         .filter((part) => part.kind === 'text')

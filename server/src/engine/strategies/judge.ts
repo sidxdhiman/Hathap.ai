@@ -59,7 +59,7 @@ export class JudgeStrategy implements DebateStrategy {
 
     console.log(`[JudgeStrategy] Generating final verdict`);
     const synthesisModel = ctx.models[0];
-    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel);
+    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel, ctx.onUsage);
 
     // Ensure the judge's ruling is emphasized in the summary
     const finalRuling = messages[messages.length - 1];

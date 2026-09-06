@@ -1,6 +1,7 @@
 import { ICourtroom } from '../models/Courtroom';
 import { IAgent } from '../models/Agent';
 import { IModel } from '../models/Model';
+import { LLMUsageCallback } from '../decision/usage';
 
 export interface ModelResponse {
   position: string;
@@ -24,6 +25,7 @@ export interface DebateContext {
   agents: IAgent[];
   models: IModel[];
   objective: string;
+  onUsage?: LLMUsageCallback;
 }
 
 export interface DebateMessageInput {

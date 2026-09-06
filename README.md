@@ -42,6 +42,21 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 - **Build Tool**: Vite 5
 - **State Management**: React Context API
 
+## 🧠 Decision Intelligence Architecture
+
+Hathap is evolving from a multi-agent debate app into an AI **Decision Intelligence
+platform**. Phase 1 introduces a persistent, observable Decision/Execution/Task
+foundation alongside the existing Courtroom flow. See
+[`docs/DECISION_ARCHITECTURE.md`](docs/DECISION_ARCHITECTURE.md) for the full
+architecture, state machines, entity definitions, and migration strategy.
+
+- **Decision** → a first-class decision problem with status/phase
+- **Execution** → a persistent, recoverable run of a Decision
+- **Task** → an executable unit of work within an Execution
+- **Claim** → structured statements (fact/assumption/opinion/inference/…)
+- **Evidence** → a clean abstraction for future sources (web, PDF, GitHub, …)
+- **`/api/decisions`** → new REST surface; the Courtroom API remains backward-compatible
+
 ## 📁 Project Structure
 
 ```

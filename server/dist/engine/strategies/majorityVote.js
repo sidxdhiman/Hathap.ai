@@ -22,7 +22,7 @@ class MajorityVoteStrategy {
         // --- Synthesize Verdict ---
         console.log(`[MajorityVoteStrategy] Generating final verdict`);
         const synthesisModel = ctx.models[0];
-        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel);
+        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel, ctx.onUsage);
         // Let's modify the verdict summary to explicitly show the vote count
         let approves = 0;
         let rejects = 0;

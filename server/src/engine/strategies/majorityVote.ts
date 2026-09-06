@@ -41,7 +41,7 @@ export class MajorityVoteStrategy implements DebateStrategy {
     // --- Synthesize Verdict ---
     console.log(`[MajorityVoteStrategy] Generating final verdict`);
     const synthesisModel = ctx.models[0];
-    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel);
+    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel, ctx.onUsage);
 
     // Let's modify the verdict summary to explicitly show the vote count
     let approves = 0;

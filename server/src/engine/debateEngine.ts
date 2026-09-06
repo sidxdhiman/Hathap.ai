@@ -11,6 +11,16 @@ import { MajorityVoteStrategy } from './strategies/majorityVote';
 import { DevilsAdvocateStrategy } from './strategies/devilsAdvocate';
 import { JudgeStrategy } from './strategies/judge';
 import { OpenDebateStrategy } from './strategies/openDebate';
+import { LLMUsageCallback } from '../decision/usage';
+
+export interface DecisionDebateOptions {
+  decisionId: string;
+  userId: string;
+  strategy: string;
+  participants?: any[];
+  objective?: string;
+  onUsage?: LLMUsageCallback;
+}
 
 class DebateEngine {
   private strategies: Record<string, DebateStrategy> = {};
@@ -41,7 +51,6 @@ class DebateEngine {
 
   async runDebate(courtroomId: string, userId: string): Promise<DebateResult> {
     console.log(`[DebateEngine] Running debate for courtroom: ${courtroomId}`);
-
     const validation = await validateDebateReady(courtroomId, userId);
     if (!validation.ok) {
       throw new Error(validation.errors.join(' '));
@@ -145,6 +154,56 @@ class DebateEngine {
       await courtroom.save();
       throw err;
     }
+  }
+
+  /**
+   * Execute a debate directly from a Decision, without requiring a
+   * persisted Courtroom document. This is the path used by the
+   * DecisionOrchestrator. It resolves agents/models the same way the
+   * courtroom path does, applies the same strategy, and returns messages
+   * and verdict — without persisting them to the Courtroom collections.
+   */
+  async executeForDecision(options: DecisionDebateOptions): Promise<DebateResult> {
+    const userId = options.userId;
+    const strategyKey = normalizeDebateMode(options.strategy);
+
+    // Resolve agent participants
+    const participantIds = (options.participants || [])
+      .map((p: any) => p?.agentId || p?.id || p?._id)
+      .filter(Boolean);
+
+    const agents = participantIds.length > 0
+      ? await Agent.find({ _id: { $in: participantIds }, userId })
+      : [];
+
+    if (agents.length === 0) {
+      throw new Error('No valid agent participants could be resolved for this decision.');
+    }
+
+    // Resolve enabled models
+    const models = await Model.find({ userId, enabled: true });
+    if (models.length === 0) {
+      throw new Error('No models configured or enabled. Please add a model with an API key first.');
+    }
+
+    const objective = options.objective || 'Provide general feedback and decision support.';
+
+    const context: DebateContext = {
+      courtroom: {
+        name: 'Decision',
+        objective,
+        participants: options.participants || [],
+      } as any,
+      agents,
+      models,
+      objective,
+      onUsage: options.onUsage,
+    };
+
+    const strategy = this.getStrategy(strategyKey);
+
+    const result = await strategy.execute(context);
+    return result;
   }
 }
 

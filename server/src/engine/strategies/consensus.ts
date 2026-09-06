@@ -42,7 +42,7 @@ export class ConsensusStrategy implements DebateStrategy {
     console.log(`[ConsensusStrategy] Generating final verdict`);
     // Use first model in courtroom config, fallback to default model
     const synthesisModel = ctx.models[0];
-    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel);
+    const verdict = await generateVerdict(ctx.objective, messages, synthesisModel, ctx.onUsage);
 
     return {
       messages,

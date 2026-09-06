@@ -17,7 +17,7 @@ router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
 });
 router.post('/', authMiddleware_1.requireAuth, async (req, res) => {
     try {
-        const { apiKey, ...rest } = req.body;
+        const { apiKey, _id, id: bodyId, ...rest } = req.body;
         if (!apiKey || apiKey.includes('•')) {
             return res.status(400).json({ error: 'A valid API key is required when adding a model.' });
         }
@@ -73,7 +73,9 @@ router.post('/:id/test', authMiddleware_1.requireAuth, async (req, res) => {
         if (!model.apiKey) {
             return res.status(400).json({ success: false, error: 'No API key configured for this model.' });
         }
-        await (0, llmClient_1.callLLM)((0, modelService_1.modelForLlmCall)(model), [{ role: 'user', content: 'Reply with exactly: OK' }], { maxTokens: 16 });
+        // Single-shot test — no retries, cheapest possible request (16 tokens).
+        // Retries on a test endpoint make the user wait and don't help diagnose anything.
+        await (0, llmClient_1.callLLM)((0, modelService_1.modelForLlmCall)(model), [{ role: 'user', content: 'Reply with exactly: OK' }], { maxTokens: 16, _test: true });
         model.status = 'connected';
         await model.save();
         res.json({ success: true, model: (0, modelSerializer_1.serializeModel)(model) });

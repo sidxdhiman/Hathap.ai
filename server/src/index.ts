@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import modelsRoutes from './routes/models';
 import agentsRoutes from './routes/agents';
 import courtroomsRoutes from './routes/courtrooms';
+import decisionsRoutes from './routes/decisions';
 import { setupA2A } from './a2a/setupA2A';
 
 dotenv.config();
@@ -33,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/models', modelsRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/courtrooms', courtroomsRoutes);
+app.use('/api/decisions', decisionsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

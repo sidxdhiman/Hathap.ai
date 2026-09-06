@@ -30,7 +30,7 @@ export function parseDebateRequest(text: string): DebateRequest {
   };
 }
 
-function normalizeDebateRequest(request: DebateRequest): DebateRequest {
+export function normalizeDebateRequest(request: DebateRequest): DebateRequest {
   const skill = request.skill || (request.courtroomId ? 'courtroom-debate' : 'run-debate');
 
   if (skill === 'courtroom-debate') {

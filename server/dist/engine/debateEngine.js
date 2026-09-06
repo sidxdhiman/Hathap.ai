@@ -130,5 +130,46 @@ class DebateEngine {
             throw err;
         }
     }
+    /**
+     * Execute a debate directly from a Decision, without requiring a
+     * persisted Courtroom document. This is the path used by the
+     * DecisionOrchestrator. It resolves agents/models the same way the
+     * courtroom path does, applies the same strategy, and returns messages
+     * and verdict — without persisting them to the Courtroom collections.
+     */
+    async executeForDecision(options) {
+        const userId = options.userId;
+        const strategyKey = (0, debateValidation_1.normalizeDebateMode)(options.strategy);
+        // Resolve agent participants
+        const participantIds = (options.participants || [])
+            .map((p) => p?.agentId || p?.id || p?._id)
+            .filter(Boolean);
+        const agents = participantIds.length > 0
+            ? await Agent_1.default.find({ _id: { $in: participantIds }, userId })
+            : [];
+        if (agents.length === 0) {
+            throw new Error('No valid agent participants could be resolved for this decision.');
+        }
+        // Resolve enabled models
+        const models = await Model_1.default.find({ userId, enabled: true });
+        if (models.length === 0) {
+            throw new Error('No models configured or enabled. Please add a model with an API key first.');
+        }
+        const objective = options.objective || 'Provide general feedback and decision support.';
+        const context = {
+            courtroom: {
+                name: 'Decision',
+                objective,
+                participants: options.participants || [],
+            },
+            agents,
+            models,
+            objective,
+            onUsage: options.onUsage,
+        };
+        const strategy = this.getStrategy(strategyKey);
+        const result = await strategy.execute(context);
+        return result;
+    }
 }
 exports.debateEngine = new DebateEngine();

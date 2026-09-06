@@ -1,11 +1,13 @@
 import { callLLM } from './llmClient';
 import { DebateMessageInput, VerdictResult } from './types';
 import { IModel } from '../models/Model';
+import { LLMUsageCallback } from '../decision/usage';
 
 export async function generateVerdict(
   objective: string,
   messages: DebateMessageInput[],
-  model: IModel
+  model: IModel,
+  onUsage?: LLMUsageCallback
 ): Promise<VerdictResult> {
   const defaultVerdict: VerdictResult = {
     summary: 'Consensus synthesis failed to generate.',
@@ -60,7 +62,7 @@ Based on the debate history, generate the final verdict.`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      { responseFormatJson: true }
+      { responseFormatJson: true, onUsage }
     );
 
     let cleanText = rawResult.trim();

@@ -41,6 +41,10 @@ const AgentSchema = new mongoose_1.Schema({
     assignedModelId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Model' },
     avatar: String,
     colorTag: String,
+    logo: String,
+    capabilities: [{ type: String, enum: ['financial_analysis', 'technical_analysis', 'research', 'security_review', 'legal_analysis', 'product_strategy', 'risk_analysis', 'fact_checking'] }],
+    tools: [{ type: String }],
+    constraints: [{ type: String }],
     userId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' },
     createdAt: { type: Date, default: Date.now },
 });

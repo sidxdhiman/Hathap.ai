@@ -23,7 +23,7 @@ class ConsensusStrategy {
         console.log(`[ConsensusStrategy] Generating final verdict`);
         // Use first model in courtroom config, fallback to default model
         const synthesisModel = ctx.models[0];
-        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel);
+        const verdict = await (0, verdictGenerator_1.generateVerdict)(ctx.objective, messages, synthesisModel, ctx.onUsage);
         return {
             messages,
             verdict,
