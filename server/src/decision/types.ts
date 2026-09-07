@@ -9,7 +9,23 @@ export type DecisionStatus =
   | 'awaiting_review'
   | 'completed'
   | 'failed'
-  | 'paused';
+  | 'paused'
+  | 'cancelled';
+
+export type TaskFailureKind =
+  | 'retryable'
+  | 'non_retryable'
+  | 'dependency_failure'
+  | 'cancelled';
+
+export type TaskError = {
+  code?: ExecutionError['code'];
+  message: string;
+  taskId?: string;
+  kind: TaskFailureKind;
+  attempt?: number;
+  createdAt: Date;
+};
 
 export type DecisionPhase =
   | 'draft'
@@ -25,11 +41,13 @@ export type DecisionPhase =
 
 export type ExecutionStatus =
   | 'pending'
+  | 'queued'
   | 'running'
   | 'paused'
   | 'completed'
   | 'failed'
-  | 'partial';
+  | 'partial'
+  | 'cancelled';
 
 export type TaskType =
   | 'research'
@@ -46,6 +64,9 @@ export type TaskStatus =
   | 'running'
   | 'completed'
   | 'failed'
+  | 'retrying'
+  | 'paused'
+  | 'cancelled'
   | 'skipped';
 
 export type ClaimType =
@@ -190,4 +211,54 @@ export interface ModelResponseWithClaims extends ModelResponse {
 
 export interface VerdictResultWithDecision extends VerdictResult {
   confidence?: number;
+}
+
+// ---- Phase 2: task scheduling / execution abstractions ----
+
+export interface TaskHandlerContext {
+  userId: string;
+  decisionId: string;
+  executionId: string;
+  taskId: string;
+  onUsage: (usage: TokenUsage) => void;
+}
+
+export interface TaskHandlerResult {
+  output: Record<string, unknown>;
+  events?: Array<{ type: string; [key: string]: unknown }>;
+}
+
+export interface TaskHandler {
+  type: TaskType;
+  canHandle(type: TaskType): boolean;
+  execute(task: TaskDefinition, context: TaskHandlerContext): Promise<TaskHandlerResult>;
+}
+
+export interface TaskHandlerRegistry {
+  handlers: TaskHandler[];
+  register(handler: TaskHandler): void;
+  getHandler(type: TaskType): TaskHandler | undefined;
+  canHandle(type: TaskType): boolean;
+}
+
+export interface ProgressSummary {
+  totalTasks: number;
+  completedTasks: number;
+  failedTasks: number;
+  runningTasks: number;
+  pendingTasks: number;
+  readyTasks: number;
+  progress: number;
+  currentPhase?: string;
+}
+
+export interface ExecutionEventRecord {
+  type: string;
+  timestamp?: Date;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  agentId?: string;
+  retryCount?: number;
+  data?: Record<string, unknown>;
 }

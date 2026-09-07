@@ -60,7 +60,7 @@ and `completedAt`. A Decision created from a Courtroom links back via
 `courtroomId`.
 
 **Statuses:** `draft`, `investigating`, `reasoning`, `debating`, `verifying`,
-`awaiting_review`, `completed`, `failed`, `paused`.
+`awaiting_review`, `completed`, `failed`, `paused`, `cancelled`.
 
 ### Execution
 A persistent run of a Decision. Tracks: `decisionId`, `status`, `startedAt`,
@@ -68,7 +68,7 @@ A persistent run of a Decision. Tracks: `decisionId`, `status`, `startedAt`,
 `maxRetries`, `tokenUsage`, `estimatedCost`, `actualCost`, and `metadata`.
 Executions persist even if the server process dies.
 
-**Statuses:** `pending`, `running`, `paused`, `completed`, `failed`, `partial`.
+**Statuses:** `queued`, `running`, `paused`, `completed`, `failed`, `cancelled`.
 
 ### Task
 An executable unit of work within an Execution. Tracks: `executionId`, `type`,
@@ -78,7 +78,8 @@ An executable unit of work within an Execution. Tracks: `executionId`, `type`,
 **Task types (extensible):** `research`, `analysis`, `debate`, `challenge`,
 `verification`, `synthesis`, `human_review`.
 
-**Statuses:** `pending`, `ready`, `running`, `completed`, `failed`, `skipped`.
+**Statuses:** `queued`, `pending`, `ready`, `running`, `retrying`, `paused`,
+`completed`, `failed`, `cancelled`, `skipped`.
 
 ### Claim
 A structured statement extracted from agent output. Tracks: `decisionId`,
@@ -197,9 +198,12 @@ New routes under `/api/decisions` (all require auth):
 - `GET /api/decisions/:id` — get
 - `PUT /api/decisions/:id` — update
 - `DELETE /api/decisions/:id` — delete
-- `POST /api/decisions/:id/start` — start
+- `POST /api/decisions/:id/start` — start (202, returns `executionId`)
 - `POST /api/decisions/:id/pause` — pause
 - `POST /api/decisions/:id/resume` — resume
+- `POST /api/decisions/:id/cancel` — cancel
+- `GET /api/executions/:executionId` — execution detail (ownership-checked)
+- `GET /api/tasks/:taskId` — task detail (ownership-checked)
 - `GET /api/decisions/:id/executions` — executions
 - `GET /api/decisions/:id/tasks` — tasks
 - `GET /api/decisions/:id/claims` — claims
@@ -281,21 +285,27 @@ npm run build       # TypeScript compiles
 
 ## Known limitations (Phase 1)
 
-- `startDecision` currently runs the debate synchronously through the existing
-  DebateEngine; true async/background execution is a later phase.
-- `pause`/`resume` update Decision state but do not yet suspend an in-flight
-  synchronous debate run.
+> Superseded for async behavior by **Phase 2** (see below). Items marked ✅ are
+> now implemented by the async execution engine.
+
+- ✅ `startDecision` runs the debate synchronously through the existing
+  DebateEngine; true async/background execution is a later phase. *(Now async in
+  Phase 2.)*
+- ✅ `pause`/`resume` update Decision state but do not yet suspend an in-flight
+  synchronous debate run. *(Now real in Phase 2.)*
 - Claim extraction is coarse: it maps `position/arguments/risks/recommendation`
   onto claim types rather than performing semantic analysis.
 - No automatic model fallback yet; the default assigned-model behavior is
   preserved.
-- Task dependencies are declared but a dependency scheduler is not yet
-  implemented.
+- ✅ Task dependencies are declared but a dependency scheduler is not yet
+  implemented. *(Now implemented in Phase 2.)*
 
 ## Recommended next phase
 
-1. **Async execution engine** — run Executions in the background (queue),
-   enabling true pause/resume/retry and real-time progress.
+> **Async execution engine** (item 1) is implemented in **Phase 2** below.
+
+1. ✅ **Async execution engine** — background scheduler/executor, pause/resume/
+   retry/cancel, progress, recovery, and an internal event system.
 2. **Claim graph** — richer claim relationships, verification task type, and
    evidence linking.
 3. **Model routing** — select a model per Task based on quality/cost/latency,
@@ -306,3 +316,187 @@ npm run build       # TypeScript compiles
    task types to harden Decisions before `awaiting_review`.
 6. **Observability UI** — visualize Execution/Task/Agent/Model/LLM stack on the
    frontend.
+
+---
+
+# Phase 2 — Persistent Async Execution Engine
+
+Updates the Phase 1 architecture so Executions run **asynchronously in the
+background** beneath the DecisionOrchestrator, without breaking the Courtroom
+API, the 5 debate strategies, A2A, or the UI.
+
+## Architecture principles
+
+- **API must not execute long-running Decisions.** `/api/decisions/:id/start`
+  now validates, transitions Decision → `debating`, creates a `queued`
+  Execution, seeds initial tasks, and returns `202` with an `executionId` —
+  returning immediately.
+- **Scheduler decides WHAT runs**; the executor decides HOW; **handlers contain
+  task logic**; the orchestrator coordinates; **persistence is the source of
+  truth** (a crashed worker can be replaced); **events only describe state
+  changes** (never drive behavior).
+
+## New engine components
+
+### Scheduler (`scheduler.ts`)
+A **pure** function `schedule(executionStatus, tasks)` returning
+`{ executable, blocked }`. No I/O, no business logic — easy to test and swap.
+Given the execution status and the full task list it decides which tasks are
+ready to run based on:
+
+- Execution must be `running` (or `queued` and being processed) — not paused/
+  cancelled/completed/failed.
+- Dependencies: a task is ready only when all its dependency tasks are
+  `completed`.
+- Retry backoff: a `retrying` task is not ready until `nextRetryAt` has passed.
+- Priority ordering (lower number = higher priority run first).
+- Task may be `pending`/`ready`/`retrying` (never `running`/`completed`).
+
+### Error classifier (`errorClassifier.ts`)
+`classifyError`, `isRetryableError`, `buildTaskError`, `buildExecutionError`,
+`isDependencyFailureKind`. Classifies thrown errors into
+`TaskFailureKind` = `retryable` | `permanent` | `dependency`. May provide a
+`retryAfterMs` hint. Maps to stable `code`/`message` fields persisted on
+Task/Execution `error`.
+
+### Event system (`eventBus.ts` + `ExecutionEvent` model)
+`ExecutionEventBus` — an in-process `EventEmitter` (swappable later for a real
+queue) that also **persists** each emitted event as an `ExecutionEvent` doc.
+`emit({ type, executionId, decisionId, taskId, data, timestamp })` sets a
+default `timestamp`. Event types include `task.started`, `task.completed`,
+`task.retrying`, `task.failed`, `execution.completed`, `execution.failed`,
+`execution.cancelled`, `execution.paused`, `execution.resumed`.
+
+### Task handlers (`handlers/*`, `handlers/index.ts`)
+`TaskHandlerRegistry` + `DefaultTaskHandlerRegistry`. A handler implements
+`canHandle(type)` and `execute(task, context)`. Current handlers all delegate
+to `DebateEngine.executeForDecision` for Phase 2:
+- `debate` → `debateHandler`
+- `analysis` → `analysisHandler`
+- `synthesis` → `synthesisHandler`
+
+### Executor (`executor.ts`)
+`TaskExecutor` claims work with `workerId` + `leasedAt` (atomic claim on the
+`ready`/`pending`/`retrying` task), runs it via the matching handler, aggregates
+`onUsage` into the Execution's token/cost records, and on failure decides
+**retry vs permanent fail**:
+- `canRetry = attempt <= task.maxRetries` (maxRetries = retries after the first
+  attempt) and error is retryable → task `retrying`, `retryCount++`,
+  `nextRetryAt = now + backoff(retryCount)`.
+- Otherwise → task `failed` permanently with the classified error.
+- Idempotency guard: a task already `completed` with a result is never re-run.
+
+### Worker (`worker.ts`)
+A lightweight in-process poller (the stand-in for a real queue) with a singleton
+guarded by an `active` flag (does not act until `start()`). Each `tick`:
+
+1. **Recover stale tasks** — `running` tasks whose `leasedAt` is older than
+   `staleTaskTimeoutMs` are reset to `retrying` with backoff (crashed worker).
+2. **Recover interrupted executions** — `running`/`queued` executions whose
+   `updatedAt` is stale and have no in-flight tasks are re-processed.
+3. **Process executions** — for each non-terminal running/queued execution, run
+   `schedule`, mark ready tasks, then claim/run up to `maxConcurrentTasks`.
+4. **Maybe finalize** — when a background task settles, re-check; if no task is
+   still in progress, finalize the execution:
+   - all tasks completed → `execution.completed` + Decision `completed`
+     (with extracted `confidence`)
+   - any task permanently failed → `execution.failed` + Decision `failed`
+
+Exposes `wake()` (trigger an immediate tick) and `tickNow()` (synchronous
+single tick — used by tests). Concurrency limited by `maxConcurrentTasks`.
+`maybeFinalize` re-runs after each settled background task (plus a short retry)
+to avoid the completion race between simultaneously finishing tasks.
+
+## Orchestrator behavior
+
+- `startDecision` is now **async**: transition → create `queued` Execution →
+  create a single `debate` task → return `{ executionId }` immediately. The
+  worker executes it in the background.
+- `pauseDecision` / `resumeDecision` / `cancelDecision` are **real**: they
+  transition the Decision and the Execution(s) and, on cancel, mark non-terminal
+  tasks as `cancelled`.
+- `getSnapshot` includes a `progress` summary (`progress`, completed/failed/
+  running/pending/ready task counts).
+- The legacy synchronous `createCourthouseExecution` / `linkFromCourtroom`
+  path is preserved verbatim for Courtroom compatibility.
+
+## State machine additions
+
+- Decision: added `cancelled`.
+- Execution: added `queued` (initial), `cancelled`, `cancelledAt`; removed
+  `pending`/`partial`.
+- Task: added `queued`, `retrying`, `paused`, `cancelled`.
+- `phaseFromStatus` now maps a `cancelled`/`failed` terminal Decision so the UI
+  shows `cancelled`/`failed` instead of a stale phase.
+
+## Schema / persistence changes
+
+- `Execution` — new `queued`/`cancelled`/`cancelledAt`; progress counters
+  `totalTasks/completedTasks/failedTasks/runningTasks/pendingTasks/readyTasks`.
+- `Task` — retry fields (`retryCount`, `maxRetries`, `nextRetryAt`,
+  `lastError`), lease fields (`workerId`, `leasedAt`), `attempts`, `result`,
+  persistent `TaskErrorSchema`.
+- `ExecutionEvent` — new collection of persisted state-change events.
+- `Decision` — `cancelled` added to the status enum.
+
+## API changes
+
+- `POST /api/decisions/:id/start` → returns `202` with `{ executionId }`
+  (no longer blocks on the debate).
+- `POST /api/decisions/:id/cancel` — cancels the Decision + its Execution(s).
+- `GET /api/executions/:executionId` — execution detail (ownership-checked).
+- `GET /api/tasks/:taskId` — task detail (ownership-checked).
+- Client: `AppContext` gained `cancelDecision`; `startDecision` already handles
+  the `202` async response.
+
+## Startup & shutdown
+
+`index.ts` boot is now async: connect to Mongo → `worker.start()` (activate the
+singleton) → listen. SIGINT/SIGTERM trigger graceful shutdown (worker
+`stop()`, server close, Mongo disconnect).
+
+## Intentionally NOT implemented (Phase 2)
+
+- Web/PDF/GitHub/Notion integrations.
+- `challenge`, `verification`, `human_review`, `tool_call` handlers (types and
+  registry slots exist; no handlers registered for them yet).
+- WebSockets/SSE — the UI polls snapshots for progress; the internal event
+  system is built now and will feed streaming later.
+
+## Tests
+
+| File | Scope |
+| --- | --- |
+| `scheduler.test.ts` | Pure scheduler: readiness, deps, backoff, priority |
+| `executionEngine.test.ts` | In-process worker + fake handler: async lifecycle, retries/exhaustion, cancellation, stale recovery, idempotency, concurrency, 10-decision stress, dependency ordering, progress |
+
+**Concurrency note:** DB-backed test files run in parallel child processes, so
+each uses a distinct DB name (`hathap_test_engine`,
+`hathap_test`, …) to avoid cross-file interference. Tests construct their own
+`Worker` instances and drive them with `tickNow()` (never rely on the singleton
+ticking on its own).
+
+```bash
+cd server
+npm run test:scheduler  # pure scheduler tests
+npm run test:engine     # in-process engine + worker tests
+npm test                # full suite (56 tests)
+npm run build           # TypeScript compiles
+```
+
+## Phase 2 deliverable summary
+
+- Pure scheduler + dependency/priority/backoff resolution.
+- Executor with worker claim/lease, idempotency, usage aggregation, retry-vs-
+  fail decision.
+- Worker: poll loop, stale-task + interrupted-execution recovery, concurrency
+  ceiling, wake/tickNow, completion finalization.
+- Handler registry + debate/analysis/synthesis handlers (delegating to
+  DebateEngine).
+- Real pause/resume/cancel for Decisions + Executions.
+- Progress tracking (progress % + per-status task counters).
+- Persistent internal event system.
+- Async `start` (202) + execution/task detail endpoints + cancel.
+- Graceful startup/shutdown with worker activate/deactivate.
+- Tests: scheduler + engine (all green), full suite green, build green.
+- Docs updated (this section).

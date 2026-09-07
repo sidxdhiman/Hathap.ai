@@ -6,9 +6,16 @@ export interface IExecution extends Document {
   status: ExecutionStatus;
   startedAt?: Date;
   completedAt?: Date;
+  cancelledAt?: Date;
   currentPhase?: string;
   currentTask?: string;
   progress: number;
+  totalTasks?: number;
+  completedTasks?: number;
+  failedTasks?: number;
+  runningTasks?: number;
+  pendingTasks?: number;
+  readyTasks?: number;
   error?: ExecutionError;
   retryCount: number;
   maxRetries: number;
@@ -51,15 +58,22 @@ const ExecutionSchema: Schema = new Schema(
     decisionId: { type: Schema.Types.ObjectId, ref: 'Decision', required: true, index: true },
     status: {
       type: String,
-      enum: ['pending', 'running', 'paused', 'completed', 'failed', 'partial'],
+      enum: ['pending', 'queued', 'running', 'paused', 'completed', 'failed', 'partial', 'cancelled'],
       default: 'pending',
       index: true,
     },
     startedAt: { type: Date },
     completedAt: { type: Date },
+    cancelledAt: { type: Date },
     currentPhase: { type: String },
     currentTask: { type: String },
     progress: { type: Number, default: 0, min: 0, max: 100 },
+    totalTasks: { type: Number, default: 0 },
+    completedTasks: { type: Number, default: 0 },
+    failedTasks: { type: Number, default: 0 },
+    runningTasks: { type: Number, default: 0 },
+    pendingTasks: { type: Number, default: 0 },
+    readyTasks: { type: Number, default: 0 },
     error: { type: ExecutionErrorSchema },
     retryCount: { type: Number, default: 0 },
     maxRetries: { type: Number, default: 0 },

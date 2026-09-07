@@ -34,20 +34,13 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
-const DecisionSchema = new mongoose_1.Schema({
-    userId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    courtroomId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Courtroom', index: true },
-    title: { type: String, required: true },
-    objective: { type: String, required: true },
-    context: { type: String },
-    status: { type: String, enum: ['draft', 'investigating', 'reasoning', 'debating', 'verifying', 'awaiting_review', 'completed', 'failed', 'paused', 'cancelled'], default: 'draft', index: true },
-    currentPhase: { type: String, default: 'draft' },
-    completedAt: { type: Date },
-    configuration: { type: mongoose_1.Schema.Types.Mixed },
-    participants: [{ type: mongoose_1.Schema.Types.Mixed }],
-    assumptions: [{ type: String }],
-    evidenceRefs: [{ type: String }],
-    confidence: { type: Number, min: 0, max: 100 },
-    metadata: { type: mongoose_1.Schema.Types.Mixed },
+const ExecutionEventSchema = new mongoose_1.Schema({
+    type: { type: String, required: true, index: true },
+    decisionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Decision', index: true },
+    executionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Execution', index: true },
+    taskId: { type: String },
+    agentId: { type: String },
+    retryCount: { type: Number },
+    data: { type: mongoose_1.Schema.Types.Mixed },
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('Decision', DecisionSchema);
+exports.default = mongoose_1.default.model('ExecutionEvent', ExecutionEventSchema);

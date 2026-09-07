@@ -59,20 +59,22 @@ let decisionId;
         strict_1.default.equal(evidence.length, 1, 'objective evidence should be recorded');
         strict_1.default.equal(evidence[0].sourceType, 'user_input');
     });
-    (0, node_test_1.test)('startDecision transitions to debating and persists execution', async () => {
-        // Note: without agents/models configured, startDebate will fail.
-        // This tests that a failed execution is persisted and decision marked failed,
-        // demonstrating recoverable partial failure.
-        await strict_1.default.rejects(() => orchestrator_1.decisionOrchestrator.startDecision(decisionId, userId), /No valid agent participants|No models configured/);
+    (0, node_test_1.test)('startDecision transitions to debating and queues an execution asynchronously', async () => {
+        // startDecision must NOT run the debate synchronously. It returns a queued
+        // execution immediately and creates the initial task graph.
+        const execution = await orchestrator_1.decisionOrchestrator.startDecision(decisionId, userId);
         const decision = await Decision_1.default.findById(decisionId);
         strict_1.default.ok(decision, 'decision should exist');
-        strict_1.default.equal(decision.status, 'failed', 'decision marked failed after failed run');
+        strict_1.default.equal(decision.status, 'debating', 'decision transitions to debating');
+        strict_1.default.ok(execution, 'an execution should be created');
+        strict_1.default.equal(execution.status, 'queued', 'execution is queued (not run synchronously)');
+        strict_1.default.equal(execution.progress, 0);
+        const tasks = await Task_1.default.find({ executionId: execution._id });
+        strict_1.default.ok(tasks.length >= 1, 'initial task graph should be created');
+        strict_1.default.equal(tasks[0].type, 'debate');
+        strict_1.default.equal(tasks[0].status, 'pending');
         const executions = await Execution_1.default.find({ decisionId });
         strict_1.default.ok(executions.length >= 1, 'an execution record should exist');
-        const exec = executions[0];
-        strict_1.default.equal(exec.status, 'failed');
-        strict_1.default.ok(exec.error, 'execution should carry error info');
-        strict_1.default.equal(exec.error.code, 'AGENT_FAILURE');
     });
     (0, node_test_1.test)('getSnapshot returns full decision state', async () => {
         const snapshot = await orchestrator_1.decisionOrchestrator.getSnapshot(decisionId, userId);

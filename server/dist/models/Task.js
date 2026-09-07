@@ -34,6 +34,18 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+const TaskErrorSchema = new mongoose_1.Schema({
+    code: String,
+    message: { type: String, required: true },
+    taskId: String,
+    kind: {
+        type: String,
+        enum: ['retryable', 'non_retryable', 'dependency_failure', 'cancelled'],
+        default: 'retryable',
+    },
+    attempt: Number,
+    createdAt: { type: Date, default: Date.now },
+}, { _id: false });
 const TaskSchema = new mongoose_1.Schema({
     executionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Execution', required: true, index: true },
     type: {
@@ -44,19 +56,26 @@ const TaskSchema = new mongoose_1.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'ready', 'running', 'completed', 'failed', 'skipped'],
+        enum: ['pending', 'ready', 'running', 'completed', 'failed', 'retrying', 'paused', 'cancelled', 'skipped'],
         default: 'pending',
         index: true,
     },
     priority: { type: Number, default: 0 },
     input: { type: mongoose_1.Schema.Types.Mixed },
     output: { type: mongoose_1.Schema.Types.Mixed },
+    result: { type: mongoose_1.Schema.Types.Mixed },
     assignedAgent: { type: String },
     assignedModel: { type: String },
     dependencies: [{ type: String }],
     startedAt: { type: Date },
     completedAt: { type: Date },
-    error: { type: String },
+    error: { type: TaskErrorSchema },
+    maxRetries: { type: Number, default: 2 },
+    retryCount: { type: Number, default: 0 },
+    nextRetryAt: { type: Date },
+    attempts: { type: Number, default: 0 },
+    workerId: { type: String },
+    leasedAt: { type: Date },
     metadata: { type: mongoose_1.Schema.Types.Mixed },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Task', TaskSchema);
