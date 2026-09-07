@@ -20,7 +20,10 @@ export type EventType =
   | 'task.paused'
   | 'agent.started'
   | 'agent.completed'
-  | 'agent.failed';
+  | 'agent.failed'
+  | 'research.completed'
+  | 'evidence.created'
+  | 'claim.created';
 
 /**
  * Central event system for the execution engine.

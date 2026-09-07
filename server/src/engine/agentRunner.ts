@@ -2,6 +2,7 @@ import { callLLM } from './llmClient';
 import { parseModelResponse } from './responseParser';
 import { DebateContext, DebateMessageInput } from './types';
 import { IAgent } from '../models/Agent';
+import { buildEvidenceBlock } from './evidencePrompt';
 
 export async function runAgent(
   agent: IAgent,
@@ -65,6 +66,15 @@ Ensure your response is highly specific, professional, and directly addresses th
 
   // 4. Prepare User Prompt
   let userPrompt = `Objective: ${context.objective}\n\n`;
+
+  // Research evidence is UNTRUSTED source material. It is provided in a clearly
+  // delimited block in the USER message (never the system prompt) and the model
+  // is told it is data, not instructions. See buildEvidenceBlock.
+  const evidenceBlock = buildEvidenceBlock(context.evidence || []);
+  if (evidenceBlock) {
+    userPrompt += evidenceBlock;
+  }
+
   if (history.length > 0) {
     userPrompt += `Here is the discussion history so far:\n${historyText}\n\n`;
   } else {

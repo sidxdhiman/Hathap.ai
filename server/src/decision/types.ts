@@ -111,6 +111,7 @@ export interface ExecutionError {
     | 'RATE_LIMIT'
     | 'INSUFFICIENT_CREDITS'
     | 'INVALID_API_KEY'
+    | 'INVALID_REQUEST'
     | 'MALFORMED_OUTPUT'
     | 'PROVIDER_OUTAGE'
     | 'MODEL_UNAVAILABLE'
@@ -151,6 +152,11 @@ export interface Claim {
   status: ClaimStatus;
   evidenceIds: string[];
   sourceAgentId?: string;
+  executionId?: string;
+  taskId?: string;
+  supportingEvidenceIds?: string[];
+  contradictingEvidenceIds?: string[];
+  provenanceKind?: 'observed' | 'retrieved' | 'inferred';
   createdAt: Date;
   metadata?: Record<string, unknown>;
 }
@@ -166,6 +172,19 @@ export interface Evidence {
   sourceType: 'web' | 'document' | 'database' | 'user_input' | 'agent_generated' | 'api' | 'github' | 'notion';
   reliability?: number;
   retrievedAt: Date;
+  executionId?: string;
+  taskId?: string;
+  snippet?: string;
+  publishedAt?: Date;
+  sourceName?: string;
+  sourceReliability?: 'low' | 'medium' | 'high';
+  relevanceScore?: number;
+  freshnessInDays?: number;
+  provenanceKind?: 'observed' | 'retrieved' | 'inferred';
+  provider?: string;
+  query?: string;
+  dedupKey?: string;
+  contentKey?: string;
   metadata?: Record<string, unknown>;
 }
 

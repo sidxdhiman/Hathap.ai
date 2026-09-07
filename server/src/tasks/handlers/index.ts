@@ -6,6 +6,7 @@ import {
 import { debateHandler } from './debateHandler';
 import { analysisHandler } from './analysisHandler';
 import { synthesisHandler } from './synthesisHandler';
+import { researchHandler } from './researchHandler';
 
 /**
  * Extensible registry of task handlers. A handler is responsible for the
@@ -13,8 +14,8 @@ import { synthesisHandler } from './synthesisHandler';
  * runs; the executor decides HOW a task is claimed and persisted; handlers
  * contain the task-specific behaviour.
  *
- * Future handlers (research, challenge, verification, human_review, tool_call)
- * are intentionally not implemented in Phase 2 — register them here when ready.
+ * Future handlers (challenge, verification, human_review, tool_call)
+ * are intentionally not implemented yet — register them here when ready.
  */
 export class DefaultTaskHandlerRegistry implements TaskHandlerRegistry {
   private registry: Map<TaskType, TaskHandler> = new Map();
@@ -46,4 +47,5 @@ export const taskHandlerRegistry: TaskHandlerRegistry = new DefaultTaskHandlerRe
   debateHandler,
   analysisHandler,
   synthesisHandler,
+  researchHandler,
 ]);

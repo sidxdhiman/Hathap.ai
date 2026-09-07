@@ -3,6 +3,8 @@ import {
   TaskHandlerContext,
   TaskHandlerResult,
 } from '../../decision/types';
+import { researchService } from '../../research/researchService';
+import { persistClaimsFromMessages } from '../../decision/claimPersistence';
 
 /**
  * Debate handler — executes a debate through the existing (proven) DebateEngine
@@ -11,6 +13,11 @@ import {
  * execution boundary so a Debate task can be scheduled and recovered like any
  * other task. The strategy may internally perform multiple agent calls for now;
  * that is intentional and acceptable.
+ *
+ * Phase 3: when the decision has research evidence, a bounded, provenance-tagged
+ * evidence bundle is passed to the engine (injected as untrusted data in agent
+ * prompts) and claims produced by the debate are persisted with that bundle's
+ * evidence IDs (coarse attribution, always `proposed`).
  */
 export const debateHandler: TaskHandler = {
   type: 'debate',
@@ -29,6 +36,8 @@ export const debateHandler: TaskHandler = {
     const strategy =
       (task.input?.strategy as string) || decision.configuration?.strategy || 'consensus';
 
+    const evidence = await researchService.getEvidenceViews(context.decisionId);
+
     const result = await debateEngine.executeForDecision({
       decisionId: context.decisionId,
       userId: context.userId,
@@ -36,6 +45,15 @@ export const debateHandler: TaskHandler = {
       participants: decision.participants,
       objective: decision.objective,
       onUsage: context.onUsage,
+      evidence,
+    });
+
+    const claimIds = await persistClaimsFromMessages({
+      decisionId: context.decisionId,
+      messages: result.messages,
+      executionId: context.executionId,
+      taskId: context.taskId,
+      evidenceIds: evidence.map((e) => e.id),
     });
 
     return {
@@ -43,6 +61,8 @@ export const debateHandler: TaskHandler = {
         strategy,
         messages: result.messages,
         verdict: result.verdict,
+        evidenceCount: evidence.length,
+        claimIds: claimIds.map((c) => c._id.toString()),
       },
     };
   },

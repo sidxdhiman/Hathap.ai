@@ -4,14 +4,15 @@ exports.taskHandlerRegistry = exports.DefaultTaskHandlerRegistry = void 0;
 const debateHandler_1 = require("./debateHandler");
 const analysisHandler_1 = require("./analysisHandler");
 const synthesisHandler_1 = require("./synthesisHandler");
+const researchHandler_1 = require("./researchHandler");
 /**
  * Extensible registry of task handlers. A handler is responsible for the
  * task-specific logic of executing a unit of work. The scheduler decides WHAT
  * runs; the executor decides HOW a task is claimed and persisted; handlers
  * contain the task-specific behaviour.
  *
- * Future handlers (research, challenge, verification, human_review, tool_call)
- * are intentionally not implemented in Phase 2 — register them here when ready.
+ * Future handlers (challenge, verification, human_review, tool_call)
+ * are intentionally not implemented yet — register them here when ready.
  */
 class DefaultTaskHandlerRegistry {
     constructor(handlers = []) {
@@ -38,4 +39,5 @@ exports.taskHandlerRegistry = new DefaultTaskHandlerRegistry([
     debateHandler_1.debateHandler,
     analysisHandler_1.analysisHandler,
     synthesisHandler_1.synthesisHandler,
+    researchHandler_1.researchHandler,
 ]);

@@ -13,6 +13,27 @@ exports.isDependencyFailureKind = isDependencyFailureKind;
 function classifyError(error) {
     const message = error?.message || '';
     const status = error?.status || error?.response?.status;
+    // Research providers throw ResearchError with a structured researchCode —
+    // map it to the shared ExecutionError codes so the retry system needs no
+    // research-specific knowledge.
+    const researchCode = error?.researchCode;
+    if (researchCode) {
+        switch (researchCode) {
+            case 'TIMEOUT':
+            case 'PROVIDER_UNAVAILABLE':
+            case 'CONTENT_FETCH_FAILURE':
+                return 'PROVIDER_OUTAGE';
+            case 'AUTHENTICATION_FAILURE':
+            case 'INVALID_CONFIGURATION':
+                return 'INVALID_API_KEY';
+            case 'RATE_LIMITED':
+                return 'RATE_LIMIT';
+            case 'INVALID_QUERY':
+                return 'INVALID_REQUEST';
+            default:
+                break;
+        }
+    }
     if (status === 429 || /rate limit|429/i.test(message))
         return 'RATE_LIMIT';
     if (status === 402 || /credit|402/i.test(message))
@@ -29,6 +50,9 @@ function classifyError(error) {
         return 'NETWORK_FAILURE';
     if (/provider outage|service unavailable|503/i.test(message))
         return 'PROVIDER_OUTAGE';
+    // Research validation errors: bad input/task configuration. Non-retryable.
+    if (researchCode === 'INVALID_QUERY' || /invalid request/i.test(message))
+        return 'INVALID_REQUEST';
     return 'AGENT_FAILURE';
 }
 /**
@@ -47,6 +71,7 @@ function isRetryableError(error) {
             return true;
         case 'INVALID_API_KEY':
         case 'INSUFFICIENT_CREDITS':
+        case 'INVALID_REQUEST':
         case 'MALFORMED_OUTPUT':
         case 'AGENT_FAILURE':
         default:

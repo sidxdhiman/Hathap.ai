@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary } from '../types';
 
 export type Toast = {
   id: string;
@@ -32,11 +32,12 @@ interface AppContextType {
   getDecision: (id: string) => Decision | undefined;
   fetchDecision: (id: string) => Promise<Decision>;
   createDecision: (input: { title: string; objective: string; context?: string; configuration?: any; participants?: any[] }) => Promise<Decision>;
-  startDecision: (id: string) => Promise<any>;
+  startDecision: (id: string, researchQueries?: any[]) => Promise<any>;
   pauseDecision: (id: string) => Promise<void>;
   resumeDecision: (id: string) => Promise<void>;
   cancelDecision: (id: string) => Promise<void>;
   getDecisionSnapshot: (id: string) => Promise<any>;
+  getDecisionResearch: (id: string) => Promise<ResearchTaskSummary[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -259,9 +260,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved;
   };
 
-  const startDecision = async (id: string): Promise<any> => {
+  const startDecision = async (id: string, researchQueries: any[] = []): Promise<any> => {
     const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/decisions/${id}/start`, { method: 'POST', headers });
+    const res = await fetch(`${API}/api/decisions/${id}/start`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ researchQueries }),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to start decision');
     refreshDecisions();
@@ -290,6 +295,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to fetch decision snapshot');
     return data;
+  };
+
+  const getDecisionResearch = async (id: string): Promise<ResearchTaskSummary[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/research`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch decision research');
+    return Array.isArray(data) ? data : [];
   };
 
   const cancelDecision = async (id: string): Promise<void> => {
@@ -332,6 +345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resumeDecision,
         cancelDecision,
         getDecisionSnapshot,
+        getDecisionResearch,
       }}
     >
       {children}

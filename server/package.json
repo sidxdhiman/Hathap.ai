@@ -7,10 +7,12 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "node -r ts-node/register --test src/tests/decisionCore.test.ts src/tests/orchestratorLifecycle.test.ts src/tests/scheduler.test.ts src/tests/executionEngine.test.ts",
+    "test": "node -r ts-node/register --test src/tests/decisionCore.test.ts src/tests/orchestratorLifecycle.test.ts src/tests/scheduler.test.ts src/tests/executionEngine.test.ts src/tests/researchEngine.test.ts src/tests/researchSecurity.test.ts",
     "test:core": "node -r ts-node/register --test src/tests/decisionCore.test.ts",
     "test:scheduler": "node -r ts-node/register --test src/tests/scheduler.test.ts",
     "test:engine": "node -r ts-node/register --test src/tests/executionEngine.test.ts",
+    "test:research": "node -r ts-node/register --test src/tests/researchEngine.test.ts",
+    "test:security": "node -r ts-node/register --test src/tests/researchSecurity.test.ts",
     "test:integration": "node -r ts-node/register --test src/tests/orchestratorLifecycle.test.ts"
   },
   "dependencies": {

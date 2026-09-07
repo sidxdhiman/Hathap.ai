@@ -56,8 +56,31 @@ const EvidenceSchema = new mongoose_1.Schema({
         default: 'user_input',
     },
     reliability: { type: Number, min: 0, max: 1 },
+    executionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Execution' },
+    taskId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Task' },
+    snippet: { type: String },
+    publishedAt: { type: Date },
+    sourceName: { type: String },
+    sourceReliability: {
+        type: String,
+        enum: ['low', 'medium', 'high'],
+        default: 'medium',
+    },
+    relevanceScore: { type: Number, min: 0, max: 1 },
+    freshnessInDays: { type: Number },
+    provenanceKind: {
+        type: String,
+        enum: ['observed', 'retrieved', 'inferred'],
+        default: 'retrieved',
+    },
+    provider: { type: String },
+    query: { type: String },
+    dedupKey: { type: String },
+    contentKey: { type: String },
     retrievedAt: { type: Date, default: Date.now },
     metadata: { type: mongoose_1.Schema.Types.Mixed },
     createdAt: { type: Date, default: Date.now },
 }, { timestamps: true });
+EvidenceSchema.index({ decisionId: 1, dedupKey: 1 });
+EvidenceSchema.index({ decisionId: 1, contentKey: 1 });
 exports.default = mongoose_1.default.model('Evidence', EvidenceSchema);

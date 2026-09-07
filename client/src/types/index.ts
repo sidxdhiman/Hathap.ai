@@ -87,7 +87,8 @@ export type DecisionStatus =
   | 'awaiting_review'
   | 'completed'
   | 'failed'
-  | 'paused';
+  | 'paused'
+  | 'cancelled';
 
 export type DecisionPhase =
   | 'draft'
@@ -103,11 +104,13 @@ export type DecisionPhase =
 
 export type ExecutionStatus =
   | 'pending'
+  | 'queued'
   | 'running'
   | 'paused'
   | 'completed'
   | 'failed'
-  | 'partial';
+  | 'partial'
+  | 'cancelled';
 
 export type TaskStatus =
   | 'pending'
@@ -115,6 +118,9 @@ export type TaskStatus =
   | 'running'
   | 'completed'
   | 'failed'
+  | 'retrying'
+  | 'paused'
+  | 'cancelled'
   | 'skipped';
 
 export type TaskType =
@@ -158,6 +164,7 @@ export interface ExecutionError {
     | 'RATE_LIMIT'
     | 'INSUFFICIENT_CREDITS'
     | 'INVALID_API_KEY'
+    | 'INVALID_REQUEST'
     | 'MALFORMED_OUTPUT'
     | 'PROVIDER_OUTAGE'
     | 'MODEL_UNAVAILABLE'
@@ -207,6 +214,11 @@ export interface Execution {
   currentPhase?: string;
   currentTask?: string;
   progress: number;
+  totalTasks?: number;
+  completedTasks?: number;
+  failedTasks?: number;
+  runningTasks?: number;
+  pendingTasks?: number;
   error?: ExecutionError;
   retryCount: number;
   maxRetries: number;
@@ -243,9 +255,22 @@ export interface Claim {
   status: ClaimStatus;
   evidenceIds: string[];
   sourceAgentId?: string;
+  executionId?: string;
+  taskId?: string;
+  supportingEvidenceIds?: string[];
+  contradictingEvidenceIds?: string[];
+  provenanceKind?: 'observed' | 'retrieved' | 'inferred';
+  attribution?: {
+    sourceName?: string;
+    sourceUrl?: string;
+    sourceReliability?: 'low' | 'medium' | 'high';
+  };
   createdAt: Date;
   metadata?: Record<string, unknown>;
 }
+
+export type EvidenceProvenanceKind = 'observed' | 'retrieved' | 'inferred';
+export type SourceReliability = 'low' | 'medium' | 'high';
 
 export interface Evidence {
   id: string;
@@ -266,7 +291,56 @@ export interface Evidence {
     | 'notion';
   reliability?: number;
   retrievedAt: Date;
+  executionId?: string;
+  taskId?: string;
+  snippet?: string;
+  publishedAt?: Date;
+  sourceName?: string;
+  sourceReliability?: SourceReliability;
+  relevanceScore?: number;
+  freshnessInDays?: number;
+  provenanceKind?: EvidenceProvenanceKind;
+  provider?: string;
+  query?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface ResearchTaskSummary {
+  taskId: string;
+  status: TaskStatus;
+  priority: number;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: any;
+  createdAt?: Date;
+  evidence: Array<{
+    id: string;
+    title: string;
+    snippet?: string;
+    sourceName?: string;
+    sourceUrl?: string;
+    provenanceKind?: EvidenceProvenanceKind;
+    sourceReliability?: SourceReliability;
+    relevanceScore?: number;
+    retrievedAt: Date;
+  }>;
+}
+
+export interface ResearchQueryInput {
+  query: string;
+  purpose?: string;
+  maxResults?: number;
+}
+
+export interface ProgressSummary {
+  totalTasks: number;
+  completedTasks: number;
+  failedTasks: number;
+  runningTasks: number;
+  pendingTasks: number;
+  readyTasks: number;
+  progress: number;
+  currentPhase?: string;
 }
 
 export interface DecisionSnapshot {
@@ -278,4 +352,5 @@ export interface DecisionSnapshot {
   tasks: Task[];
   claims: Claim[];
   evidence: Evidence[];
+  progress?: ProgressSummary;
 }
