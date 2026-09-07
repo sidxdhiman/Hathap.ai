@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.debateHandler = void 0;
+const researchService_1 = require("../../research/researchService");
+const claimPersistence_1 = require("../../decision/claimPersistence");
 /**
  * Debate handler — executes a debate through the existing (proven) DebateEngine
  * and the configured strategy (Consensus / Majority Vote / Devil's Advocate /
@@ -41,6 +43,11 @@ exports.debateHandler = void 0;
  * execution boundary so a Debate task can be scheduled and recovered like any
  * other task. The strategy may internally perform multiple agent calls for now;
  * that is intentional and acceptable.
+ *
+ * Phase 3: when the decision has research evidence, a bounded, provenance-tagged
+ * evidence bundle is passed to the engine (injected as untrusted data in agent
+ * prompts) and claims produced by the debate are persisted with that bundle's
+ * evidence IDs (coarse attribution, always `proposed`).
  */
 exports.debateHandler = {
     type: 'debate',
@@ -55,6 +62,7 @@ exports.debateHandler = {
             throw new Error('Decision not found for debate task.');
         }
         const strategy = task.input?.strategy || decision.configuration?.strategy || 'consensus';
+        const evidence = await researchService_1.researchService.getEvidenceViews(context.decisionId);
         const result = await debateEngine.executeForDecision({
             decisionId: context.decisionId,
             userId: context.userId,
@@ -62,12 +70,22 @@ exports.debateHandler = {
             participants: decision.participants,
             objective: decision.objective,
             onUsage: context.onUsage,
+            evidence,
+        });
+        const claimIds = await (0, claimPersistence_1.persistClaimsFromMessages)({
+            decisionId: context.decisionId,
+            messages: result.messages,
+            executionId: context.executionId,
+            taskId: context.taskId,
+            evidenceIds: evidence.map((e) => e.id),
         });
         return {
             output: {
                 strategy,
                 messages: result.messages,
                 verdict: result.verdict,
+                evidenceCount: evidence.length,
+                claimIds: claimIds.map((c) => c._id.toString()),
             },
         };
     },

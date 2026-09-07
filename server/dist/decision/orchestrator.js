@@ -65,13 +65,14 @@ class DecisionOrchestrator {
      *   1. Validates the Decision belongs to the user.
      *   2. Creates a persistent Execution in `queued` state.
      *   3. Creates the initial Task graph (analysis -> debate -> synthesis,
-     *      dependency-linked).
+     *      dependency-linked). When `researchQueries` are provided, parallel
+     *      research tasks run first and the debate task depends on them.
      *   4. Returns the Execution immediately.
      *
      * The actual execution happens independently in the background Worker. The
      * HTTP request does NOT wait for the Decision to finish.
      */
-    async startDecision(decisionId, userId) {
+    async startDecision(decisionId, userId, opts = {}) {
         const decision = await Decision_1.default.findOne({ _id: decisionId, userId });
         if (!decision) {
             throw new Error('Decision not found.');
@@ -101,11 +102,27 @@ class DecisionOrchestrator {
             executionId: execution._id.toString(),
             decisionId,
         });
-        // Build the initial task graph. For Phase 2 this is a single debate task
-        // that reuses the existing DebateEngine (matching the Phase 1 behaviour and
-        // cost profile). The scheduler/executor fully support multi-dependency,
-        // multi-type graphs; later phases will make the reasoning graph finer.
         const strategy = (0, debateValidation_1.normalizeDebateMode)(decision.configuration?.strategy || 'consensus');
+        // Build the initial task graph. Phase 2 behaviour (no researchQueries): a
+        // single debate task reusing the existing DebateEngine (matching Phase 1
+        // behaviour and cost profile). Phase 3: parallel research tasks run first
+        // and the debate task depends on them (multi-dependency is fully supported
+        // by the scheduler/executor).
+        const researchQueries = (opts.researchQueries || []).filter((q) => q && q.query && q.query.trim());
+        const researchTaskIds = [];
+        for (const rq of researchQueries) {
+            const rt = await this.createTask(execution._id.toString(), {
+                type: 'research',
+                input: {
+                    query: rq.query.trim(),
+                    purpose: rq.purpose || 'background',
+                    maxResults: typeof rq.maxResults === 'number' ? rq.maxResults : undefined,
+                },
+                priority: 10,
+                metadata: { description: 'Gather external evidence for this decision.', phase: 'research' },
+            });
+            researchTaskIds.push(rt._id.toString());
+        }
         const debateTask = await this.createTask(execution._id.toString(), {
             type: 'debate',
             input: {
@@ -113,9 +130,11 @@ class DecisionOrchestrator {
                 description: 'Run the multi-agent debate for this decision.',
             },
             priority: 1,
+            dependencies: researchTaskIds,
             metadata: {
                 strategy,
                 participants: decision.participants,
+                researchCount: researchTaskIds.length,
             },
         });
         await Execution_1.default.updateOne({ _id: execution._id }, { $set: { currentTask: debateTask._id.toString() } });

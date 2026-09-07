@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runAgent = runAgent;
 const llmClient_1 = require("./llmClient");
 const responseParser_1 = require("./responseParser");
+const evidencePrompt_1 = require("./evidencePrompt");
 async function runAgent(agent, context, history, roundNumber, additionalInstructions = '') {
     // 1. Find assigned model
     let model = context.models.find((m) => m.id === agent.assignedModelId?.toString() || m._id?.toString() === agent.assignedModelId?.toString());
@@ -56,6 +57,13 @@ Format your output exactly as follows:
 Ensure your response is highly specific, professional, and directly addresses the debate objective and the points raised by other agents.`;
     // 4. Prepare User Prompt
     let userPrompt = `Objective: ${context.objective}\n\n`;
+    // Research evidence is UNTRUSTED source material. It is provided in a clearly
+    // delimited block in the USER message (never the system prompt) and the model
+    // is told it is data, not instructions. See buildEvidenceBlock.
+    const evidenceBlock = (0, evidencePrompt_1.buildEvidenceBlock)(context.evidence || []);
+    if (evidenceBlock) {
+        userPrompt += evidenceBlock;
+    }
     if (history.length > 0) {
         userPrompt += `Here is the discussion history so far:\n${historyText}\n\n`;
     }

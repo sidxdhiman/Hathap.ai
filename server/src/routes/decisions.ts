@@ -90,7 +90,16 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const execution = await decisionOrchestrator.startDecision(req.params.id, req.userId!);
+    const researchQueries: Array<{ query: string; purpose?: string; maxResults?: number }> = Array.isArray(
+      req.body?.researchQueries
+    )
+      ? req.body.researchQueries
+          .filter((q: any) => q && typeof q.query === 'string' && q.query.trim())
+          .map((q: any) => ({ query: q.query.trim(), purpose: q.purpose, maxResults: q.maxResults }))
+      : [];
+    const execution = await decisionOrchestrator.startDecision(req.params.id, req.userId!, {
+      researchQueries: researchQueries.slice(0, 5),
+    });
     // Accepted: the execution was persisted and queued; it runs in the
     // background. We return the Execution identifier immediately rather than
     // pretending the Decision already completed.
@@ -99,6 +108,7 @@ router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
       status: 'accepted',
       executionId: execution._id.toString(),
       execution,
+      researchQueries,
     });
   } catch (error: any) {
     console.error('[Decisions start]', error);
@@ -208,8 +218,95 @@ router.get('/:id/evidence', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.get('/:id/research', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const executions = await Execution.find({ decisionId: req.params.id });
+    const ids = executions.map((e) => e._id);
+    const researchTasks = await Task.find({
+      executionId: { $in: ids },
+      type: 'research',
+    }).sort({ createdAt: 1 });
+    const result = await Promise.all(
+      researchTasks.map(async (t) => {
+        const linked = await Evidence.find({
+          decisionId: req.params.id,
+          taskId: t._id.toString(),
+        });
+        return {
+          taskId: t._id.toString(),
+          status: t.status,
+          priority: t.priority,
+          input: t.input,
+          output: t.output,
+          error: t.error,
+          createdAt: t.createdAt,
+          evidence: linked.map((e) => ({
+            id: e._id.toString(),
+            title: e.title,
+            snippet: e.snippet,
+            sourceName: e.sourceName,
+            sourceUrl: e.sourceUrl,
+            provenanceKind: e.provenanceKind,
+            sourceReliability: e.sourceReliability,
+            relevanceScore: e.relevanceScore,
+            retrievedAt: e.retrievedAt,
+          })),
+        };
+      })
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id/evidence/:evidenceId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const evidence = await Evidence.findOne({
+      _id: req.params.evidenceId,
+      decisionId: decision._id,
+    });
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found.' });
+    res.json(evidence);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id/claims/:claimId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const claim = await Claim.findOne({
+      _id: req.params.claimId,
+      decisionId: decision._id,
+    });
+    if (!claim) return res.status(404).json({ error: 'Claim not found.' });
+
+    // Populate the evidence relationships documented for Phase 3.
+    const [supporting, contradicting] = await Promise.all([
+      Evidence.find({ _id: { $in: claim.supportingEvidenceIds || [] } }),
+      Evidence.find({ _id: { $in: claim.contradictingEvidenceIds || [] } }),
+    ]);
+
+    res.json({
+      ...(claim.toObject ? claim.toObject() : claim),
+      supportingEvidence: supporting,
+      contradictingEvidence: contradicting,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/:id/snapshot', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
     const snapshot = await decisionOrchestrator.getSnapshot(req.params.id, req.userId!);
     res.json(snapshot);
   } catch (error: any) {

@@ -2,6 +2,7 @@ import { ICourtroom } from '../models/Courtroom';
 import { IAgent } from '../models/Agent';
 import { IModel } from '../models/Model';
 import { LLMUsageCallback } from '../decision/usage';
+import { EvidenceView } from '../research/types';
 
 export interface ModelResponse {
   position: string;
@@ -26,6 +27,9 @@ export interface DebateContext {
   models: IModel[];
   objective: string;
   onUsage?: LLMUsageCallback;
+  /** Bounded research evidence. Untrusted source material — agents must never
+   *  treat it as instructions, only as material to reason about. */
+  evidence?: EvidenceView[];
 }
 
 export interface DebateMessageInput {

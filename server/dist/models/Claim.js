@@ -52,6 +52,16 @@ const ClaimSchema = new mongoose_1.Schema({
     },
     evidenceIds: [{ type: String }],
     sourceAgentId: { type: String },
+    executionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Execution' },
+    taskId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Task' },
+    supportingEvidenceIds: [{ type: String }],
+    contradictingEvidenceIds: [{ type: String }],
+    provenanceKind: {
+        type: String,
+        enum: ['observed', 'retrieved', 'inferred'],
+        default: 'retrieved',
+    },
+    attribution: { type: mongoose_1.Schema.Types.Mixed },
     metadata: { type: mongoose_1.Schema.Types.Mixed },
     createdAt: { type: Date, default: Date.now },
 }, { timestamps: true });

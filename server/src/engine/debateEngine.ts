@@ -5,6 +5,7 @@ import Message from '../models/Message';
 import Verdict from '../models/Verdict';
 
 import { DebateContext, DebateStrategy, DebateResult } from './types';
+import { EvidenceView } from '../research/types';
 import { normalizeDebateMode, validateDebateReady } from '../services/debateValidation';
 import { ConsensusStrategy } from './strategies/consensus';
 import { MajorityVoteStrategy } from './strategies/majorityVote';
@@ -20,6 +21,8 @@ export interface DecisionDebateOptions {
   participants?: any[];
   objective?: string;
   onUsage?: LLMUsageCallback;
+  /** Bounded, provenance-tagged research evidence handed to the agents. */
+  evidence?: EvidenceView[];
 }
 
 class DebateEngine {
@@ -198,6 +201,7 @@ class DebateEngine {
       models,
       objective,
       onUsage: options.onUsage,
+      evidence: options.evidence,
     };
 
     const strategy = this.getStrategy(strategyKey);

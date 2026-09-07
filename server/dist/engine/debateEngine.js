@@ -166,6 +166,7 @@ class DebateEngine {
             models,
             objective,
             onUsage: options.onUsage,
+            evidence: options.evidence,
         };
         const strategy = this.getStrategy(strategyKey);
         const result = await strategy.execute(context);

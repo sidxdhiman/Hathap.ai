@@ -12,6 +12,8 @@ import { AgentsPage } from './pages/AgentsPage';
 import { CourtroomsPage } from './pages/CourtroomsPage';
 import { CourtroomDetailPage } from './pages/CourtroomDetailPage';
 import { CreateCourtroomPage } from './pages/CreateCourtroomPage';
+import { DecisionsPage } from './pages/DecisionsPage';
+import { DecisionDetailPage } from './pages/DecisionDetailPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ToastContainer } from './components/ui/Toast';
@@ -104,6 +106,22 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/decisions"
+              element={
+                <ProtectedRoute>
+                  <DecisionsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/decisions/:id"
+              element={
+                <ProtectedRoute>
+                  <DecisionDetailPage />
                 </ProtectedRoute>
               }
             />

@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { ClaimStatus, ClaimType } from '../decision/types';
+import { EvidenceProvenanceKind } from '../research/types';
 
 export interface IClaim extends Document {
   decisionId: string;
@@ -10,6 +11,16 @@ export interface IClaim extends Document {
   status: ClaimStatus;
   evidenceIds: string[];
   sourceAgentId?: string;
+  executionId?: string;
+  taskId?: string;
+  supportingEvidenceIds?: string[];
+  contradictingEvidenceIds?: string[];
+  provenanceKind?: EvidenceProvenanceKind;
+  attribution?: {
+    sourceName?: string;
+    sourceUrl?: string;
+    sourceReliability?: 'low' | 'medium' | 'high';
+  };
   metadata?: Record<string, unknown>;
   createdAt?: Date;
 }
@@ -33,6 +44,16 @@ const ClaimSchema: Schema = new Schema(
     },
     evidenceIds: [{ type: String }],
     sourceAgentId: { type: String },
+    executionId: { type: Schema.Types.ObjectId, ref: 'Execution' },
+    taskId: { type: Schema.Types.ObjectId, ref: 'Task' },
+    supportingEvidenceIds: [{ type: String }],
+    contradictingEvidenceIds: [{ type: String }],
+    provenanceKind: {
+      type: String,
+      enum: ['observed', 'retrieved', 'inferred'],
+      default: 'retrieved',
+    },
+    attribution: { type: Schema.Types.Mixed },
     metadata: { type: Schema.Types.Mixed },
     createdAt: { type: Date, default: Date.now },
   },
