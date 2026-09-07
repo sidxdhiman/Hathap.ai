@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { TaskStatus, TaskType } from '../decision/types';
+import { TaskStatus, TaskType, TaskError } from '../decision/types';
 
 export interface ITask extends Document {
   executionId: string;
@@ -13,11 +13,34 @@ export interface ITask extends Document {
   dependencies: string[];
   startedAt?: Date;
   completedAt?: Date;
-  error?: string;
+  error?: TaskError;
+  maxRetries: number;
+  retryCount: number;
+  nextRetryAt?: Date;
+  workerId?: string;
+  leasedAt?: Date;
+  attempts: number;
+  result?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+const TaskErrorSchema: Schema = new Schema(
+  {
+    code: String,
+    message: { type: String, required: true },
+    taskId: String,
+    kind: {
+      type: String,
+      enum: ['retryable', 'non_retryable', 'dependency_failure', 'cancelled'],
+      default: 'retryable',
+    },
+    attempt: Number,
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const TaskSchema: Schema = new Schema(
   {
@@ -30,19 +53,26 @@ const TaskSchema: Schema = new Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'ready', 'running', 'completed', 'failed', 'skipped'],
+      enum: ['pending', 'ready', 'running', 'completed', 'failed', 'retrying', 'paused', 'cancelled', 'skipped'],
       default: 'pending',
       index: true,
     },
     priority: { type: Number, default: 0 },
     input: { type: Schema.Types.Mixed },
     output: { type: Schema.Types.Mixed },
+    result: { type: Schema.Types.Mixed },
     assignedAgent: { type: String },
     assignedModel: { type: String },
     dependencies: [{ type: String }],
     startedAt: { type: Date },
     completedAt: { type: Date },
-    error: { type: String },
+    error: { type: TaskErrorSchema },
+    maxRetries: { type: Number, default: 2 },
+    retryCount: { type: Number, default: 0 },
+    nextRetryAt: { type: Date },
+    attempts: { type: Number, default: 0 },
+    workerId: { type: String },
+    leasedAt: { type: Date },
     metadata: { type: Schema.Types.Mixed },
   },
   { timestamps: true }

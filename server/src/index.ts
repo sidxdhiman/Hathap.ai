@@ -8,6 +8,7 @@ import agentsRoutes from './routes/agents';
 import courtroomsRoutes from './routes/courtrooms';
 import decisionsRoutes from './routes/decisions';
 import { setupA2A } from './a2a/setupA2A';
+import { worker } from './tasks/worker';
 
 dotenv.config();
 
@@ -25,21 +26,42 @@ app.use(express.json());
 const PORT = process.env.PORT || 4000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hathap';
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('MongoDB connection error', err));
+async function start() {
+  await mongoose.connect(MONGODB_URI);
+  console.log('Connected to MongoDB');
 
-app.use('/api/auth', authRoutes);
-app.use('/api/models', modelsRoutes);
-app.use('/api/agents', agentsRoutes);
-app.use('/api/courtrooms', courtroomsRoutes);
-app.use('/api/decisions', decisionsRoutes);
+  // Start the background execution worker once persistence is available. The
+  // worker picks up queued/running executions and recovers interrupted ones.
+  worker.start();
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+  app.use('/api/auth', authRoutes);
+  app.use('/api/models', modelsRoutes);
+  app.use('/api/agents', agentsRoutes);
+  app.use('/api/courtrooms', courtroomsRoutes);
+  app.use('/api/decisions', decisionsRoutes);
 
-setupA2A(app);
+  app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  setupA2A(app);
+
+  const server = app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+
+  // Graceful shutdown: stop dispatching new work, let in-flight tasks finish up
+  // to a timeout, then close the HTTP server.
+  const shutdown = async (signal: string) => {
+    console.log(`[Server] received ${signal}, shutting down...`);
+    server.close();
+    await worker.stop();
+    await mongoose.disconnect();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+start().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

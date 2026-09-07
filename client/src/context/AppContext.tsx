@@ -35,6 +35,7 @@ interface AppContextType {
   startDecision: (id: string) => Promise<any>;
   pauseDecision: (id: string) => Promise<void>;
   resumeDecision: (id: string) => Promise<void>;
+  cancelDecision: (id: string) => Promise<void>;
   getDecisionSnapshot: (id: string) => Promise<any>;
 }
 
@@ -291,6 +292,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return data;
   };
 
+  const cancelDecision = async (id: string): Promise<void> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to cancel decision');
+    refreshDecisions();
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -321,6 +330,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         startDecision,
         pauseDecision,
         resumeDecision,
+        cancelDecision,
         getDecisionSnapshot,
       }}
     >

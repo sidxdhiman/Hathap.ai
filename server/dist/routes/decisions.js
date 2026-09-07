@@ -91,11 +91,19 @@ router.delete('/:id', authMiddleware_1.requireAuth, async (req, res) => {
 router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
     try {
         const execution = await orchestrator_1.decisionOrchestrator.startDecision(req.params.id, req.userId);
-        res.json({ success: true, execution });
+        // Accepted: the execution was persisted and queued; it runs in the
+        // background. We return the Execution identifier immediately rather than
+        // pretending the Decision already completed.
+        res.status(202).json({
+            success: true,
+            status: 'accepted',
+            executionId: execution._id.toString(),
+            execution,
+        });
     }
     catch (error) {
         console.error('[Decisions start]', error);
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: error.message });
     }
 });
 router.post('/:id/pause', authMiddleware_1.requireAuth, async (req, res) => {
@@ -116,6 +124,15 @@ router.post('/:id/resume', authMiddleware_1.requireAuth, async (req, res) => {
         res.status(400).json({ error: error.message });
     }
 });
+router.post('/:id/cancel', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        await orchestrator_1.decisionOrchestrator.cancelDecision(req.params.id, req.userId);
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
 router.get('/:id/executions', authMiddleware_1.requireAuth, async (req, res) => {
     try {
         const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
@@ -128,6 +145,23 @@ router.get('/:id/executions', authMiddleware_1.requireAuth, async (req, res) => 
         res.status(500).json({ error: error.message });
     }
 });
+router.get('/:id/executions/:executionId', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const execution = await Execution_1.default.findOne({
+            _id: req.params.executionId,
+            decisionId: decision._id,
+        });
+        if (!execution)
+            return res.status(404).json({ error: 'Execution not found.' });
+        res.json(execution);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 router.get('/:id/tasks', authMiddleware_1.requireAuth, async (req, res) => {
     try {
         const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
@@ -135,8 +169,24 @@ router.get('/:id/tasks', authMiddleware_1.requireAuth, async (req, res) => {
             return res.status(404).json({ error: 'Decision not found.' });
         const executions = await Execution_1.default.find({ decisionId: req.params.id });
         const ids = executions.map((e) => e._id);
-        const tasks = await Task_1.default.find({ executionId: { $in: ids } }).sort({ priority: 1 });
+        const tasks = await Task_1.default.find({ executionId: { $in: ids } }).sort({ priority: 1, createdAt: 1 });
         res.json(tasks);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+router.get('/:id/tasks/:taskId', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const executions = await Execution_1.default.find({ decisionId: req.params.id });
+        const ids = executions.map((e) => e._id);
+        const task = await Task_1.default.findOne({ _id: req.params.taskId, executionId: { $in: ids } });
+        if (!task)
+            return res.status(404).json({ error: 'Task not found.' });
+        res.json(task);
     }
     catch (error) {
         res.status(500).json({ error: error.message });

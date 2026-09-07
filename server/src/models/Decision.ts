@@ -27,7 +27,7 @@ const DecisionSchema: Schema = new Schema(
     title: { type: String, required: true },
     objective: { type: String, required: true },
     context: { type: String },
-    status: { type: String, enum: ['draft','investigating','reasoning','debating','verifying','awaiting_review','completed','failed','paused'], default: 'draft', index: true },
+    status: { type: String, enum: ['draft','investigating','reasoning','debating','verifying','awaiting_review','completed','failed','paused','cancelled'], default: 'draft', index: true },
     currentPhase: { type: String, default: 'draft' },
     completedAt: { type: Date },
     configuration: { type: Schema.Types.Mixed },

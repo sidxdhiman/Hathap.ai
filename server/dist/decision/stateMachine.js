@@ -2,30 +2,36 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StateMachine = void 0;
 const DECISION_TRANSITIONS = {
-    draft: ['investigating', 'reasoning', 'debating', 'completed', 'failed', 'paused'],
-    investigating: ['reasoning', 'debating', 'completed', 'failed', 'paused', 'awaiting_review'],
-    reasoning: ['investigating', 'debating', 'verifying', 'completed', 'failed', 'paused', 'awaiting_review'],
-    debating: ['reasoning', 'verifying', 'awaiting_review', 'completed', 'failed', 'paused'],
-    verifying: ['awaiting_review', 'reasoning', 'completed', 'failed', 'paused'],
-    awaiting_review: ['completed', 'failed', 'paused', 'debating'],
-    completed: ['failed', 'paused'],
-    failed: ['draft', 'debating', 'reasoning'],
-    paused: ['investigating', 'reasoning', 'debating', 'verifying', 'completed', 'failed'],
+    draft: ['investigating', 'reasoning', 'debating', 'completed', 'failed', 'paused', 'cancelled'],
+    investigating: ['reasoning', 'debating', 'completed', 'failed', 'paused', 'awaiting_review', 'cancelled'],
+    reasoning: ['investigating', 'debating', 'verifying', 'completed', 'failed', 'paused', 'awaiting_review', 'cancelled'],
+    debating: ['reasoning', 'verifying', 'awaiting_review', 'completed', 'failed', 'paused', 'cancelled'],
+    verifying: ['awaiting_review', 'reasoning', 'completed', 'failed', 'paused', 'cancelled'],
+    awaiting_review: ['completed', 'failed', 'paused', 'debating', 'cancelled'],
+    completed: ['failed', 'paused', 'cancelled'],
+    failed: ['draft', 'debating', 'reasoning', 'cancelled'],
+    paused: ['investigating', 'reasoning', 'debating', 'verifying', 'completed', 'failed', 'cancelled'],
+    cancelled: ['draft', 'reasoning', 'debating'],
 };
 const EXECUTION_TRANSITIONS = {
-    pending: ['running', 'paused', 'completed', 'failed'],
-    running: ['paused', 'completed', 'failed', 'partial'],
-    paused: ['running', 'completed', 'failed'],
-    completed: ['partial', 'failed'],
-    partial: ['running', 'completed', 'failed'],
-    failed: ['pending', 'running'],
+    pending: ['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'],
+    queued: ['running', 'paused', 'completed', 'failed', 'cancelled'],
+    running: ['paused', 'completed', 'failed', 'partial', 'cancelled'],
+    paused: ['running', 'completed', 'failed', 'cancelled'],
+    completed: ['partial', 'failed', 'cancelled'],
+    partial: ['running', 'completed', 'failed', 'cancelled'],
+    failed: ['pending', 'running', 'queued', 'cancelled'],
+    cancelled: ['queued', 'running'],
 };
 const TASK_TRANSITIONS = {
-    pending: ['ready', 'running', 'skipped', 'failed'],
-    ready: ['running', 'skipped', 'failed'],
-    running: ['completed', 'failed'],
+    pending: ['ready', 'running', 'cancelled', 'failed', 'skipped'],
+    ready: ['running', 'cancelled', 'skipped', 'failed'],
+    running: ['completed', 'failed', 'retrying', 'cancelled'],
     completed: ['failed'],
-    failed: ['ready', 'running'],
+    failed: ['ready', 'running', 'retrying', 'cancelled'],
+    retrying: ['ready', 'running', 'cancelled', 'failed'],
+    paused: ['ready', 'running', 'cancelled', 'completed', 'failed'],
+    cancelled: ['ready', 'running'],
     skipped: ['ready'],
 };
 function canTransition(current, next, transitions) {
@@ -98,6 +104,7 @@ class StateMachine {
             case 'completed': return 'completed';
             case 'failed': return 'failed';
             case 'paused': return status;
+            case 'cancelled': return 'failed';
             default: return 'draft';
         }
     }

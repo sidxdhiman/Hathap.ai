@@ -91,10 +91,18 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   try {
     const execution = await decisionOrchestrator.startDecision(req.params.id, req.userId!);
-    res.json({ success: true, execution });
+    // Accepted: the execution was persisted and queued; it runs in the
+    // background. We return the Execution identifier immediately rather than
+    // pretending the Decision already completed.
+    res.status(202).json({
+      success: true,
+      status: 'accepted',
+      executionId: execution._id.toString(),
+      execution,
+    });
   } catch (error: any) {
     console.error('[Decisions start]', error);
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -116,6 +124,15 @@ router.post('/:id/resume', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.post('/:id/cancel', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    await decisionOrchestrator.cancelDecision(req.params.id, req.userId!);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 router.get('/:id/executions', requireAuth, async (req: AuthRequest, res) => {
   try {
     const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
@@ -127,14 +144,43 @@ router.get('/:id/executions', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+router.get('/:id/executions/:executionId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const execution = await Execution.findOne({
+      _id: req.params.executionId,
+      decisionId: decision._id,
+    });
+    if (!execution) return res.status(404).json({ error: 'Execution not found.' });
+    res.json(execution);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/:id/tasks', requireAuth, async (req: AuthRequest, res) => {
   try {
     const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
     if (!decision) return res.status(404).json({ error: 'Decision not found.' });
     const executions = await Execution.find({ decisionId: req.params.id });
     const ids = executions.map((e) => e._id);
-    const tasks = await Task.find({ executionId: { $in: ids } }).sort({ priority: 1 });
+    const tasks = await Task.find({ executionId: { $in: ids } }).sort({ priority: 1, createdAt: 1 });
     res.json(tasks);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const executions = await Execution.find({ decisionId: req.params.id });
+    const ids = executions.map((e) => e._id);
+    const task = await Task.findOne({ _id: req.params.taskId, executionId: { $in: ids } });
+    if (!task) return res.status(404).json({ error: 'Task not found.' });
+    res.json(task);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

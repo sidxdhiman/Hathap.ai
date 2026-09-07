@@ -4,24 +4,18 @@ import Task, { ITask } from '../models/Task';
 import Claim, { IClaim } from '../models/Claim';
 import Evidence, { IEvidence } from '../models/Evidence';
 import Courtroom from '../models/Courtroom';
-import Message from '../models/Message';
-import Verdict from '../models/Verdict';
-import Agent, { IAgent } from '../models/Agent';
-import Model, { IModel } from '../models/Model';
 import {
   DecisionConfiguration,
   DecisionStatus,
-  ExecutionStatus,
-  TaskStatus,
-  TaskType,
   TaskDefinition,
   TokenUsage,
-  ExecutionError,
+  ProgressSummary,
 } from './types';
 import { StateMachine } from './stateMachine';
-import { aggregateUsage, usageSummary } from './usage';
-import { debateEngine } from '../engine/debateEngine';
+import { aggregateUsage } from './usage';
 import { normalizeDebateMode } from '../services/debateValidation';
+import { executionEventBus } from './eventBus';
+import { worker } from '../tasks/worker';
 
 export interface CreateDecisionInput {
   userId: string;
@@ -43,8 +37,21 @@ export interface DecisionSnapshot {
   tasks: ITask[];
   claims: IClaim[];
   evidence: IEvidence[];
+  progress?: ProgressSummary;
 }
 
+/**
+ * DecisionOrchestrator — creates and coordinates work for a Decision.
+ *
+ * Architecture rules that apply here:
+ *   - The API must not execute long-running Decisions directly. This class
+ *     creates an Execution + initial Tasks and returns immediately; the
+ *     background Worker (via the TaskScheduler + TaskExecutor + handlers) does
+ *     the actual execution.
+ *   - The orchestrator does NOT hard-code state transitions; it routes every
+ *     transition through the centralized StateMachine.
+ *   - Persistence is the source of truth.
+ */
 export class DecisionOrchestrator {
   async createDecision(input: CreateDecisionInput): Promise<IDecision> {
     const decision = new Decision({
@@ -80,9 +87,17 @@ export class DecisionOrchestrator {
   }
 
   /**
-   * Start a decision execution. Creates a persistent Execution and runs
-   * a series of Tasks through the debate engine (the existing, proven
-   * execution layer) while recording granular lifecycle data.
+   * Asynchronously start a Decision.
+   *
+   * This method:
+   *   1. Validates the Decision belongs to the user.
+   *   2. Creates a persistent Execution in `queued` state.
+   *   3. Creates the initial Task graph (analysis -> debate -> synthesis,
+   *      dependency-linked).
+   *   4. Returns the Execution immediately.
+   *
+   * The actual execution happens independently in the background Worker. The
+   * HTTP request does NOT wait for the Decision to finish.
    */
   async startDecision(decisionId: string, userId: string): Promise<IExecution> {
     const decision = await Decision.findOne({ _id: decisionId, userId });
@@ -90,6 +105,9 @@ export class DecisionOrchestrator {
       throw new Error('Decision not found.');
     }
 
+    if (!StateMachine.canTransitionDecision(decision.status as DecisionStatus, 'debating').valid) {
+      throw new Error(`Decision cannot be started from state "${decision.status}".`);
+    }
     StateMachine.transitionDecision(decision.status as DecisionStatus, 'debating');
     decision.status = 'debating';
     decision.currentPhase = 'debating';
@@ -97,75 +115,182 @@ export class DecisionOrchestrator {
 
     const execution = new Execution({
       decisionId,
-      status: 'running',
+      status: 'queued',
       startedAt: new Date(),
       currentPhase: 'debating',
       progress: 0,
+      totalTasks: 0,
+      completedTasks: 0,
+      failedTasks: 0,
+      runningTasks: 0,
+      pendingTasks: 0,
     });
     await execution.save();
 
-    const usageRecords: TokenUsage[] = [];
+    executionEventBus.emit({
+      type: 'execution.queued',
+      executionId: execution._id.toString(),
+      decisionId,
+    });
 
-    try {
-      // ---- Phase 1: Initial Analysis Task ----
-      await this.createTask(execution._id.toString(), {
-        type: 'analysis',
-        input: { description: 'Initial agent analysis' },
-        priority: 1,
+    // Build the initial task graph. For Phase 2 this is a single debate task
+    // that reuses the existing DebateEngine (matching the Phase 1 behaviour and
+    // cost profile). The scheduler/executor fully support multi-dependency,
+    // multi-type graphs; later phases will make the reasoning graph finer.
+    const strategy = normalizeDebateMode(decision.configuration?.strategy || 'consensus');
+    const debateTask = await this.createTask(execution._id.toString(), {
+      type: 'debate',
+      input: {
+        strategy,
+        description: 'Run the multi-agent debate for this decision.',
+      },
+      priority: 1,
+      metadata: {
+        strategy,
+        participants: decision.participants,
+      },
+    });
+
+    await Execution.updateOne(
+      { _id: execution._id },
+      { $set: { currentTask: debateTask._id.toString() } }
+    );
+
+    executionEventBus.emit({
+      type: 'execution.started',
+      executionId: execution._id.toString(),
+      decisionId,
+    });
+
+    // Wake the worker so the execution begins promptly.
+    worker.wake();
+
+    // Refresh the document so the returned execution reflects latest state.
+    const fresh = await Execution.findById(execution._id);
+    return fresh || execution;
+  }
+
+  async pauseDecision(decisionId: string, userId: string): Promise<void> {
+    const decision = await Decision.findOne({ _id: decisionId, userId });
+    if (!decision) throw new Error('Decision not found.');
+
+    if (!StateMachine.canTransitionDecision(decision.status as DecisionStatus, 'paused').valid) {
+      throw new Error(`Decision cannot be paused from state "${decision.status}".`);
+    }
+    StateMachine.transitionDecision(decision.status as DecisionStatus, 'paused');
+    decision.status = 'paused';
+    await decision.save();
+
+    // Pause the active execution(s). The Worker will stop dispatching new tasks
+    // because the owning decision is paused. Currently-running LLM calls are
+    // allowed to finish; the scheduler stops after that.
+    await Execution.updateMany(
+      { decisionId, status: { $in: ['queued', 'running'] } },
+      { $set: { status: 'paused' } }
+    );
+
+    const execs = await Execution.find({ decisionId, status: 'paused' });
+    for (const e of execs) {
+      executionEventBus.emit({
+        type: 'execution.paused',
+        executionId: e._id.toString(),
+        decisionId,
       });
-
-      // ---- Phase 2: Run the debate via DebateEngine ----
-      const result = await this.runDebate(decision, execution, usageRecords);
-      decision.confidence = result.verdict?.confidenceScore;
-
-      // ---- Phase 3: Persist claims from debate messages ----
-      await this.persistClaimsFromDebate(decision, result.messages);
-
-      // ---- Finalize execution ----
-      const totalUsage = aggregateUsage(usageRecords);
-      execution.tokenUsage = totalUsage;
-      execution.estimatedCost = totalUsage.estimatedCost;
-      execution.actualCost = totalUsage.estimatedCost;
-      execution.progress = 100;
-      execution.status = 'completed';
-      execution.completedAt = new Date();
-      await execution.save();
-
-      // ---- Finalize decision ----
-      StateMachine.transitionDecision(decision.status as DecisionStatus, 'completed');
-      decision.status = 'completed';
-      decision.currentPhase = 'completed';
-      decision.completedAt = new Date();
-      await decision.save();
-
-      return execution;
-    } catch (error: any) {
-      execution.status = 'failed';
-      execution.error = {
-        code: this.classifyError(error),
-        message: error?.message || 'Decision execution failed.',
-        retryable: true,
-        retryCount: execution.retryCount,
-        createdAt: new Date(),
-      };
-      const totalUsage = aggregateUsage(usageRecords);
-      execution.tokenUsage = totalUsage;
-      execution.estimatedCost = totalUsage.estimatedCost;
-      execution.completedAt = new Date();
-      await execution.save();
-
-      decision.status = 'failed';
-      await decision.save();
-      throw error;
     }
   }
 
-  /**
-   * Create a persistent Execution and linked Decision for a debate that ran
-   * through the classic Courtroom path (`debateEngine.runDebate`). This keeps
-   * the two execution models in sync without forcing the courtroom flow to
-   * change its behavior.
-   */
+  async resumeDecision(decisionId: string, userId: string): Promise<void> {
+    const decision = await Decision.findOne({ _id: decisionId, userId });
+    if (!decision) throw new Error('Decision not found.');
+
+    if (!StateMachine.canTransitionDecision(decision.status as DecisionStatus, 'debating').valid) {
+      throw new Error(`Decision cannot be resumed from state "${decision.status}".`);
+    }
+    StateMachine.transitionDecision(decision.status as DecisionStatus, 'debating');
+    decision.status = 'debating';
+    decision.currentPhase = 'debating';
+    await decision.save();
+
+    // Resume paused executions back to queued so the scheduler picks them up
+    // and continues the existing run.
+    await Execution.updateMany(
+      { decisionId, status: 'paused' },
+      { $set: { status: 'queued' } }
+    );
+
+    const execs = await Execution.find({ decisionId, status: 'queued' });
+    for (const e of execs) {
+      executionEventBus.emit({
+        type: 'execution.resumed',
+        executionId: e._id.toString(),
+        decisionId,
+      });
+    }
+
+    worker.wake();
+  }
+
+  async cancelDecision(decisionId: string, userId: string): Promise<void> {
+    const decision = await Decision.findOne({ _id: decisionId, userId });
+    if (!decision) throw new Error('Decision not found.');
+
+    if (!StateMachine.canTransitionDecision(decision.status as DecisionStatus, 'cancelled').valid) {
+      throw new Error(`Decision cannot be cancelled from state "${decision.status}".`);
+    }
+    StateMachine.transitionDecision(decision.status as DecisionStatus, 'cancelled');
+    decision.status = 'cancelled';
+    decision.currentPhase = 'failed';
+    decision.completedAt = new Date();
+    await decision.save();
+
+    // Mark active executions cancelled. Running tasks are allowed to finish or
+    // are marked for cancellation; pending/ready tasks are cancelled outright.
+    await Execution.updateMany(
+      { decisionId, status: { $in: ['queued', 'running', 'paused'] } },
+      { $set: { status: 'cancelled', cancelledAt: new Date(), completedAt: new Date() } }
+    );
+
+    const execs = await Execution.find({ decisionId, status: 'cancelled' });
+    for (const e of execs) {
+      await Task.updateMany(
+        { executionId: e._id, status: { $in: ['pending', 'ready', 'retrying'] } },
+        { $set: { status: 'cancelled', completedAt: new Date(), workerId: undefined, leasedAt: undefined } }
+      );
+      executionEventBus.emit({
+        type: 'execution.cancelled',
+        executionId: e._id.toString(),
+        decisionId,
+      });
+    }
+  }
+
+  async getSnapshot(decisionId: string, userId: string): Promise<DecisionSnapshot> {
+    const decision = await Decision.findOne({ _id: decisionId, userId });
+    if (!decision) throw new Error('Decision not found.');
+
+    const executions = await Execution.find({ decisionId }).sort({ createdAt: -1 });
+    const tasks = await Task.find({
+      executionId: { $in: executions.map((e) => e._id) },
+    }).sort({ priority: 1, createdAt: 1 });
+    const claims = await Claim.find({ decisionId });
+    const evidence = await Evidence.find({ decisionId });
+
+    const activeExec = executions.find((e) => ['queued', 'running', 'paused'].includes(e.status)) || executions[0];
+    const progress = activeExec ? this.computeProgress(tasks) : undefined;
+
+    return {
+      id: decision._id.toString(),
+      status: decision.status as DecisionStatus,
+      currentPhase: decision.currentPhase,
+      confidence: decision.confidence,
+      executions,
+      tasks,
+      claims,
+      evidence,
+      progress,
+    };
+  }
+
   async createCourthouseExecution(
     courtroomId: string,
     userId: string,
@@ -192,6 +317,8 @@ export class DecisionOrchestrator {
       completedAt: new Date(),
       currentPhase: 'completed',
       progress: 100,
+      totalTasks: 0,
+      completedTasks: 0,
       tokenUsage: totalUsage,
       estimatedCost: totalUsage.estimatedCost,
       actualCost: totalUsage.estimatedCost,
@@ -202,54 +329,14 @@ export class DecisionOrchestrator {
     return execution;
   }
 
-  async pauseDecision(decisionId: string, userId: string): Promise<void> {
-    const decision = await Decision.findOne({ _id: decisionId, userId });
-    if (!decision) throw new Error('Decision not found.');
-
-    StateMachine.transitionDecision(decision.status as DecisionStatus, 'paused');
-    decision.status = 'paused';
-    await decision.save();
-  }
-
-  async resumeDecision(decisionId: string, userId: string): Promise<void> {
-    const decision = await Decision.findOne({ _id: decisionId, userId });
-    if (!decision) throw new Error('Decision not found.');
-
-    StateMachine.transitionDecision(decision.status as DecisionStatus, 'debating');
-    decision.status = 'debating';
-    await decision.save();
-  }
-
-  async getSnapshot(decisionId: string, userId: string): Promise<DecisionSnapshot> {
-    const decision = await Decision.findOne({ _id: decisionId, userId });
-    if (!decision) throw new Error('Decision not found.');
-
-    const executions = await Execution.find({ decisionId }).sort({ createdAt: -1 });
-    const tasks = await Task.find({
-      executionId: { $in: executions.map((e) => e._id) },
-    }).sort({ priority: 1 });
-    const claims = await Claim.find({ decisionId });
-    const evidence = await Evidence.find({ decisionId });
-
-    return {
-      id: decision._id.toString(),
-      status: decision.status as DecisionStatus,
-      currentPhase: decision.currentPhase,
-      confidence: decision.confidence,
-      executions,
-      tasks,
-      claims,
-      evidence,
-    };
-  }
-
   async linkFromCourtroom(
     courtroom: any,
     execution: IExecution,
     messages: any[],
     verdict: any,
     usageRecords: TokenUsage[]
-  ): Promise<IDecision | null> {    const existing = await Decision.findOne({ courtroomId: courtroom._id });
+  ): Promise<IDecision | null> {
+    const existing = await Decision.findOne({ courtroomId: courtroom._id });
     if (existing) return existing;
 
     const decision = new Decision({
@@ -298,62 +385,26 @@ export class DecisionOrchestrator {
     return saved;
   }
 
-  private async runDebate(
-    decision: IDecision,
-    execution: IExecution,
-    usageRecords: TokenUsage[]
-  ): Promise<any> {
-    const strategy = decision.configuration?.strategy || 'consensus';
-    const normalized = normalizeDebateMode(strategy);
-
-    const results: any[] = [];
-    const taskResults: { messages: any[]; verdict: any } = {
-      messages: [],
-      verdict: null,
-    };
-
-    try {
-      const result = await debateEngine.executeForDecision({
-        decisionId: decision._id.toString(),
-        userId: decision.userId.toString(),
-        strategy: normalized,
-        participants: decision.participants,
-        onUsage: (usage: TokenUsage) => usageRecords.push(usage),
-      });
-      taskResults.messages = result.messages;
-      taskResults.verdict = result.verdict;
-      results.push(result);
-    } catch (error) {
-      throw error;
-    }
-
-    return {
-      messages: taskResults.messages,
-      verdict: taskResults.verdict,
-    };
-  }
-
   private async createTask(executionId: string, definition: TaskDefinition): Promise<ITask> {
     const task = new Task({
       executionId,
       type: definition.type,
-      status: 'completed',
+      status: 'pending',
       priority: definition.priority || 0,
       input: definition.input || {},
       assignedAgent: definition.assignedAgent,
       assignedModel: definition.assignedModel,
       dependencies: definition.dependencies || [],
-      startedAt: new Date(),
-      completedAt: new Date(),
+      maxRetries: definition.metadata?.maxRetries || 2,
+      metadata: definition.metadata,
     });
     await task.save();
+    executionEventBus.emit({
+      type: 'task.created',
+      taskId: task._id.toString(),
+      executionId,
+    });
     return task;
-  }
-
-  private async persistClaimsFromDebate(decision: IDecision, messages: any[]): Promise<void> {
-    for (const msg of messages) {
-      await this.persistClaimsFromMessage(decision, msg);
-    }
   }
 
   private async persistClaimsFromMessage(decision: IDecision, msg: any): Promise<void> {
@@ -417,16 +468,39 @@ export class DecisionOrchestrator {
     return evidence;
   }
 
-  private classifyError(error: any): ExecutionError['code'] {
-    const message = error?.message || '';
-    if (/timeout/i.test(message)) return 'TIMEOUT';
-    if (/rate limit|429/i.test(message)) return 'RATE_LIMIT';
-    if (/credit|402/i.test(message)) return 'INSUFFICIENT_CREDITS';
-    if (/api key|invalid key|401/i.test(message)) return 'INVALID_API_KEY';
-    if (/malformed|parse/i.test(message)) return 'MALFORMED_OUTPUT';
-    if (/model.*unavailable|not found/i.test(message)) return 'MODEL_UNAVAILABLE';
-    if (/network|fetch failed|ECONNRESET/i.test(message)) return 'NETWORK_FAILURE';
-    return 'AGENT_FAILURE';
+  private computeProgress(tasks: ITask[]): ProgressSummary {
+    const totalTasks = tasks.length || 0;
+    if (totalTasks === 0) {
+      return { totalTasks: 0, completedTasks: 0, failedTasks: 0, runningTasks: 0, pendingTasks: 0, readyTasks: 0, progress: 0 };
+    }
+    const completedTasks = tasks.filter((t) => t.status === 'completed').length;
+    const failedTasks = tasks.filter((t) => t.status === 'failed' || t.status === 'cancelled' || t.status === 'skipped').length;
+    const runningTasks = tasks.filter((t) => t.status === 'running').length;
+    const pendingTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'retrying').length;
+    const readyTasks = tasks.filter((t) => t.status === 'ready').length;
+    const progress = Math.round(((completedTasks + failedTasks) / totalTasks) * 100);
+    const active = tasks.find((t) => t.status === 'running' || t.status === 'ready');
+    return {
+      totalTasks,
+      completedTasks,
+      failedTasks,
+      runningTasks,
+      pendingTasks,
+      readyTasks,
+      progress,
+      currentPhase: active ? this.phaseForType(active.type) : undefined,
+    };
+  }
+
+  private phaseForType(type: string): string {
+    switch (type) {
+      case 'debate': return 'debating';
+      case 'analysis': return 'reasoning';
+      case 'synthesis': return 'awaiting_review';
+      case 'verification': return 'verifying';
+      case 'research': return 'investigating';
+      default: return type;
+    }
   }
 }
 

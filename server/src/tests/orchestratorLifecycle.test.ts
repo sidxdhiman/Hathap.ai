@@ -62,25 +62,26 @@ describe('Decision lifecycle (persistent)', () => {
     assert.equal(evidence[0].sourceType, 'user_input');
   });
 
-  test('startDecision transitions to debating and persists execution', async () => {
-    // Note: without agents/models configured, startDebate will fail.
-    // This tests that a failed execution is persisted and decision marked failed,
-    // demonstrating recoverable partial failure.
-    await assert.rejects(
-      () => decisionOrchestrator.startDecision(decisionId, userId),
-      /No valid agent participants|No models configured/
-    );
+  test('startDecision transitions to debating and queues an execution asynchronously', async () => {
+    // startDecision must NOT run the debate synchronously. It returns a queued
+    // execution immediately and creates the initial task graph.
+    const execution = await decisionOrchestrator.startDecision(decisionId, userId);
 
     const decision = await Decision.findById(decisionId);
     assert.ok(decision, 'decision should exist');
-    assert.equal(decision.status, 'failed', 'decision marked failed after failed run');
+    assert.equal(decision.status, 'debating', 'decision transitions to debating');
+
+    assert.ok(execution, 'an execution should be created');
+    assert.equal(execution.status, 'queued', 'execution is queued (not run synchronously)');
+    assert.equal(execution.progress, 0);
+
+    const tasks = await Task.find({ executionId: execution._id });
+    assert.ok(tasks.length >= 1, 'initial task graph should be created');
+    assert.equal(tasks[0].type, 'debate');
+    assert.equal(tasks[0].status, 'pending');
 
     const executions = await Execution.find({ decisionId });
     assert.ok(executions.length >= 1, 'an execution record should exist');
-    const exec = executions[0];
-    assert.equal(exec.status, 'failed');
-    assert.ok(exec.error, 'execution should carry error info');
-    assert.equal(exec.error.code, 'AGENT_FAILURE');
   });
 
   test('getSnapshot returns full decision state', async () => {
