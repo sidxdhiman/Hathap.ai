@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship } from '../types';
 
 export type Toast = {
   id: string;
@@ -38,6 +38,10 @@ interface AppContextType {
   cancelDecision: (id: string) => Promise<void>;
   getDecisionSnapshot: (id: string) => Promise<any>;
   getDecisionResearch: (id: string) => Promise<ResearchTaskSummary[]>;
+  getVerifications: (id: string) => Promise<VerificationResult[]>;
+  getRedTeamFindings: (id: string) => Promise<RedTeamFinding[]>;
+  getReconciliation: (id: string) => Promise<ReconciliationResult | null>;
+  getEvidenceGraph: (id: string) => Promise<EvidenceRelationship[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -305,6 +309,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Array.isArray(data) ? data : [];
   };
 
+  const getVerifications = async (id: string): Promise<VerificationResult[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/verifications`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch verifications');
+    return Array.isArray(data) ? data : [];
+  };
+
+  const getRedTeamFindings = async (id: string): Promise<RedTeamFinding[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/red-team`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch red-team findings');
+    return Array.isArray(data) ? data : [];
+  };
+
+  const getReconciliation = async (id: string): Promise<ReconciliationResult | null> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/reconciliation`, { headers });
+    if (res.status === 404) return null;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch reconciliation');
+    return data;
+  };
+
+  const getEvidenceGraph = async (id: string): Promise<EvidenceRelationship[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/evidence-graph`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch evidence graph');
+    return Array.isArray(data) ? data : [];
+  };
+
   const cancelDecision = async (id: string): Promise<void> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
@@ -346,6 +383,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cancelDecision,
         getDecisionSnapshot,
         getDecisionResearch,
+        getVerifications,
+        getRedTeamFindings,
+        getReconciliation,
+        getEvidenceGraph,
       }}
     >
       {children}

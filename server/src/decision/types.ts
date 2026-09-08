@@ -55,6 +55,9 @@ export type TaskType =
   | 'debate'
   | 'challenge'
   | 'verification'
+  | 'verify_claim'
+  | 'red_team'
+  | 'reconciliation'
   | 'synthesis'
   | 'human_review';
 
@@ -280,4 +283,113 @@ export interface ExecutionEventRecord {
   agentId?: string;
   retryCount?: number;
   data?: Record<string, unknown>;
+}
+
+// ---- Phase 4: Verification + Red Team + Evidence Graph ----
+
+export type EvidenceRelationshipType = 'supports' | 'contradicts' | 'related';
+export type EvidenceRelationshipSource = 'research' | 'agent' | 'verification';
+
+export interface EvidenceRelationship {
+  claimId: string;
+  evidenceId: string;
+  relationship: EvidenceRelationshipType;
+  strength?: number;
+  rationale?: string;
+  source: EvidenceRelationshipSource;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  createdAt: Date;
+}
+
+export type VerificationStatus =
+  | 'supported'
+  | 'contradicted'
+  | 'unsupported'
+  | 'inconclusive';
+
+export type VerificationMode = 'evidence' | 'llm' | 'hybrid';
+
+export interface VerificationResult {
+  claimId: string;
+  claimStatement: string;
+  status: VerificationStatus;
+  supportingEvidenceIds: string[];
+  contradictingEvidenceIds: string[];
+  relatedEvidenceIds: string[];
+  rationale: string;
+  confidence?: number;
+  mode: VerificationMode;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  modelUsed?: string;
+  createdAt: Date;
+}
+
+export type RedTeamSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type RedTeamFindingType =
+  | 'unsupported_claim'
+  | 'contradictory_evidence'
+  | 'missing_evidence'
+  | 'invalid_assumption'
+  | 'logic_gap'
+  | 'edge_case'
+  | 'risk';
+
+export interface RedTeamFinding {
+  decisionId: string;
+  executionId?: string;
+  taskId?: string;
+  severity: RedTeamSeverity;
+  type: RedTeamFindingType;
+  description: string;
+  relatedClaimIds: string[];
+  relatedEvidenceIds: string[];
+  suggestedAction?: string;
+  createdAt: Date;
+}
+
+export interface ReconciliationResult {
+  decisionId: string;
+  executionId?: string;
+  taskId?: string;
+  recommendation: string;
+  survivingClaimIds: string[];
+  rejectedClaimIds: string[];
+  uncertainClaimIds: string[];
+  unresolvedConflictIds: string[];
+  redTeamFindingIds: string[];
+  needsMoreResearch: boolean;
+  researchQuestions?: string[];
+  rationale: string;
+  createdAt: Date;
+}
+
+export interface VerificationTaskInput {
+  claimId: string;
+  claimStatement: string;
+  evidenceIds: string[];
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  verificationMode?: VerificationMode;
+}
+
+export interface RedTeamTaskInput {
+  decisionId: string;
+  candidateRecommendation: string;
+  claimIds: string[];
+  evidenceIds: string[];
+  assumptions: string[];
+}
+
+export interface ReconciliationTaskInput {
+  decisionId: string;
+  candidateRecommendation: string;
+  claimIds: string[];
+  verifyClaimTaskIds: string[];
+  redTeamTaskId?: string;
 }

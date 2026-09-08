@@ -4,6 +4,10 @@ import Task, { ITask } from '../models/Task';
 import Claim, { IClaim } from '../models/Claim';
 import Evidence, { IEvidence } from '../models/Evidence';
 import Courtroom from '../models/Courtroom';
+import VerificationResult, { IVerificationResult } from '../models/VerificationResult';
+import RedTeamFinding, { IRedTeamFinding } from '../models/RedTeamFinding';
+import ReconciliationResult, { IReconciliationResult } from '../models/ReconciliationResult';
+import EvidenceRelationship, { IEvidenceRelationship } from '../models/EvidenceRelationship';
 import {
   DecisionConfiguration,
   DecisionStatus,
@@ -16,6 +20,7 @@ import { aggregateUsage } from './usage';
 import { normalizeDebateMode } from '../services/debateValidation';
 import { executionEventBus } from './eventBus';
 import { worker } from '../tasks/worker';
+import { evidenceGraphService } from './evidenceGraphService';
 
 export interface CreateDecisionInput {
   userId: string;
@@ -38,6 +43,10 @@ export interface DecisionSnapshot {
   claims: IClaim[];
   evidence: IEvidence[];
   progress?: ProgressSummary;
+  evidenceRelationships?: IEvidenceRelationship[];
+  verifications?: IVerificationResult[];
+  redTeamFindings?: IRedTeamFinding[];
+  reconciliation?: IReconciliationResult | null;
 }
 
 /**
@@ -140,12 +149,17 @@ export class DecisionOrchestrator {
 
     const strategy = normalizeDebateMode(decision.configuration?.strategy || 'consensus');
 
-    // Build the initial task graph. Phase 2 behaviour (no researchQueries): a
-    // single debate task reusing the existing DebateEngine (matching Phase 1
-    // behaviour and cost profile). Phase 3: parallel research tasks run first
-    // and the debate task depends on them (multi-dependency is fully supported
-    // by the scheduler/executor).
+    // Build the task graph. Phase 4 execution:
+    //   Research (parallel) → Debate (synthesizes candidate verdict)
+    //   → Verify Claims (parallel per claim) + Red Team (parallel with verify)
+    //   → Reconciliation → Final
+    //
+    // Phase 2/3 backward compatibility: when no researchQueries and no
+    // verification config, just create the single debate task (original behavior).
+
     const researchQueries = (opts.researchQueries || []).filter((q) => q && q.query && q.query.trim());
+    const verificationEnabled = decision.configuration?.verificationEnabled ?? false;
+
     const researchTaskIds: string[] = [];
     for (const rq of researchQueries) {
       const rt = await this.createTask(execution._id.toString(), {
@@ -165,7 +179,7 @@ export class DecisionOrchestrator {
       type: 'debate',
       input: {
         strategy,
-        description: 'Run the multi-agent debate for this decision.',
+        description: 'Run the multi-agent debate for this decision. Produces a candidate verdict.',
       },
       priority: 1,
       dependencies: researchTaskIds,
@@ -173,6 +187,7 @@ export class DecisionOrchestrator {
         strategy,
         participants: decision.participants,
         researchCount: researchTaskIds.length,
+        isCandidateVerdict: true,
       },
     });
 
@@ -299,6 +314,10 @@ export class DecisionOrchestrator {
     }).sort({ priority: 1, createdAt: 1 });
     const claims = await Claim.find({ decisionId });
     const evidence = await Evidence.find({ decisionId });
+    const evidenceRelationships = await evidenceGraphService.getRelationshipsForDecision(decisionId);
+    const verifications = await VerificationResult.find({ decisionId });
+    const redTeamFindings = await RedTeamFinding.find({ decisionId });
+    const reconciliation = await ReconciliationResult.findOne({ decisionId });
 
     const activeExec = executions.find((e) => ['queued', 'running', 'paused'].includes(e.status)) || executions[0];
     const progress = activeExec ? this.computeProgress(tasks) : undefined;
@@ -313,6 +332,10 @@ export class DecisionOrchestrator {
       claims,
       evidence,
       progress,
+      evidenceRelationships,
+      verifications,
+      redTeamFindings,
+      reconciliation,
     };
   }
 
@@ -522,7 +545,10 @@ export class DecisionOrchestrator {
       case 'debate': return 'debating';
       case 'analysis': return 'reasoning';
       case 'synthesis': return 'awaiting_review';
-      case 'verification': return 'verifying';
+      case 'verification':
+      case 'verify_claim': return 'verifying';
+      case 'red_team': return 'verifying';
+      case 'reconciliation': return 'verifying';
       case 'research': return 'investigating';
       default: return type;
     }
