@@ -34,36 +34,36 @@ export class EvidenceGraphService {
     executionId?: string;
     taskId?: string;
   }): Promise<IEvidenceRelationship> {
-    const existing = await EvidenceRelationship.findOne({
-      claimId: params.claimId,
-      evidenceId: params.evidenceId,
-    });
+    const {
+      claimId,
+      evidenceId,
+      relationship,
+      source,
+      strength,
+      rationale,
+      decisionId,
+      executionId,
+      taskId,
+    } = params;
 
-    if (existing) {
-      existing.relationship = params.relationship;
-      existing.source = params.source;
-      existing.strength = params.strength;
-      existing.rationale = params.rationale;
-      if (params.decisionId) existing.decisionId = params.decisionId;
-      if (params.executionId) existing.executionId = params.executionId;
-      if (params.taskId) existing.taskId = params.taskId;
-      await existing.save();
-      return existing;
-    }
+    // Atomic upsert so concurrent seeders (e.g. parallel verify_claim tasks)
+    // can never both pass the check-then-insert gap and collide on the unique
+    // compound index { decisionId, claimId, evidenceId }.
+    const update: Record<string, unknown> = {
+      relationship,
+      source,
+    };
+    if (strength !== undefined) update.strength = strength;
+    if (rationale !== undefined) update.rationale = rationale;
+    if (decisionId !== undefined) update.decisionId = decisionId;
+    if (executionId !== undefined) update.executionId = executionId;
+    if (taskId !== undefined) update.taskId = taskId;
 
-    const doc = new EvidenceRelationship({
-      claimId: params.claimId,
-      evidenceId: params.evidenceId,
-      relationship: params.relationship,
-      source: params.source,
-      strength: params.strength,
-      rationale: params.rationale,
-      decisionId: params.decisionId,
-      executionId: params.executionId,
-      taskId: params.taskId,
-    });
-    await doc.save();
-    return doc;
+    return EvidenceRelationship.findOneAndUpdate(
+      { claimId, evidenceId },
+      { $set: update },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ) as unknown as Promise<IEvidenceRelationship>;
   }
 
   /**

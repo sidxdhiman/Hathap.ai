@@ -23,7 +23,13 @@ export type EventType =
   | 'agent.failed'
   | 'research.completed'
   | 'evidence.created'
-  | 'claim.created';
+  | 'claim.created'
+  | 'planning.started'
+  | 'planning.completed'
+  | 'planning.failed'
+  | 'plan.validated'
+  | 'plan.rejected'
+  | 'plan.compiled';
 
 /**
  * Central event system for the execution engine.

@@ -17,6 +17,8 @@ const authMiddleware_1 = require("../middleware/authMiddleware");
 const orchestrator_1 = require("../decision/orchestrator");
 const stateMachine_1 = require("../decision/stateMachine");
 const evidenceGraphService_1 = require("../decision/evidenceGraphService");
+const planner_1 = require("../planning/planner");
+const DecisionPlan_1 = __importDefault(require("../models/DecisionPlan"));
 const router = express_1.default.Router();
 router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
     try {
@@ -104,8 +106,10 @@ router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
                 .filter((q) => q && typeof q.query === 'string' && q.query.trim())
                 .map((q) => ({ query: q.query.trim(), purpose: q.purpose, maxResults: q.maxResults }))
             : [];
+        const planningMode = req.body?.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
         const execution = await orchestrator_1.decisionOrchestrator.startDecision(req.params.id, req.userId, {
             researchQueries: researchQueries.slice(0, 5),
+            planningMode,
         });
         // Accepted: the execution was persisted and queued; it runs in the
         // background. We return the Execution identifier immediately rather than
@@ -116,11 +120,93 @@ router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
             executionId: execution._id.toString(),
             execution,
             researchQueries,
+            planningMode,
         });
     }
     catch (error) {
         console.error('[Decisions start]', error);
         res.status(400).json({ error: error.message });
+    }
+});
+/**
+ * POST /api/decisions/:id/plan — generate (or reuse) an intelligent plan for
+ * the decision's execution. Planning is idempotent per execution: a decision
+ * that already has a compiled plan returns it instead of regenerating.
+ */
+router.post('/:id/plan', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const requestedExecutionId = req.body?.executionId;
+        let execution = requestedExecutionId
+            ? await Execution_1.default.findOne({ _id: requestedExecutionId, decisionId: decision._id })
+            : null;
+        if (requestedExecutionId && !execution) {
+            return res.status(404).json({ error: 'Execution not found.' });
+        }
+        if (!execution) {
+            // Create a fresh planning execution. It stays `pending`/`planning` — the
+            // Worker ignores it until `/start` or the caller queues it.
+            execution = await Execution_1.default.create({
+                decisionId: decision._id,
+                status: 'pending',
+                startedAt: new Date(),
+                currentPhase: 'debating',
+                progress: 0,
+                planningStatus: 'planning',
+                planningMode: 'intelligent',
+            });
+        }
+        const result = await planner_1.decisionPlanner.planExecution({
+            executionId: execution._id.toString(),
+            userId: req.userId,
+            planningMode: 'intelligent',
+            researchQueries: req.body?.researchQueries,
+        });
+        res.json({
+            planId: result.compiled.persistedPlan._id.toString(),
+            executionId: result.executionId,
+            planningMode: 'intelligent',
+            source: result.planSource,
+            plannerModel: result.plannerModel,
+            plan: result.plan,
+        });
+    }
+    catch (error) {
+        console.error('[Decisions plan]', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/plans — all plans for a decision (ownership-checked). */
+router.get('/:id/plans', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const plans = await DecisionPlan_1.default.find({ decisionId: decision._id }).sort({ createdAt: -1 });
+        res.json(plans);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/plans/:planId — a single owned plan. */
+router.get('/:id/plans/:planId', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const plan = await DecisionPlan_1.default.findOne({
+            _id: req.params.planId,
+            decisionId: decision._id,
+        });
+        if (!plan)
+            return res.status(404).json({ error: 'Plan not found.' });
+        res.json(plan);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 router.post('/:id/pause', authMiddleware_1.requireAuth, async (req, res) => {

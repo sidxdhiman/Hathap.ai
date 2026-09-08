@@ -27,37 +27,25 @@ class EvidenceGraphService {
      * creating duplicates.
      */
     async upsertRelationship(params) {
-        const existing = await EvidenceRelationship_1.default.findOne({
-            claimId: params.claimId,
-            evidenceId: params.evidenceId,
-        });
-        if (existing) {
-            existing.relationship = params.relationship;
-            existing.source = params.source;
-            existing.strength = params.strength;
-            existing.rationale = params.rationale;
-            if (params.decisionId)
-                existing.decisionId = params.decisionId;
-            if (params.executionId)
-                existing.executionId = params.executionId;
-            if (params.taskId)
-                existing.taskId = params.taskId;
-            await existing.save();
-            return existing;
-        }
-        const doc = new EvidenceRelationship_1.default({
-            claimId: params.claimId,
-            evidenceId: params.evidenceId,
-            relationship: params.relationship,
-            source: params.source,
-            strength: params.strength,
-            rationale: params.rationale,
-            decisionId: params.decisionId,
-            executionId: params.executionId,
-            taskId: params.taskId,
-        });
-        await doc.save();
-        return doc;
+        const { claimId, evidenceId, relationship, source, strength, rationale, decisionId, executionId, taskId, } = params;
+        // Atomic upsert so concurrent seeders (e.g. parallel verify_claim tasks)
+        // can never both pass the check-then-insert gap and collide on the unique
+        // compound index { decisionId, claimId, evidenceId }.
+        const update = {
+            relationship,
+            source,
+        };
+        if (strength !== undefined)
+            update.strength = strength;
+        if (rationale !== undefined)
+            update.rationale = rationale;
+        if (decisionId !== undefined)
+            update.decisionId = decisionId;
+        if (executionId !== undefined)
+            update.executionId = executionId;
+        if (taskId !== undefined)
+            update.taskId = taskId;
+        return EvidenceRelationship_1.default.findOneAndUpdate({ claimId, evidenceId }, { $set: update }, { upsert: true, new: true, setDefaultsOnInsert: true });
     }
     /**
      * Get all relationships for a given claim, categorized by type.

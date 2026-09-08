@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -88,9 +121,13 @@ class DecisionOrchestrator {
         decision.status = 'debating';
         decision.currentPhase = 'debating';
         await decision.save();
+        const planningMode = opts.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
+        // In intelligent mode the execution starts `pending` while the planner
+        // runs so the Worker never finalizes an empty execution; it is queued once
+        // the plan has been compiled into real tasks.
         const execution = new Execution_1.default({
             decisionId,
-            status: 'queued',
+            status: planningMode === 'intelligent' ? 'pending' : 'queued',
             startedAt: new Date(),
             currentPhase: 'debating',
             progress: 0,
@@ -99,6 +136,8 @@ class DecisionOrchestrator {
             failedTasks: 0,
             runningTasks: 0,
             pendingTasks: 0,
+            planningStatus: planningMode === 'intelligent' ? 'planning' : undefined,
+            planningMode,
         });
         await execution.save();
         eventBus_1.executionEventBus.emit({
@@ -106,16 +145,14 @@ class DecisionOrchestrator {
             executionId: execution._id.toString(),
             decisionId,
         });
+        if (planningMode === 'intelligent') {
+            return this.startDecisionWithPlanning(execution, decision, opts.researchQueries || [], userId);
+        }
+        return this.startDecisionFixed(execution, decision, opts.researchQueries || []);
+    }
+    async startDecisionFixed(execution, decision, researchQueriesInput) {
         const strategy = (0, debateValidation_1.normalizeDebateMode)(decision.configuration?.strategy || 'consensus');
-        // Build the task graph. Phase 4 execution:
-        //   Research (parallel) → Debate (synthesizes candidate verdict)
-        //   → Verify Claims (parallel per claim) + Red Team (parallel with verify)
-        //   → Reconciliation → Final
-        //
-        // Phase 2/3 backward compatibility: when no researchQueries and no
-        // verification config, just create the single debate task (original behavior).
-        const researchQueries = (opts.researchQueries || []).filter((q) => q && q.query && q.query.trim());
-        const verificationEnabled = decision.configuration?.verificationEnabled ?? false;
+        const researchQueries = (researchQueriesInput || []).filter((q) => q && q.query && q.query.trim());
         const researchTaskIds = [];
         for (const rq of researchQueries) {
             const rt = await this.createTask(execution._id.toString(), {
@@ -149,11 +186,57 @@ class DecisionOrchestrator {
         eventBus_1.executionEventBus.emit({
             type: 'execution.started',
             executionId: execution._id.toString(),
-            decisionId,
+            decisionId: String(execution.decisionId),
         });
         // Wake the worker so the execution begins promptly.
         worker_1.worker.wake();
-        // Refresh the document so the returned execution reflects latest state.
+        const fresh = await Execution_1.default.findById(execution._id);
+        return fresh || execution;
+    }
+    /**
+     * Phase 5 — intelligent start path.
+     *
+     *   create Execution (pending) → Planner → Validate → Compile (real tasks)
+     *   → queue → wake worker.
+     *
+     * Planning is bounded (timeout + bounded retries + deterministic fallback)
+     * so this never blocks the decision forever.
+     */
+    async startDecisionWithPlanning(execution, decision, researchQueries, userId) {
+        const { decisionPlanner, PlanningError } = await Promise.resolve().then(() => __importStar(require('../planning/planner')));
+        let planningResult;
+        try {
+            planningResult = await decisionPlanner.planExecution({
+                executionId: execution._id.toString(),
+                userId,
+                planningMode: 'intelligent',
+                researchQueries: (researchQueries || [])
+                    .filter((q) => q && q.query && q.query.trim())
+                    .map((q) => q.query.trim()),
+            });
+        }
+        catch (err) {
+            // The planner marks the Execution failed itself on hard failures; surface
+            // the structured failure to the API so the caller sees why.
+            if (err instanceof PlanningError)
+                throw err;
+            throw new Error(`Planning failed: ${err?.message || err}`);
+        }
+        // The planner compiled real tasks; the execution may now be queued.
+        await Execution_1.default.updateOne({ _id: execution._id }, {
+            $set: {
+                status: 'queued',
+                planningStatus: 'planned',
+                planId: planningResult.compiled.persistedPlan._id,
+                currentTask: planningResult.compiled.debateTaskId,
+            },
+        });
+        eventBus_1.executionEventBus.emit({
+            type: 'execution.started',
+            executionId: execution._id.toString(),
+            decisionId: String(execution.decisionId),
+        });
+        worker_1.worker.wake();
         const fresh = await Execution_1.default.findById(execution._id);
         return fresh || execution;
     }

@@ -912,3 +912,134 @@ npm run build   # TypeScript compiles
 - 25 new tests (evidence graph 8, verification+red team 8, reconciliation 5,
   full execution graph 4); full suite 97 green; tsc/build green.
 - Docs updated (this section).
+
+# Phase 5 — Intelligent Decision Planner
+
+## Principle
+
+The fixed Phase 3/4 workflow runs research → debate → (verify ×K ∥ red team)
+→ reconciliation for **every** decision regardless of its size or nature. The
+phase 5 planner makes that graph **decision-specific and controllable**:
+
+```
+Decision ──▶ Intelligent Planner ──▶ Validation ──▶ Compilation ──▶ Task Scheduler
+                (propose)             (approve)      (persist)       (unchanged)
+```
+
+The invariant that protects the existing engine: the planner may only
+**propose**; a deterministic validator **decides**; the compiler **persists
+real tasks**; the existing scheduler/executor/worker **execute**. An LLM never
+touches a database handle, task row, or tool call directly.
+
+## Modes
+
+- `fixed` (default) — exactly the Phase 3/4 pipeline. `startDecision` keeps the
+  legacy behavior via `startDecisionFixed`.
+- `intelligent` — a new execution starts `pending`/`planning`; the planner
+  produces a validated plan; tasks are compiled; the execution is queued and
+  picked up by the existing worker. A `pending` execution is invisible to the
+  worker, so a slow planner can never let an empty execution finalize.
+
+## Trust boundary (who decides)
+
+| Layer | May do | Must never do |
+|---|---|---|
+| DecisionPlanner (LLM) | Propose a strict-JSON task list + termination flags + nested rationale | Reference DB/collections, URLs, tools, exec/code, credentials; schedule verify/red_team/reconciliation directly; emit Mongo IDs |
+| PlanValidator (deterministic) | Reject anything that violates structure, limits, or security rules | Execute anything |
+| PlanCompiler (deterministic) | Map validated tempIds → real Task `_id`s; persist one plan per execution | Trust planner IDs/input blindly |
+| Scheduler/Executor/Worker | Run persisted tasks | — |
+
+Planner context is bounded: `{ decisionId, objective, description?, constraints?,
+existingEvidence[{id,title,sourceReliability}], existingClaimCount?,
+availableCapabilities?, researchQueries? }`. No credentials, no full DB.
+
+## Components (`server/src/planning/`)
+
+- **`planTypes.ts`** — `DecisionPlan`, `PlannedTask`, `PlanTermination`,
+  `PlanContext`, `PlannerProvenance`, `PlannerUsage`, `PlannerAttemptResult`,
+  `PlanCallFunction` (the test seam).
+- **`planningPolicy.ts`** — default limits: maxTasksPerExecution 12,
+  maxResearchTasks 5, maxVerificationTasks 8, maxPlanDepth 3,
+  maxTotalResearchResults 60, maxResultsPerResearchTask 12,
+  maxPlanningRetries 2, planningTimeoutMs 30_000, maxRationaleTokens 400.
+  `isAllowedTaskType`, `isKnownCapability`, `estimatePlanSize`.
+- **`planValidator.ts`** — deterministic gate. Rejects: non-object proposals,
+  unknown task types, planner-proposed `verify_claim`/`red_team`/
+  `reconciliation` (system-generated from termination flags only — claim IDs
+  don't exist at plan time), unknown tempId deps, self-deps, cycles, depth
+  overflows, every policy limit, dangerous input keys (`url`, `tool`, `exec`,
+  `shell`, `sql`, `collection`, `apiKey`, `token`, `secret`, `webhook`, …),
+  URL/command/code-like values, unknown capability requirements and non-string/
+  missing research `query`.
+- **`fallbackPlanner.ts`** — deterministic baseline. Research (when applicable)
+  + debate, verification/red-team/reconciliation on. `buildSimplifiedPlan` =
+  debate-only. Always valid within policy; the guaranteed safe answer.
+- **`planCompiler.ts`** — upserts the `DecisionPlan` doc (unique per
+  `executionId`), then persists real `Task` docs with real dependency IDs from
+  the tempId graph. Idempotent: resumes (never duplicates) if plan or tasks
+  already exist; tasks carry `metadata.plannedTempId`, plan carries version.
+- **`planner.ts`** — `DecisionPlanner` orchestrating:
+  build bounded context → (LLM attempt → parse → validate)*bounded → fallback →
+  persist → compile. Per-attempt timeout; bounded retries; malformed JSON is a
+  rejection, not a crash; planner usage feeds the existing `Execution` token
+  ledger. Model = user's first-enabled model (`plannerModel` provenance).
+  Emits `planning.started|completed|failed`, `plan.validated|rejected|compiled`.
+
+## Persistence
+
+- `DecisionPlan` model: `{ decisionId, executionId (unique), version, source
+  (intelligent|fallback|baseline), planningMode, plannerModel, plannerVersion,
+  planVersion, status (proposed|validated|rejected|compiled|failed), tasks,
+  termination, rationale, estimates, validation, failure, compiledAt }`.
+- `Execution` gains: `planningStatus`, `planId`, `planningMode`,
+  `planningStartedAt`, `planningCompletedAt` (all additive/backward-compatible).
+- One plan per execution (unique index). Compilation crash recovery: missing
+  tasks are recreated, the plan document is never duplicated.
+
+## Phase 4 integration
+
+`debateHandler` now exports `selectClaimsForVerification` and
+`schedulePhase4DownstreamTasks(context, result, decision, options?)` so the
+downstream graph can be gated by the plan's termination flags
+(`resolvePlanTermination(executionId)`). Fixed-mode executions keep the legacy
+all-stages-on behavior.
+
+## API
+
+- `POST /api/decisions/:id/plan` — run the planner now (idempotent per
+  execution; creates a `pending`/`planning` execution if none exists; does not
+  queue). Returns `{ planId, executionId, source, plannerModel, plan }`.
+- `GET /api/decisions/:id/plans` — plans for an owned decision.
+- `GET /api/decisions/:id/plans/:planId` — single owned plan.
+- `POST /api/decisions/:id/start` — body now accepts `planningMode`.
+
+## Failure guarantees
+
+- A proposal is never executed unless the validator accepted it.
+- Malformed JSON / provider failure / timeout / rejected proposals all converge
+  on the deterministic fallback (source `fallback`) or baseline (source
+  `baseline` when no model is available) — never a partial execution.
+- A plan that cannot even be validated falls back; if the fallback itself is
+  impossible (policy conflict), the execution is failed with a structured
+  `PlanningError` (`PLAN_NOT_POSSIBLE`) rather than hanging.
+
+```bash
+cd server
+npm test        # 139 tests green
+npm run build   # tsc green
+```
+
+## Phase 5 deliverable summary
+
+- Controlled task-graph generation with a strict planner→validator→compiler
+  boundary and bounded planner context (no credentials, no DB handles).
+- Termination-flag-gated Phase 4 downstream stages; fixed mode unchanged.
+- Race fix: `EvidenceRelationship.upsertRelationship` is now an atomic upsert
+  (parallel `verify_claim` seeders could previously hit the unique index).
+- Pluggable `PlanCallFunction` test seam (real LLM call or injected).
+- 45 new tests (validator 25, planner+compiler 15, full persistent intelligent
+  execution graph 5 incl. fallback path and simplified plan); full suite
+  139 green; server tsc/build green.
+- Client: planning-mode toggle on Start, planner preview panel (task graph,
+  termination badges, rationale, planner model).
+- Docs updated (this section).

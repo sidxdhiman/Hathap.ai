@@ -78,6 +78,11 @@ const ExecutionSchema = new mongoose_1.Schema({
     tokenUsage: { type: TokenUsageSchema, default: () => ({}) },
     estimatedCost: { type: Number, default: 0 },
     actualCost: { type: Number, default: 0 },
+    planningStatus: { type: String, enum: ['pending', 'planning', 'planned', 'failed'], index: true },
+    planId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'DecisionPlan' },
+    planningMode: { type: String, enum: ['fixed', 'intelligent'] },
+    planningStartedAt: { type: Date },
+    planningCompletedAt: { type: Date },
     metadata: { type: mongoose_1.Schema.Types.Mixed },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Execution', ExecutionSchema);

@@ -112,7 +112,10 @@ export class DecisionOrchestrator {
   async startDecision(
     decisionId: string,
     userId: string,
-    opts: { researchQueries?: Array<{ query: string; purpose?: string; maxResults?: number }> } = {}
+    opts: {
+      researchQueries?: Array<{ query: string; purpose?: string; maxResults?: number }>;
+      planningMode?: 'fixed' | 'intelligent';
+    } = {}
   ): Promise<IExecution> {
     const decision = await Decision.findOne({ _id: decisionId, userId });
     if (!decision) {
@@ -127,9 +130,14 @@ export class DecisionOrchestrator {
     decision.currentPhase = 'debating';
     await decision.save();
 
+    const planningMode = opts.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
+
+    // In intelligent mode the execution starts `pending` while the planner
+    // runs so the Worker never finalizes an empty execution; it is queued once
+    // the plan has been compiled into real tasks.
     const execution = new Execution({
       decisionId,
-      status: 'queued',
+      status: planningMode === 'intelligent' ? 'pending' : 'queued',
       startedAt: new Date(),
       currentPhase: 'debating',
       progress: 0,
@@ -138,6 +146,8 @@ export class DecisionOrchestrator {
       failedTasks: 0,
       runningTasks: 0,
       pendingTasks: 0,
+      planningStatus: planningMode === 'intelligent' ? 'planning' : undefined,
+      planningMode,
     });
     await execution.save();
 
@@ -147,18 +157,21 @@ export class DecisionOrchestrator {
       decisionId,
     });
 
+    if (planningMode === 'intelligent') {
+      return this.startDecisionWithPlanning(execution, decision, opts.researchQueries || [], userId);
+    }
+
+    return this.startDecisionFixed(execution, decision, opts.researchQueries || []);
+  }
+
+  private async startDecisionFixed(
+    execution: IExecution,
+    decision: IDecision,
+    researchQueriesInput: Array<{ query: string; purpose?: string; maxResults?: number }>
+  ): Promise<IExecution> {
     const strategy = normalizeDebateMode(decision.configuration?.strategy || 'consensus');
 
-    // Build the task graph. Phase 4 execution:
-    //   Research (parallel) → Debate (synthesizes candidate verdict)
-    //   → Verify Claims (parallel per claim) + Red Team (parallel with verify)
-    //   → Reconciliation → Final
-    //
-    // Phase 2/3 backward compatibility: when no researchQueries and no
-    // verification config, just create the single debate task (original behavior).
-
-    const researchQueries = (opts.researchQueries || []).filter((q) => q && q.query && q.query.trim());
-    const verificationEnabled = decision.configuration?.verificationEnabled ?? false;
+    const researchQueries = (researchQueriesInput || []).filter((q) => q && q.query && q.query.trim());
 
     const researchTaskIds: string[] = [];
     for (const rq of researchQueries) {
@@ -199,13 +212,71 @@ export class DecisionOrchestrator {
     executionEventBus.emit({
       type: 'execution.started',
       executionId: execution._id.toString(),
-      decisionId,
+      decisionId: String(execution.decisionId),
     });
 
     // Wake the worker so the execution begins promptly.
     worker.wake();
 
-    // Refresh the document so the returned execution reflects latest state.
+    const fresh = await Execution.findById(execution._id);
+    return fresh || execution;
+  }
+
+  /**
+   * Phase 5 — intelligent start path.
+   *
+   *   create Execution (pending) → Planner → Validate → Compile (real tasks)
+   *   → queue → wake worker.
+   *
+   * Planning is bounded (timeout + bounded retries + deterministic fallback)
+   * so this never blocks the decision forever.
+   */
+  private async startDecisionWithPlanning(
+    execution: IExecution,
+    decision: IDecision,
+    researchQueries: Array<{ query: string; purpose?: string; maxResults?: number }>,
+    userId: string
+  ): Promise<IExecution> {
+    const { decisionPlanner, PlanningError } = await import('../planning/planner');
+
+    let planningResult;
+    try {
+      planningResult = await decisionPlanner.planExecution({
+        executionId: execution._id.toString(),
+        userId,
+        planningMode: 'intelligent',
+        researchQueries: (researchQueries || [])
+          .filter((q) => q && q.query && q.query.trim())
+          .map((q) => q.query.trim()),
+      });
+    } catch (err: any) {
+      // The planner marks the Execution failed itself on hard failures; surface
+      // the structured failure to the API so the caller sees why.
+      if (err instanceof PlanningError) throw err;
+      throw new Error(`Planning failed: ${err?.message || err}`);
+    }
+
+    // The planner compiled real tasks; the execution may now be queued.
+    await Execution.updateOne(
+      { _id: execution._id },
+      {
+        $set: {
+          status: 'queued',
+          planningStatus: 'planned',
+          planId: planningResult.compiled.persistedPlan._id,
+          currentTask: planningResult.compiled.debateTaskId,
+        },
+      }
+    );
+
+    executionEventBus.emit({
+      type: 'execution.started',
+      executionId: execution._id.toString(),
+      decisionId: String(execution.decisionId),
+    });
+
+    worker.wake();
+
     const fresh = await Execution.findById(execution._id);
     return fresh || execution;
   }
