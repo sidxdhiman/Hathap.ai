@@ -47,7 +47,7 @@ const TaskSchema: Schema = new Schema(
     executionId: { type: Schema.Types.ObjectId, ref: 'Execution', required: true, index: true },
     type: {
       type: String,
-      enum: ['research', 'analysis', 'debate', 'challenge', 'verification', 'synthesis', 'human_review'],
+      enum: ['research', 'analysis', 'debate', 'challenge', 'verification', 'verify_claim', 'red_team', 'reconciliation', 'synthesis', 'human_review'],
       required: true,
       index: true,
     },

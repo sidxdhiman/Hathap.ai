@@ -7,15 +7,15 @@ import { debateHandler } from './debateHandler';
 import { analysisHandler } from './analysisHandler';
 import { synthesisHandler } from './synthesisHandler';
 import { researchHandler } from './researchHandler';
+import { verifyClaimHandler } from './verifyClaimHandler';
+import { redTeamHandler } from './redTeamHandler';
+import { reconciliationHandler } from './reconciliationHandler';
 
 /**
  * Extensible registry of task handlers. A handler is responsible for the
  * task-specific logic of executing a unit of work. The scheduler decides WHAT
  * runs; the executor decides HOW a task is claimed and persisted; handlers
  * contain the task-specific behaviour.
- *
- * Future handlers (challenge, verification, human_review, tool_call)
- * are intentionally not implemented yet — register them here when ready.
  */
 export class DefaultTaskHandlerRegistry implements TaskHandlerRegistry {
   private registry: Map<TaskType, TaskHandler> = new Map();
@@ -48,4 +48,7 @@ export const taskHandlerRegistry: TaskHandlerRegistry = new DefaultTaskHandlerRe
   analysisHandler,
   synthesisHandler,
   researchHandler,
+  verifyClaimHandler,
+  redTeamHandler,
+  reconciliationHandler,
 ]);

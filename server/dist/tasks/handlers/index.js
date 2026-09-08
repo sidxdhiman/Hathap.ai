@@ -5,14 +5,14 @@ const debateHandler_1 = require("./debateHandler");
 const analysisHandler_1 = require("./analysisHandler");
 const synthesisHandler_1 = require("./synthesisHandler");
 const researchHandler_1 = require("./researchHandler");
+const verifyClaimHandler_1 = require("./verifyClaimHandler");
+const redTeamHandler_1 = require("./redTeamHandler");
+const reconciliationHandler_1 = require("./reconciliationHandler");
 /**
  * Extensible registry of task handlers. A handler is responsible for the
  * task-specific logic of executing a unit of work. The scheduler decides WHAT
  * runs; the executor decides HOW a task is claimed and persisted; handlers
  * contain the task-specific behaviour.
- *
- * Future handlers (challenge, verification, human_review, tool_call)
- * are intentionally not implemented yet — register them here when ready.
  */
 class DefaultTaskHandlerRegistry {
     constructor(handlers = []) {
@@ -40,4 +40,7 @@ exports.taskHandlerRegistry = new DefaultTaskHandlerRegistry([
     analysisHandler_1.analysisHandler,
     synthesisHandler_1.synthesisHandler,
     researchHandler_1.researchHandler,
+    verifyClaimHandler_1.verifyClaimHandler,
+    redTeamHandler_1.redTeamHandler,
+    reconciliationHandler_1.reconciliationHandler,
 ]);

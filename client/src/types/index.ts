@@ -272,6 +272,92 @@ export interface Claim {
 export type EvidenceProvenanceKind = 'observed' | 'retrieved' | 'inferred';
 export type SourceReliability = 'low' | 'medium' | 'high';
 
+// ---- Phase 4: Evidence graph, verification, red team, reconciliation ----
+
+export type EvidenceRelationshipType = 'supports' | 'contradicts' | 'related';
+export type EvidenceRelationshipSource = 'research' | 'agent' | 'verification';
+
+export interface EvidenceRelationship {
+  id: string;
+  claimId: string;
+  evidenceId: string;
+  relationship: EvidenceRelationshipType;
+  strength?: number;
+  rationale?: string;
+  source: EvidenceRelationshipSource;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  createdAt: Date;
+}
+
+export type VerificationStatus = 'supported' | 'contradicted' | 'unsupported' | 'inconclusive';
+export type VerificationMode = 'evidence' | 'llm' | 'hybrid';
+
+export interface VerificationResult {
+  id: string;
+  claimId: string;
+  claimStatement: string;
+  status: VerificationStatus;
+  supportingEvidenceIds: string[];
+  contradictingEvidenceIds: string[];
+  relatedEvidenceIds: string[];
+  rationale: string;
+  confidence: number;
+  mode: VerificationMode;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  createdAt: Date;
+}
+
+export type RedTeamSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type RedTeamFindingType =
+  | 'invalid_assumption'
+  | 'contradictory_evidence'
+  | 'missing_evidence'
+  | 'logic_gap'
+  | 'risk'
+  | 'other';
+
+export interface RedTeamFinding {
+  id: string;
+  decisionId: string;
+  executionId?: string;
+  taskId?: string;
+  severity: RedTeamSeverity;
+  type: RedTeamFindingType;
+  description: string;
+  relatedClaimIds: string[];
+  relatedEvidenceIds: string[];
+  suggestedAction?: string;
+  createdAt: Date;
+}
+
+export interface ReconciliationResult {
+  id: string;
+  decisionId: string;
+  executionId?: string;
+  taskId?: string;
+  recommendation: string;
+  survivingClaimIds: string[];
+  rejectedClaimIds: string[];
+  uncertainClaimIds: string[];
+  unresolvedConflictIds: string[];
+  redTeamFindingIds: string[];
+  needsMoreResearch: boolean;
+  researchQuestions?: string[];
+  rationale: string;
+  createdAt: Date;
+}
+
+export interface Phase4DownstreamRefs {
+  verificationTaskIds: string[];
+  redTeamTaskId: string;
+  reconciliationTaskId: string;
+  selectedClaimCount: number;
+}
+
 export interface Evidence {
   id: string;
   decisionId: string;
@@ -353,4 +439,8 @@ export interface DecisionSnapshot {
   claims: Claim[];
   evidence: Evidence[];
   progress?: ProgressSummary;
+  evidenceRelationships?: EvidenceRelationship[];
+  verifications?: VerificationResult[];
+  redTeamFindings?: RedTeamFinding[];
+  reconciliation?: ReconciliationResult | null;
 }

@@ -425,7 +425,9 @@ export class Worker {
   private inferPhase(tasks: ITask[]): string {
     for (const t of tasks) {
       if (t.status === 'running' || t.status === 'ready' || t.status === 'pending' || t.status === 'retrying') {
-        return t.type === 'debate' ? 'debating' : t.type;
+        if (t.type === 'debate') return 'debating';
+        if (t.type === 'verify_claim' || t.type === 'red_team' || t.type === 'reconciliation') return 'verifying';
+        return t.type;
       }
     }
     return 'completed';
@@ -436,6 +438,12 @@ export class Worker {
     const verdict = debate?.result as any;
     if (verdict && typeof verdict.verdict?.confidenceScore === 'number') {
       return verdict.verdict.confidenceScore;
+    }
+    // Reconciliation may carry a final confidence.
+    const recon = tasks.find((t) => t.type === 'reconciliation' && t.result);
+    const reconVerdict = recon?.result as any;
+    if (reconVerdict && typeof reconVerdict.confidence === 'number') {
+      return reconVerdict.confidence;
     }
     return undefined;
   }

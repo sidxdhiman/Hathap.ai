@@ -50,7 +50,7 @@ const TaskSchema = new mongoose_1.Schema({
     executionId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Execution', required: true, index: true },
     type: {
         type: String,
-        enum: ['research', 'analysis', 'debate', 'challenge', 'verification', 'synthesis', 'human_review'],
+        enum: ['research', 'analysis', 'debate', 'challenge', 'verification', 'verify_claim', 'red_team', 'reconciliation', 'synthesis', 'human_review'],
         required: true,
         index: true,
     },

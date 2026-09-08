@@ -4,9 +4,14 @@ import Execution from '../models/Execution';
 import Task from '../models/Task';
 import Claim from '../models/Claim';
 import Evidence from '../models/Evidence';
+import EvidenceRelationship from '../models/EvidenceRelationship';
+import VerificationResult from '../models/VerificationResult';
+import RedTeamFinding from '../models/RedTeamFinding';
+import ReconciliationResult from '../models/ReconciliationResult';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { decisionOrchestrator } from '../decision/orchestrator';
 import { StateMachine } from '../decision/stateMachine';
+import { evidenceGraphService } from '../decision/evidenceGraphService';
 
 const router = express.Router();
 
@@ -82,6 +87,10 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     await Task.deleteMany({ executionId: { $in: (await Execution.find({ decisionId: req.params.id })).map((e) => e._id) } });
     await Claim.deleteMany({ decisionId: req.params.id });
     await Evidence.deleteMany({ decisionId: req.params.id });
+    await EvidenceRelationship.deleteMany({ decisionId: req.params.id });
+    await VerificationResult.deleteMany({ decisionId: req.params.id });
+    await RedTeamFinding.deleteMany({ decisionId: req.params.id });
+    await ReconciliationResult.deleteMany({ decisionId: req.params.id });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -293,10 +302,25 @@ router.get('/:id/claims/:claimId', requireAuth, async (req: AuthRequest, res) =>
       Evidence.find({ _id: { $in: claim.contradictingEvidenceIds || [] } }),
     ]);
 
+    // Phase 4: explicit evidence graph relationships
+    const relationships = await evidenceGraphService.getRelationshipsForClaim(claim._id.toString());
+    const relatedEvidenceIds = relationsToEvidenceIds(relationships.related);
+    const [relatedEvidence, verification] = await Promise.all([
+      Evidence.find({ _id: { $in: relatedEvidenceIds } }),
+      VerificationResult.findOne({ claimId: claim._id.toString() }),
+    ]);
+
     res.json({
       ...(claim.toObject ? claim.toObject() : claim),
       supportingEvidence: supporting,
       contradictingEvidence: contradicting,
+      relatedEvidence,
+      relationships: {
+        supports: relationships.supports,
+        contradicts: relationships.contradicts,
+        related: relationships.related,
+      },
+      verification,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -313,5 +337,109 @@ router.get('/:id/snapshot', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ---- Phase 4 endpoints ----
+
+/** GET /api/decisions/:id/verifications — all verification results for a decision */
+router.get('/:id/verifications', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const verifications = await VerificationResult.find({ decisionId: decision._id })
+      .sort({ createdAt: 1 });
+    res.json(verifications);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/verifications/:claimId — verification for a specific claim */
+router.get('/:id/verifications/:claimId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const claim = await Claim.findOne({ _id: req.params.claimId, decisionId: decision._id });
+    if (!claim) return res.status(404).json({ error: 'Claim not found.' });
+    const verification = await VerificationResult.findOne({ claimId: claim._id.toString() });
+    if (!verification) return res.status(404).json({ error: 'Verification not found.' });
+    res.json(verification);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/red-team — all red-team findings for a decision */
+router.get('/:id/red-team', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const findings = await RedTeamFinding.find({ decisionId: decision._id })
+      .sort({ createdAt: 1 });
+    res.json(findings);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/reconciliation — the reconciliation result for a decision */
+router.get('/:id/reconciliation', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const reconciliation = await ReconciliationResult.findOne({ decisionId: decision._id });
+    if (!reconciliation) return res.status(404).json({ error: 'Reconciliation not found.' });
+    res.json(reconciliation);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/evidence-graph — all evidence relationships for a decision */
+router.get('/:id/evidence-graph', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const relationships = await evidenceGraphService.getRelationshipsForDecision(
+      decision._id.toString()
+    );
+    res.json(relationships);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/claims/:claimId/evidence — the claim's explicit evidence graph */
+router.get('/:id/claims/:claimId/evidence', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const claim = await Claim.findOne({ _id: req.params.claimId, decisionId: decision._id });
+    if (!claim) return res.status(404).json({ error: 'Claim not found.' });
+
+    const relationships = await evidenceGraphService.getRelationshipsForClaim(
+      claim._id.toString()
+    );
+
+    const [supporting, contradicting, related] = await Promise.all([
+      Evidence.find({ _id: { $in: relationsToEvidenceIds(relationships.supports) } }),
+      Evidence.find({ _id: { $in: relationsToEvidenceIds(relationships.contradicts) } }),
+      Evidence.find({ _id: { $in: relationsToEvidenceIds(relationships.related) } }),
+    ]);
+
+    res.json({
+      claimId: claim._id.toString(),
+      claimText: claim.text,
+      supports: supporting,
+      contradicts: contradicting,
+      related,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+function relationsToEvidenceIds(rels: Array<{ evidenceId: string }>): string[] {
+  return rels.map((r) => r.evidenceId);
+}
 
 export default router;

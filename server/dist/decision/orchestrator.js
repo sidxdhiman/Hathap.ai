@@ -10,11 +10,15 @@ const Task_1 = __importDefault(require("../models/Task"));
 const Claim_1 = __importDefault(require("../models/Claim"));
 const Evidence_1 = __importDefault(require("../models/Evidence"));
 const Courtroom_1 = __importDefault(require("../models/Courtroom"));
+const VerificationResult_1 = __importDefault(require("../models/VerificationResult"));
+const RedTeamFinding_1 = __importDefault(require("../models/RedTeamFinding"));
+const ReconciliationResult_1 = __importDefault(require("../models/ReconciliationResult"));
 const stateMachine_1 = require("./stateMachine");
 const usage_1 = require("./usage");
 const debateValidation_1 = require("../services/debateValidation");
 const eventBus_1 = require("./eventBus");
 const worker_1 = require("../tasks/worker");
+const evidenceGraphService_1 = require("./evidenceGraphService");
 /**
  * DecisionOrchestrator — creates and coordinates work for a Decision.
  *
@@ -103,12 +107,15 @@ class DecisionOrchestrator {
             decisionId,
         });
         const strategy = (0, debateValidation_1.normalizeDebateMode)(decision.configuration?.strategy || 'consensus');
-        // Build the initial task graph. Phase 2 behaviour (no researchQueries): a
-        // single debate task reusing the existing DebateEngine (matching Phase 1
-        // behaviour and cost profile). Phase 3: parallel research tasks run first
-        // and the debate task depends on them (multi-dependency is fully supported
-        // by the scheduler/executor).
+        // Build the task graph. Phase 4 execution:
+        //   Research (parallel) → Debate (synthesizes candidate verdict)
+        //   → Verify Claims (parallel per claim) + Red Team (parallel with verify)
+        //   → Reconciliation → Final
+        //
+        // Phase 2/3 backward compatibility: when no researchQueries and no
+        // verification config, just create the single debate task (original behavior).
         const researchQueries = (opts.researchQueries || []).filter((q) => q && q.query && q.query.trim());
+        const verificationEnabled = decision.configuration?.verificationEnabled ?? false;
         const researchTaskIds = [];
         for (const rq of researchQueries) {
             const rt = await this.createTask(execution._id.toString(), {
@@ -127,7 +134,7 @@ class DecisionOrchestrator {
             type: 'debate',
             input: {
                 strategy,
-                description: 'Run the multi-agent debate for this decision.',
+                description: 'Run the multi-agent debate for this decision. Produces a candidate verdict.',
             },
             priority: 1,
             dependencies: researchTaskIds,
@@ -135,6 +142,7 @@ class DecisionOrchestrator {
                 strategy,
                 participants: decision.participants,
                 researchCount: researchTaskIds.length,
+                isCandidateVerdict: true,
             },
         });
         await Execution_1.default.updateOne({ _id: execution._id }, { $set: { currentTask: debateTask._id.toString() } });
@@ -231,6 +239,10 @@ class DecisionOrchestrator {
         }).sort({ priority: 1, createdAt: 1 });
         const claims = await Claim_1.default.find({ decisionId });
         const evidence = await Evidence_1.default.find({ decisionId });
+        const evidenceRelationships = await evidenceGraphService_1.evidenceGraphService.getRelationshipsForDecision(decisionId);
+        const verifications = await VerificationResult_1.default.find({ decisionId });
+        const redTeamFindings = await RedTeamFinding_1.default.find({ decisionId });
+        const reconciliation = await ReconciliationResult_1.default.findOne({ decisionId });
         const activeExec = executions.find((e) => ['queued', 'running', 'paused'].includes(e.status)) || executions[0];
         const progress = activeExec ? this.computeProgress(tasks) : undefined;
         return {
@@ -243,6 +255,10 @@ class DecisionOrchestrator {
             claims,
             evidence,
             progress,
+            evidenceRelationships,
+            verifications,
+            redTeamFindings,
+            reconciliation,
         };
     }
     async createCourthouseExecution(courtroomId, userId, result, usageRecords) {
@@ -410,7 +426,10 @@ class DecisionOrchestrator {
             case 'debate': return 'debating';
             case 'analysis': return 'reasoning';
             case 'synthesis': return 'awaiting_review';
-            case 'verification': return 'verifying';
+            case 'verification':
+            case 'verify_claim': return 'verifying';
+            case 'red_team': return 'verifying';
+            case 'reconciliation': return 'verifying';
             case 'research': return 'investigating';
             default: return type;
         }

@@ -9,6 +9,9 @@ import {
   FileText,
   ExternalLink,
   Gauge,
+  ShieldCheck,
+  ShieldAlert,
+  GitMerge,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
@@ -422,6 +425,122 @@ export const DecisionDetailPage: React.FC = () => {
                       <span className="truncate max-w-[200px]">source: {cl.attribution.sourceName}</span>
                     )}
                   </div>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Phase 4: Reconciliation */}
+        {snapshot?.reconciliation && (
+          <Card className="mb-6">
+            <CardHeader>
+              <span className="flex items-center gap-2 text-sm font-medium text-theme-text-primary">
+                <GitMerge size={16} /> Reconciliation
+              </span>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-theme-text-secondary mb-1">Final recommendation</div>
+                <p className="text-theme-text-primary text-sm">{snapshot.reconciliation.recommendation}</p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="p-3 rounded bg-green-500/10 border border-green-500/20">
+                  <div className="text-lg font-semibold text-green-400">{snapshot.reconciliation.survivingClaimIds.length}</div>
+                  <div className="text-[11px] text-theme-text-secondary">surviving</div>
+                </div>
+                <div className="p-3 rounded bg-red-500/10 border border-red-500/20">
+                  <div className="text-lg font-semibold text-red-400">{snapshot.reconciliation.rejectedClaimIds.length}</div>
+                  <div className="text-[11px] text-theme-text-secondary">rejected</div>
+                </div>
+                <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20">
+                  <div className="text-lg font-semibold text-amber-400">{snapshot.reconciliation.uncertainClaimIds.length}</div>
+                  <div className="text-[11px] text-theme-text-secondary">uncertain</div>
+                </div>
+                <div className="p-3 rounded bg-theme-bg-tertiary border border-theme-border">
+                  <div className="text-lg font-semibold text-theme-text-primary">{snapshot.reconciliation.redTeamFindingIds.length}</div>
+                  <div className="text-[11px] text-theme-text-secondary">red-team findings</div>
+                </div>
+              </div>
+              {snapshot.reconciliation.needsMoreResearch && (
+                <div className="flex items-start gap-2 p-3 rounded bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+                  <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-medium">Needs more research</div>
+                    {(snapshot.reconciliation.researchQuestions || []).map((q, i) => (
+                      <div key={i} className="text-xs text-amber-200/90 mt-1">• {q}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-theme-text-secondary">{snapshot.reconciliation.rationale}</p>
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Phase 4: Verification */}
+        {(snapshot?.verifications?.length || 0) > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <span className="flex items-center gap-2 text-sm font-medium text-theme-text-primary">
+                <ShieldCheck size={16} /> Claim Verification ({snapshot!.verifications!.length})
+              </span>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {snapshot!.verifications!.map((v) => (
+                <div key={v.id} className="p-3 rounded bg-theme-bg-secondary border border-theme-border">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                        v.status === 'supported' ? 'bg-green-500/20 text-green-300' :
+                        v.status === 'contradicted' ? 'bg-red-500/20 text-red-400' :
+                        v.status === 'unsupported' ? 'bg-amber-500/20 text-amber-300' :
+                        'bg-theme-bg-tertiary text-theme-text-secondary'
+                      }`}>{v.status}</span>
+                      <span className="text-[11px] text-theme-text-secondary">mode: {v.mode}</span>
+                      {typeof v.confidence === 'number' && (
+                        <span className="text-[11px] text-theme-text-secondary">confidence: {Math.round(v.confidence * 100)}%</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-theme-text-primary mt-1">{v.claimStatement}</p>
+                  {(v.supportingEvidenceIds.length > 0 || v.contradictingEvidenceIds.length > 0) && (
+                    <div className="flex gap-4 mt-1 text-[11px] text-theme-text-secondary">
+                      {v.supportingEvidenceIds.length > 0 && <span>supports: {v.supportingEvidenceIds.length}</span>}
+                      {v.contradictingEvidenceIds.length > 0 && <span>contradicts: {v.contradictingEvidenceIds.length}</span>}
+                      {v.relatedEvidenceIds.length > 0 && <span>related: {v.relatedEvidenceIds.length}</span>}
+                    </div>
+                  )}
+                  <p className="text-xs text-theme-text-secondary mt-1">{v.rationale}</p>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Phase 4: Red team */}
+        {(snapshot?.redTeamFindings?.length || 0) > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <span className="flex items-center gap-2 text-sm font-medium text-theme-text-primary">
+                <ShieldAlert size={16} /> Red Team Findings ({snapshot!.redTeamFindings!.length})
+              </span>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {snapshot!.redTeamFindings!.map((f) => (
+                <div key={f.id} className="p-3 rounded bg-theme-bg-secondary border border-theme-border">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                      f.severity === 'critical' || f.severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                      f.severity === 'medium' ? 'bg-amber-500/20 text-amber-300' :
+                      'bg-theme-bg-tertiary text-theme-text-secondary'
+                    }`}>{f.severity}</span>
+                    <span className="text-[11px] text-theme-text-secondary">{f.type}</span>
+                  </div>
+                  <p className="text-sm text-theme-text-primary mt-1">{f.description}</p>
+                  {f.suggestedAction && (
+                    <p className="text-xs text-theme-text-secondary mt-1">Suggested: {f.suggestedAction}</p>
+                  )}
                 </div>
               ))}
             </CardBody>

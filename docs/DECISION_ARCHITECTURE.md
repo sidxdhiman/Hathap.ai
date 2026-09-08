@@ -712,3 +712,203 @@ npm run build          # TypeScript compiles
 - Decisions UI (list + detail) with progress, evidence, and claim views.
 - 16 new tests (`test:research` 11 + `test:security` 5), full suite green,
   tsc/build green. Docs updated (this section).
+
+---
+
+# Phase 4 — Verification, Red Team & Evidence Graph
+
+Adds a **verification and adversarial-stress layer** that runs *after* the
+debate produces a **candidate verdict**. The system now challenges its own
+conclusions and makes it transparent *which evidence supports, contradicts, or
+fails to support* each claim:
+
+```
+                  Decision (draft)
+                         │ startDecision({ researchQueries })
+              ┌──────────┴───────────┐
+              ▼                      ▼
+         research (×N, parallel)    (debate waits)
+              └──────────┬──────────┘
+                         ▼
+                    debate (candidate verdict + claims)
+                         │ debateHandler seeds evidence graph
+              ┌──────────┴──────────┐
+              ▼                      ▼
+         verify_claim (×K)       red_team
+              │                      │
+              └──────────┬───────────┘
+                         ▼
+                  reconciliation (final verdict)
+                         │
+                    needsMoreResearch?  (persisted, NO auto-research recursion)
+```
+
+## Architecture principles
+
+- **Verification is evidence-based and deterministic.** `verify_claim` does
+  NOT ask an LLM "is this true?". It reads the explicit
+  `EvidenceRelationship`s and produces an auditable `VerificationResult`
+  (`supported` | `contradicted` | `unsupported` | `inconclusive`) with a
+  human-readable rationale.
+- **`supports`, `contradicts`, and `related` are distinct.** The invariant
+  `NOT(supports) ≠ contradicts` is enforced in both the service logic and the
+  tests. Lack of support (→ `unsupported`/`inconclusive`) is never conflated
+  with contradiction.
+- **Red team is genuinely adversarial but deterministic.** It actively hunts
+  invalid assumptions, claims with contradicting evidence, missing evidence,
+  orphaned evidence, and unsupported inferences — as structured, auditable
+  findings linked to claim/evidence IDs.
+- **Candidate verdict ≠ final verdict.** The debate output is persisted as the
+  *candidate*; reconciliation merges verification + red-team findings into the
+  **final** recommendation and gives the Decision its `confidence`. The audit
+  trail (candidate + final) is never destroyed.
+- **No infinite loops.** If reconciliation determines more research is needed,
+  it persists `needsMoreResearch: true` + `researchQuestions[]` — it does NOT
+  auto-reschedule research tasks.
+- **Untrusted content can never escalate.** Evidence/claims are read-only
+  inputs to these stages; handlers never modify permissions, prompts, API keys,
+  or trigger external actions.
+- **Reuses the Phase 2 engine.** verify/red_team/reconciliation are just more
+  task types flowing through the existing scheduler/executor/worker — retries,
+  leases, idempotency, usage, and recovery all come for free.
+
+## New entities
+
+### EvidenceRelationship (`models/EvidenceRelationship.ts`)
+Explicit `{ decisionId, claimId, evidenceId }` compound-indexed (unique)
+records of relationship type `supports` | `contradicts` | `related`, with
+`source` (`research` | `agent` | `verification`), optional `strength`,
+`rationale`. Upserts are idempotent.
+
+### VerificationResult (`models/VerificationResult.ts`)
+One result per `(claimId, taskId)` (unique). Fields: `status`, the classified
+`supportingEvidenceIds`/`contradictingEvidenceIds`/`relatedEvidenceIds`,
+`rationale`, `confidence`, `mode` (`evidence` | `llm` | `hybrid` — only
+`evidence` is implemented in this phase).
+
+### RedTeamFinding (`models/RedTeamFinding.ts`)
+Structured adversarial findings: `severity` (`critical|high|medium|low`),
+`type` (`invalid_assumption` | `contradictory_evidence` | `missing_evidence` |
+`logic_gap` | `risk` | `other`), `description`, `relatedClaimIds`,
+`relatedEvidenceIds`, `suggestedAction`.
+
+### ReconciliationResult (`models/ReconciliationResult.ts`)
+The merged final verdict: `recommendation`, `survivingClaimIds`,
+`rejectedClaimIds`, `uncertainClaimIds`, `unresolvedConflictIds`,
+`redTeamFindingIds`, `needsMoreResearch`, `researchQuestions`, `rationale`.
+Upserted per `(decisionId, taskId)`.
+
+## New services (`decision/`)
+
+- **`evidenceGraphService.ts`** — `upsertRelationship`, `getRelationshipsForClaim/
+  Evidence/Decision`, `deleteRelationshipsForDecision`, and
+  `seedFromExistingClaims` which bridges the coarse Phase 3
+  `claim.supportingEvidenceIds / contradictingEvidenceIds / evidenceIds` into
+  explicit `supports` / `contradicts` / `related` records.
+- **`verificationService.ts`** — deterministic `verifyClaim`: groups the
+  claim's linked evidence by relationship, plus any additionally supplied IDs
+  (→ `related`), then classifies:
+  - any `contradicts` → **contradicted**
+  - otherwise any `supports` → **supported**
+  - otherwise any `related` (or evidence was provided) → **inconclusive**
+  - otherwise → **unsupported**
+  Persists via `findOneAndUpdate(..., { upsert })` on `(claimId, taskId)` =
+  idempotent; retries update the same record.
+- **`redTeamService.ts`** — `runRedTeamAnalysis` over the candidate's claims +
+  evidence producing the structured findings above (5 deterministic analyses).
+- **`reconciliationService.ts`** — `runReconciliation` categorizes claims by
+  their verification status, collects red-team findings, and flags
+  `needsMoreResearch` when claims were contradicted or high/critical findings
+  exist; builds a rationale string; upserts the `ReconciliationResult`.
+
+## New handlers (`tasks/handlers/`)
+
+- `verifyClaimHandler` — validates input + ownership of claim/evidence, runs
+  `verificationService.verifyClaim`, returns the result summary (`VerificationResult`
+  persisted).
+- `redTeamHandler` — validates input, runs `redTeamService.runRedTeamAnalysis`,
+  returns severity counts + finding summaries (`RedTeamFinding`s persisted).
+- `reconciliationHandler` — validates input, runs
+  `reconciliationService.runReconciliation`, returns the merged final verdict
+  (`ReconciliationResult` persisted).
+
+## Wiring (`debateHandler`)
+
+After the debate produces a candidate verdict and persists claims, the
+`debateHandler` **seeds the evidence graph** (`seedFromExistingClaims`) and
+schedules the downstream graph as real persisted Task documents:
+
+1. `verify_claim` tasks — one per deterministically **selected** claim (fact >
+   assumption > recommendation > inference, with evidence-backed claims
+   weighted higher; capped at 8), each with `claimId` + `evidenceIds`, dependent
+   on the debate task.
+2. `red_team` task — candidate recommendation + selected claim IDs + all
+   evidence IDs + assumptions, dependent on the debate task (runs in parallel
+   with verification).
+3. `reconciliation` task — depends on **all** verify_claim tasks + the red_team
+   task; inputs include `verifyClaimTaskIds` and `redTeamTaskId`.
+
+The Phase 2 scheduler resolves these dependencies naturally; the Decision
+transitions through `verifying` (`phaseForType`/`inferPhase` updated) until the
+reconciliation task settles and the worker finalizes the execution.
+
+## API additions (all auth + ownership-checked via 404)
+
+- `GET /api/decisions/:id/verifications`
+- `GET /api/decisions/:id/verifications/:claimId`
+- `GET /api/decisions/:id/red-team`
+- `GET /api/decisions/:id/reconciliation`
+- `GET /api/decisions/:id/evidence-graph`
+- `GET /api/decisions/:id/claims/:claimId/evidence`
+- `GET /api/decisions/:id/claims/:claimId` extended with explicit
+  `relationships.supports/contradicts/related` + `verification`.
+- `GET /api/decisions/:id/snapshot` extended with `evidenceRelationships`,
+  `verifications`, `redTeamFindings`, `reconciliation`.
+- `DELETE /api/decisions/:id` also cleans up all new collections.
+
+## Frontend
+
+- Types: `EvidenceRelationship`, `VerificationResult`, `RedTeamFinding`,
+  `ReconciliationResult`, `Phase4DownstreamRefs`; `DecisionSnapshot` extended.
+- `AppContext`: `getVerifications`, `getRedTeamFindings`, `getReconciliation`,
+  `getEvidenceGraph`.
+- `DecisionDetailPage`: Reconciliation panel (surviving/rejected/uncertain counts,
+  needs-more-research flags), Verification panel (status badges + evidence
+  classification), and Red-Team Findings panel (severity badges + type).
+
+## Not implemented (Phase 4)
+
+- LLM/hybrid verification and LLM-driven red-team attacks (the deterministic
+  pipeline is intentionally first; `mode` field is future-proofed).
+- Auto-rescheduling research from `needsMoreResearch` (persisted on purpose).
+- Graph database / giant graph visualization (relational UI only).
+
+## Tests (`server/src/tests/`)
+
+| File | Scope | DB |
+| --- | --- | --- |
+| `evidenceGraph.test.ts` | upsert/idempotency/update, categorization, NOT(supports)≠contradicts, coarse seeding bridge, decision-wide query, delete | `hathap_test` (shared) |
+| `verificationRedTeam.test.ts` | supported/contradicted/related-only-not-contradicted, idempotent upsert, decision-wide query, red-team finding generation, find persistence, no side effects on untrusted config | `hathap_test` (shared) |
+| `reconciliation.test.ts` | reject-keeps semantics, needsMoreResearch flagging, red-team integration, persistence + single upsert | `hathap_test` (shared) |
+| `phase4Execution.test.ts` | **Full persisted execution graph** with real task IDs: debate → verify×K + red_team (parallel) → reconciliation completes; contradicted claim rejected not merely unsupported; needsMoreResearch flag; no auto-research recursion; terminal reconciliation | `hathap_test_p4exec` |
+
+```bash
+cd server
+npm test        # full suite (97 tests)
+npm run build   # TypeScript compiles
+```
+
+## Phase 4 deliverable summary
+
+- Explicit evidence graph (`supports`/`contradicts`/`related`) seeded from
+  Phase 3 coarse attribution.
+- Deterministic, evidence-based verification with auditable results.
+- Structured, auditable red-team findings.
+- Reconciliation producing a final verdict distinct from the candidate, with
+  `needsMoreResearch` persisted instead of recursive research.
+- Downstream task graph (verify ×K ∥ red_team → reconciliation) driven by the
+  existing Phase 2 engine with real persisted task IDs.
+- Ownership-scoped API endpoints, extended snapshot/delete, client UI.
+- 25 new tests (evidence graph 8, verification+red team 8, reconciliation 5,
+  full execution graph 4); full suite 97 green; tsc/build green.
+- Docs updated (this section).
