@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   GitMerge,
+  Workflow,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
@@ -25,7 +26,7 @@ import {
   getStatusColor,
   getStatusText,
 } from '../utils/helpers';
-import { DecisionSnapshot, ResearchTaskSummary, ResearchQueryInput } from '../types';
+import { DecisionSnapshot, ResearchTaskSummary, ResearchQueryInput, DecisionPlan, PlanningMode } from '../types';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -41,11 +42,16 @@ export const DecisionDetailPage: React.FC = () => {
     cancelDecision,
     getDecisionSnapshot,
     getDecisionResearch,
+    getPlans,
+    runPlan,
     showToast,
   } = useApp();
 
   const [snapshot, setSnapshot] = useState<DecisionSnapshot | null>(null);
   const [research, setResearch] = useState<ResearchTaskSummary[]>([]);
+  const [plans, setPlans] = useState<DecisionPlan[]>([]);
+  const [planningMode, setPlanningMode] = useState<PlanningMode>('fixed');
+  const [plannerRunning, setPlannerRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [researchInput, setResearchInput] = useState('');
@@ -56,19 +62,21 @@ export const DecisionDetailPage: React.FC = () => {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [snap, res] = await Promise.all([
+      const [snap, res, planList] = await Promise.all([
         getDecisionSnapshot(id),
         getDecisionResearch(id),
+        getPlans(id),
       ]);
       setSnapshot(snap);
       setResearch(res);
+      setPlans(planList);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load decision');
     } finally {
       setLoading(false);
     }
-  }, [id, getDecisionSnapshot, getDecisionResearch]);
+  }, [id, getDecisionSnapshot, getDecisionResearch, getPlans]);
 
   useEffect(() => {
     setLoading(true);
@@ -98,11 +106,25 @@ export const DecisionDetailPage: React.FC = () => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((q) => ({ query: q }));
-      await startDecision(id, queries);
+      await startDecision(id, queries, planningMode);
       showToast('success', 'Decision execution started');
       await load();
     } catch (err: any) {
       showToast('error', err.message || 'Failed to start decision');
+    }
+  };
+
+  const handleRunPlanner = async () => {
+    if (!id) return;
+    setPlannerRunning(true);
+    try {
+      const res = await runPlan(id);
+      showToast('success', `Planner ran (${res.source || 'plan'} generated)`);
+      await load();
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to run planner');
+    } finally {
+      setPlannerRunning(false);
     }
   };
 
@@ -132,6 +154,7 @@ export const DecisionDetailPage: React.FC = () => {
   const status = snapshot?.status || decision?.status || 'draft';
   const isActive = status === 'debating';
   const latestExec = snapshot?.executions?.[0];
+  const latestPlan = plans[0];
   const progress = snapshot?.progress ?? {
     progress: latestExec?.progress ?? 0,
     currentPhase: latestExec?.currentPhase,
@@ -271,6 +294,149 @@ export const DecisionDetailPage: React.FC = () => {
                 placeholder={"example:\nmarket size for decentralized AI\nregulatory landscape 2025"}
                 className="w-full h-28 p-3 rounded bg-theme-bg-secondary border border-theme-border text-theme-text-primary text-sm placeholder-theme-text-secondary resize-none focus:outline-sky-500"
               />
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-theme-text-secondary">Planning mode:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPlanningMode('fixed')}
+                    className={`text-xs px-2.5 py-1 rounded border ${
+                      planningMode === 'fixed'
+                        ? 'border-sky-500 bg-sky-500/10 text-sky-300'
+                        : 'border-theme-border text-theme-text-secondary hover:bg-theme-bg-secondary'
+                    }`}
+                  >
+                    Standard (fixed)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlanningMode('intelligent')}
+                    className={`text-xs px-2.5 py-1 rounded border ${
+                      planningMode === 'intelligent'
+                        ? 'border-sky-500 bg-sky-500/10 text-sky-300'
+                        : 'border-theme-border text-theme-text-secondary hover:bg-theme-bg-secondary'
+                    }`}
+                  >
+                    Intelligent
+                  </button>
+                  <span className="text-[11px] text-theme-text-secondary hidden sm:inline">
+                    Intelligent lets the planner tailor the task graph before execution.
+                  </span>
+                </div>
+                <Button onClick={handleRunPlanner} size="sm" variant="secondary" disabled={plannerRunning}>
+                  <Workflow size={14} /> {plannerRunning ? 'Planning…' : 'Preview plan'}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Phase 5: Plan (intelligent decision planner) */}
+        {plans.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <span className="flex items-center gap-2 text-sm font-medium text-theme-text-primary">
+                <Workflow size={16} /> Decision Plan
+                {latestPlan && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusColor(latestPlan.status)} ${getStatusText(latestPlan.status)}`}>
+                    {latestPlan.status}
+                  </span>
+                )}
+              </span>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              {latestPlan ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-theme-text-secondary">
+                    <span>
+                      source: <span className="font-mono text-theme-text-primary">{latestPlan.source}</span>
+                    </span>
+                    {latestPlan.plannerModel && <span>planner: {latestPlan.plannerModel}</span>}
+                    <span>mode: {latestPlan.planningMode}</span>
+                    <span>plan v{latestPlan.planVersion}</span>
+                    <span>{formatDateTime(latestPlan.createdAt)}</span>
+                    {latestPlan.estimates && (
+                      <span>
+                        est. {latestPlan.estimates.estimatedTasks} tasks ·{' '}
+                        {latestPlan.estimates.estimatedResearchTasks} research ·{' '}
+                        {latestPlan.estimates.estimatedLLMTasks} llm
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {latestPlan.termination.requiresVerification ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-green-500/20 text-green-400">verification on</span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-theme-bg-tertiary text-theme-text-secondary">verification off</span>
+                    )}
+                    {latestPlan.termination.requiresRedTeam ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-green-500/20 text-green-400">red team on</span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-theme-bg-tertiary text-theme-text-secondary">red team off</span>
+                    )}
+                    {latestPlan.termination.requiresReconciliation ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-green-500/20 text-green-400">reconciliation on</span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-theme-bg-tertiary text-theme-text-secondary">reconciliation off</span>
+                    )}
+                  </div>
+
+                  {latestPlan.rationale?.summary && (
+                    <p className="text-sm text-theme-text-secondary">{latestPlan.rationale.summary}</p>
+                  )}
+
+                  {latestPlan.tasks.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide text-theme-text-secondary">
+                        Task graph ({latestPlan.tasks.length})
+                      </div>
+                      {latestPlan.tasks.map((t, i) => (
+                        <div key={`${t.tempId}-${i}`} className="p-3 rounded bg-theme-bg-secondary border border-theme-border">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                              t.type === 'research' ? 'bg-sky-500/20 text-sky-300' :
+                              t.type === 'debate' ? 'bg-violet-500/20 text-violet-300' :
+                              t.type === 'verify_claim' ? 'bg-green-500/20 text-green-300' :
+                              t.type === 'red_team' ? 'bg-red-500/20 text-red-300' :
+                              'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {t.type}
+                            </span>
+                            <span className="font-mono text-[10px] text-theme-text-secondary">{t.tempId}</span>
+                            {typeof t.priority === 'number' && (
+                              <span className="text-[10px] text-theme-text-secondary">priority {t.priority}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-theme-text-primary mt-1">{t.purpose}</p>
+                          {t.dependsOn.length > 0 && (
+                            <div className="text-[10px] text-theme-text-secondary mt-1">
+                              after: <span className="font-mono">{t.dependsOn.join(', ')}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {latestPlan.rationale && (latestPlan.rationale.research || latestPlan.rationale.verification) && (
+                    <div className="text-[11px] text-theme-text-secondary space-y-1">
+                      {latestPlan.rationale.research && <div>Research: {latestPlan.rationale.research}</div>}
+                      {latestPlan.rationale.debate && <div>Debate: {latestPlan.rationale.debate}</div>}
+                      {latestPlan.rationale.verification && <div>Verification: {latestPlan.rationale.verification}</div>}
+                      {latestPlan.rationale.redTeam && <div>Red team: {latestPlan.rationale.redTeam}</div>}
+                    </div>
+                  )}
+
+                  {(latestPlan.validation?.errors?.length || 0) > 0 && (
+                    <div className="text-xs text-red-400 space-y-1">
+                      {latestPlan.validation!.errors!.slice(0, 5).map((e, i) => <div key={i}>• {e}</div>)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-theme-text-secondary">No plan has been generated yet.</p>
+              )}
             </CardBody>
           </Card>
         )}

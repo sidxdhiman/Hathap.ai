@@ -129,6 +129,9 @@ export type TaskType =
   | 'debate'
   | 'challenge'
   | 'verification'
+  | 'verify_claim'
+  | 'red_team'
+  | 'reconciliation'
   | 'synthesis'
   | 'human_review';
 
@@ -225,6 +228,11 @@ export interface Execution {
   tokenUsage: TokenUsage;
   estimatedCost: number;
   actualCost: number;
+  planningStatus?: 'pending' | 'planning' | 'planned' | 'failed';
+  planId?: string;
+  planningMode?: PlanningMode;
+  planningStartedAt?: Date;
+  planningCompletedAt?: Date;
   metadata?: Record<string, unknown>;
 }
 
@@ -443,4 +451,67 @@ export interface DecisionSnapshot {
   verifications?: VerificationResult[];
   redTeamFindings?: RedTeamFinding[];
   reconciliation?: ReconciliationResult | null;
+}
+
+// ---- Phase 5: Intelligent decision planning ----
+
+export type PlanningMode = 'fixed' | 'intelligent';
+export type PlanSource = 'intelligent' | 'fallback' | 'baseline';
+export type PlanStatus = 'proposed' | 'validated' | 'rejected' | 'compiled' | 'failed';
+export type PlannedTaskType =
+  | 'research'
+  | 'debate'
+  | 'verify_claim'
+  | 'red_team'
+  | 'reconciliation';
+
+export interface PlannedTask {
+  tempId: string;
+  type: PlannedTaskType;
+  purpose: string;
+  input?: Record<string, unknown>;
+  dependsOn: string[];
+  priority?: number;
+  requirements?: string[];
+}
+
+export interface PlanTermination {
+  requiresVerification: boolean;
+  requiresRedTeam: boolean;
+  requiresReconciliation: boolean;
+}
+
+export interface PlanRationale {
+  summary: string;
+  research: string;
+  debate: string;
+  verification: string;
+  redTeam: string;
+}
+
+export interface PlanEstimates {
+  estimatedTasks: number;
+  estimatedResearchTasks: number;
+  estimatedLLMTasks: number;
+}
+
+export interface DecisionPlan {
+  id: string;
+  decisionId: string;
+  executionId: string;
+  version: string;
+  source: PlanSource;
+  planningMode: PlanningMode;
+  plannerModel?: string;
+  plannerVersion: string;
+  planVersion: number;
+  status: PlanStatus;
+  tasks: PlannedTask[];
+  termination: PlanTermination;
+  rationale?: PlanRationale;
+  estimates?: PlanEstimates;
+  validation?: { valid: boolean; errors: string[] };
+  failure?: { code: string; message: string; reason: string; createdAt: Date };
+  createdAt: Date;
+  compiledAt?: Date;
 }

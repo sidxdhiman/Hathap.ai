@@ -22,6 +22,11 @@ export interface IExecution extends Document {
   tokenUsage: TokenUsage;
   estimatedCost: number;
   actualCost: number;
+  planningStatus?: string;
+  planId?: string;
+  planningMode?: string;
+  planningStartedAt?: Date;
+  planningCompletedAt?: Date;
   metadata?: ExecutionMetadata;
   createdAt?: Date;
   updatedAt?: Date;
@@ -80,6 +85,11 @@ const ExecutionSchema: Schema = new Schema(
     tokenUsage: { type: TokenUsageSchema, default: () => ({}) },
     estimatedCost: { type: Number, default: 0 },
     actualCost: { type: Number, default: 0 },
+    planningStatus: { type: String, enum: ['pending', 'planning', 'planned', 'failed'], index: true },
+    planId: { type: Schema.Types.ObjectId, ref: 'DecisionPlan' },
+    planningMode: { type: String, enum: ['fixed', 'intelligent'] },
+    planningStartedAt: { type: Date },
+    planningCompletedAt: { type: Date },
     metadata: { type: Schema.Types.Mixed },
   },
   { timestamps: true }

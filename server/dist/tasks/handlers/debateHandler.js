@@ -37,6 +37,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.debateHandler = void 0;
+exports.selectClaimsForVerification = selectClaimsForVerification;
+exports.schedulePhase4DownstreamTasks = schedulePhase4DownstreamTasks;
 const researchService_1 = require("../../research/researchService");
 const claimPersistence_1 = require("../../decision/claimPersistence");
 const evidenceGraphService_1 = require("../../decision/evidenceGraphService");
@@ -89,17 +91,25 @@ async function selectClaimsForVerification(decisionId, maxClaims = 8) {
  *        │
  *   ┌────┴────┐
  *   ▼         ▼
- * Verify   Red Team
+ *   Verify   Red Team
  *   │         │
  *   └────┬────┘
  *        ▼
- * Reconciliation
+ *   Reconciliation
  *
  * All tasks are real persisted Task documents with real dependency IDs
  * controlled by the Phase 2 scheduler. Verification and Red Team run in
  * parallel; Reconciliation depends on all of them.
+ *
+ * Phase 5: when called from the intelligent planner path, the plan's
+ * termination flags decide which stages actually run. A simple decision may
+ * skip verification/red team and go straight to reconciliation, or stop at the
+ * debate entirely.
  */
-async function schedulePhase4DownstreamTasks(context, result, decision) {
+async function schedulePhase4DownstreamTasks(context, result, decision, options) {
+    const verify = options?.verify ?? true;
+    const redTeam = options?.redTeam ?? true;
+    const reconciliation = options?.reconciliation ?? true;
     const debateTaskId = context.taskId;
     const claims = await Claim_1.default.find({ decisionId: context.decisionId });
     const evidence = await Evidence_1.default.find({ decisionId: context.decisionId });
@@ -109,76 +119,88 @@ async function schedulePhase4DownstreamTasks(context, result, decision) {
     const candidateRecommendation = result?.verdict?.recommendation || 'Further analysis needed.';
     const selectedClaimIds = selectedClaims.map((c) => c.id);
     const verifyClaimTaskIds = [];
-    // 1. Verification tasks (one per selected claim, parallel).
-    for (const claim of selectedClaims) {
-        const vcTask = await Task_1.default.create({
+    // 1. Verification tasks (one per selected claim, parallel). Skipped when the
+    //    plan does not require verification.
+    if (verify) {
+        for (const claim of selectedClaims) {
+            const vcTask = await Task_1.default.create({
+                executionId: context.executionId,
+                type: 'verify_claim',
+                status: 'pending',
+                priority: 5,
+                input: {
+                    claimId: claim.id,
+                    claimStatement: claim.text,
+                    evidenceIds: (claim.evidenceIds || []).length > 0
+                        ? claim.evidenceIds
+                        : allEvidenceIds.slice(0, 3),
+                    decisionId: context.decisionId,
+                    executionId: context.executionId,
+                    verificationMode: 'evidence',
+                },
+                dependencies: [debateTaskId],
+                metadata: {
+                    description: `Verify claim: ${claim.text.slice(0, 80)}`,
+                    phase: 'verification',
+                    claimId: claim.id,
+                },
+            });
+            verifyClaimTaskIds.push(vcTask._id.toString());
+        }
+    }
+    // 2. Red-team task (parallel with verification). Only when the plan requires it.
+    let redTeamTaskId;
+    if (redTeam) {
+        const redTeamTask = await Task_1.default.create({
             executionId: context.executionId,
-            type: 'verify_claim',
+            type: 'red_team',
             status: 'pending',
             priority: 5,
             input: {
-                claimId: claim.id,
-                claimStatement: claim.text,
-                evidenceIds: (claim.evidenceIds || []).length > 0
-                    ? claim.evidenceIds
-                    : allEvidenceIds.slice(0, 3),
                 decisionId: context.decisionId,
-                executionId: context.executionId,
-                verificationMode: 'evidence',
+                candidateRecommendation,
+                claimIds: selectedClaimIds,
+                evidenceIds: allEvidenceIds,
+                assumptions: decision?.assumptions || [],
             },
             dependencies: [debateTaskId],
             metadata: {
-                description: `Verify claim: ${claim.text.slice(0, 80)}`,
-                phase: 'verification',
-                claimId: claim.id,
+                description: 'Adversarially analyze the candidate decision.',
+                phase: 'red_team',
+                candidateRecommendation,
             },
         });
-        verifyClaimTaskIds.push(vcTask._id.toString());
+        redTeamTaskId = redTeamTask._id.toString();
     }
-    // 2. Red-team task (parallel with verification).
-    const redTeamTask = await Task_1.default.create({
-        executionId: context.executionId,
-        type: 'red_team',
-        status: 'pending',
-        priority: 5,
-        input: {
-            decisionId: context.decisionId,
-            candidateRecommendation,
-            claimIds: selectedClaimIds,
-            evidenceIds: allEvidenceIds,
-            assumptions: decision?.assumptions || [],
-        },
-        dependencies: [debateTaskId],
-        metadata: {
-            description: 'Adversarially analyze the candidate decision.',
-            phase: 'red_team',
-            candidateRecommendation,
-        },
-    });
-    // 3. Reconciliation depends on ALL verify tasks + the red-team task.
-    const reconciliationTask = await Task_1.default.create({
-        executionId: context.executionId,
-        type: 'reconciliation',
-        status: 'pending',
-        priority: 1,
-        input: {
-            decisionId: context.decisionId,
-            candidateRecommendation,
-            claimIds: claimIdStrs,
-            verifyClaimTaskIds,
-            redTeamTaskId: redTeamTask._id.toString(),
-        },
-        dependencies: [...verifyClaimTaskIds, redTeamTask._id.toString()],
-        metadata: {
-            description: 'Merge verification and red-team results into a final decision.',
-            phase: 'reconciliation',
-        },
-    });
+    const downstreamDeps = [...verifyClaimTaskIds, ...(redTeamTaskId ? [redTeamTaskId] : [])];
+    // 3. Reconciliation depends on the debate plus any downstream tasks that ran.
+    let reconciliationTaskId;
+    if (reconciliation) {
+        const reconciliationTask = await Task_1.default.create({
+            executionId: context.executionId,
+            type: 'reconciliation',
+            status: 'pending',
+            priority: 1,
+            input: {
+                decisionId: context.decisionId,
+                candidateRecommendation,
+                claimIds: claimIdStrs,
+                verifyClaimTaskIds,
+                redTeamTaskId,
+            },
+            dependencies: downstreamDeps.length > 0 ? downstreamDeps : [debateTaskId],
+            metadata: {
+                description: 'Merge verification and red-team results into a final decision.',
+                phase: 'reconciliation',
+            },
+        });
+        reconciliationTaskId = reconciliationTask._id.toString();
+    }
     return {
         verificationTaskIds: verifyClaimTaskIds,
-        redTeamTaskId: redTeamTask._id.toString(),
-        reconciliationTaskId: reconciliationTask._id.toString(),
-        selectedClaimCount: selectedClaims.length,
+        redTeamTaskId,
+        reconciliationTaskId,
+        selectedClaimCount: verify ? selectedClaims.length : 0,
     };
 }
 /**
@@ -203,6 +225,8 @@ exports.debateHandler = {
     async execute(task, context) {
         const { debateEngine } = await Promise.resolve().then(() => __importStar(require('../../engine/debateEngine')));
         const Decision = (await Promise.resolve().then(() => __importStar(require('../../models/Decision')))).default;
+        const Execution = (await Promise.resolve().then(() => __importStar(require('../../models/Execution')))).default;
+        const DecisionPlan = (await Promise.resolve().then(() => __importStar(require('../../models/DecisionPlan')))).default;
         const decision = await Decision.findById(context.decisionId);
         if (!decision) {
             throw new Error('Decision not found for debate task.');
@@ -227,8 +251,12 @@ exports.debateHandler = {
         });
         // ---- Phase 4: Seed the explicit evidence graph from coarse attribution ----
         await evidenceGraphService_1.evidenceGraphService.seedFromExistingClaims(context.decisionId, context.executionId);
-        // ---- Phase 4: Schedule downstream verification, red team, reconciliation ----
-        const phase4TaskIds = await schedulePhase4DownstreamTasks(context, result, decision);
+        // ---- Phase 4/5: Schedule downstream verification / red team / reconciliation ----
+        // Phase 5 intelligent plans gate these stages via the plan's termination
+        // flags. Legacy (fixed-mode) executions without a plan get the full Phase 4
+        // graph, exactly as before.
+        const termination = await resolvePlanTermination(context.executionId);
+        const phase4TaskIds = await schedulePhase4DownstreamTasks(context, result, decision, termination);
         return {
             output: {
                 strategy,
@@ -242,3 +270,29 @@ exports.debateHandler = {
         };
     },
 };
+/**
+ * Resolve the termination flags that control the Phase 4 downstream graph.
+ * Fixed-mode executions (no plan) keep the legacy behavior (all stages on).
+ * Intelligent-mode executions honor the plan's termination flags.
+ */
+async function resolvePlanTermination(executionId) {
+    try {
+        const Execution = (await Promise.resolve().then(() => __importStar(require('../../models/Execution')))).default;
+        const DecisionPlan = (await Promise.resolve().then(() => __importStar(require('../../models/DecisionPlan')))).default;
+        const execution = await Execution.findById(executionId);
+        const planId = execution?.planId;
+        if (!planId)
+            return { verify: true, redTeam: true, reconciliation: true };
+        const plan = await DecisionPlan.findById(planId);
+        if (!plan?.termination)
+            return { verify: true, redTeam: true, reconciliation: true };
+        return {
+            verify: plan.termination.requiresVerification !== false,
+            redTeam: plan.termination.requiresRedTeam !== false,
+            reconciliation: plan.termination.requiresReconciliation !== false,
+        };
+    }
+    catch {
+        return { verify: true, redTeam: true, reconciliation: true };
+    }
+}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode } from '../types';
 
 export type Toast = {
   id: string;
@@ -32,7 +32,7 @@ interface AppContextType {
   getDecision: (id: string) => Decision | undefined;
   fetchDecision: (id: string) => Promise<Decision>;
   createDecision: (input: { title: string; objective: string; context?: string; configuration?: any; participants?: any[] }) => Promise<Decision>;
-  startDecision: (id: string, researchQueries?: any[]) => Promise<any>;
+  startDecision: (id: string, researchQueries?: any[], planningMode?: PlanningMode) => Promise<any>;
   pauseDecision: (id: string) => Promise<void>;
   resumeDecision: (id: string) => Promise<void>;
   cancelDecision: (id: string) => Promise<void>;
@@ -42,6 +42,8 @@ interface AppContextType {
   getRedTeamFindings: (id: string) => Promise<RedTeamFinding[]>;
   getReconciliation: (id: string) => Promise<ReconciliationResult | null>;
   getEvidenceGraph: (id: string) => Promise<EvidenceRelationship[]>;
+  getPlans: (id: string) => Promise<DecisionPlan[]>;
+  runPlan: (id: string) => Promise<any>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -264,12 +266,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved;
   };
 
-  const startDecision = async (id: string, researchQueries: any[] = []): Promise<any> => {
+  const startDecision = async (id: string, researchQueries: any[] = [], planningMode: PlanningMode = 'fixed'): Promise<any> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/start`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ researchQueries }),
+      body: JSON.stringify({ researchQueries, planningMode }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to start decision');
@@ -342,6 +344,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Array.isArray(data) ? data : [];
   };
 
+  const getPlans = async (id: string): Promise<DecisionPlan[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/plans`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch plans');
+    return Array.isArray(data)
+      ? data.map((p: any) => ({ ...p, id: p._id || p.id }))
+      : [];
+  };
+
+  const runPlan = async (id: string): Promise<any> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/plan`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to run planner');
+    refreshDecisions();
+    return data;
+  };
+
   const cancelDecision = async (id: string): Promise<void> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
@@ -387,6 +408,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getRedTeamFindings,
         getReconciliation,
         getEvidenceGraph,
+        getPlans,
+        runPlan,
       }}
     >
       {children}

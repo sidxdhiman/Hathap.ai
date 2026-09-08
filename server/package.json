@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "node -r ts-node/register --test src/tests/decisionCore.test.ts src/tests/orchestratorLifecycle.test.ts src/tests/scheduler.test.ts src/tests/executionEngine.test.ts src/tests/researchEngine.test.ts src/tests/researchSecurity.test.ts src/tests/evidenceGraph.test.ts src/tests/verificationRedTeam.test.ts src/tests/reconciliation.test.ts src/tests/phase4Execution.test.ts",
+    "test": "node --test-concurrency=1 -r ts-node/register --test src/tests/decisionCore.test.ts src/tests/orchestratorLifecycle.test.ts src/tests/scheduler.test.ts src/tests/executionEngine.test.ts src/tests/researchEngine.test.ts src/tests/researchSecurity.test.ts src/tests/evidenceGraph.test.ts src/tests/verificationRedTeam.test.ts src/tests/reconciliation.test.ts src/tests/phase4Execution.test.ts src/tests/planningValidator.test.ts src/tests/planningPlanner.test.ts src/tests/planningExecution.test.ts",
     "test:core": "node -r ts-node/register --test src/tests/decisionCore.test.ts",
     "test:scheduler": "node -r ts-node/register --test src/tests/scheduler.test.ts",
     "test:engine": "node -r ts-node/register --test src/tests/executionEngine.test.ts",
