@@ -8,6 +8,7 @@ import {
   Clock,
   CheckCircle,
   Pause,
+  Users,
 } from 'lucide-react';
 import logo from '../../assets/logo-1.png';
 import { Header } from '../components/layout/Header';

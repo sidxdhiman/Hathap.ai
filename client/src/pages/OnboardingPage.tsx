@@ -19,6 +19,7 @@ import { Select } from '../components/ui/Input';
 import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
 import { ModelPicker } from '../components/ui/ModelPicker';
+import { generateId } from '../utils/helpers';
 
 const PROVIDER_PRESETS = [
   {
@@ -153,7 +154,12 @@ export const OnboardingPage: React.FC = () => {
         objective: courtroomForm.objective,
         mode: courtroomForm.mode,
         description: 'Created during onboarding',
-        participants: selectedAgents.map((agentId) => ({ agentId, type: 'agent' as const })),
+        participants: selectedAgents.map((agentId) => ({
+          id: generateId('part'),
+          courtroomId: generateId('courtroom'),
+          type: 'agent' as const,
+          agentId,
+        })),
         status: 'draft',
         createdAt: new Date(),
         updatedAt: new Date(),
