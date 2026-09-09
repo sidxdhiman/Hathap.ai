@@ -29,7 +29,11 @@ export type EventType =
   | 'planning.failed'
   | 'plan.validated'
   | 'plan.rejected'
-  | 'plan.compiled';
+  | 'plan.compiled'
+  | 'routing.started'
+  | 'routing.completed'
+  | 'routing.failed'
+  | 'routing.fallback';
 
 /**
  * Central event system for the execution engine.

@@ -8,6 +8,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "🎯",
     logo: "https://cdn-icons-png.flaticon.com/512/3602/3602153.png",
     colorTag: "amber",
+    capabilities: ["product_strategy", "risk_analysis", "research"],
   },
   {
     name: "Scrum Master",
@@ -16,6 +17,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "👨‍💼",
     logo: "https://cdn-icons-png.flaticon.com/512/3556/3556091.png",
     colorTag: "emerald",
+    capabilities: ["reasoning"],
   },
   {
     name: "Business Analyst",
@@ -24,6 +26,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "📊",
     logo: "https://cdn-icons-png.flaticon.com/512/3050/3050159.png",
     colorTag: "indigo",
+    capabilities: ["legal_analysis", "research", "product_strategy"],
   },
   {
     name: "Technical Architect",
@@ -32,6 +35,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "🏗️",
     logo: "https://cdn-icons-png.flaticon.com/512/3588/3588560.png",
     colorTag: "pink",
+    capabilities: ["technical_analysis", "security_review"],
   },
   {
     name: "Backend Engineer",
@@ -40,6 +44,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "⚙️",
     logo: "https://cdn-icons-png.flaticon.com/512/1995/1995488.png",
     colorTag: "red",
+    capabilities: ["technical_analysis", "reasoning"],
   },
   {
     name: "Frontend Engineer",
@@ -48,6 +53,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "🎨",
     logo: "https://cdn-icons-png.flaticon.com/512/2306/2306150.png",
     colorTag: "blue",
+    capabilities: ["technical_analysis"],
   },
   {
     name: "QA Lead",
@@ -56,6 +62,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "✅",
     logo: "https://cdn-icons-png.flaticon.com/512/2832/2832530.png",
     colorTag: "purple",
+    capabilities: ["fact_checking", "risk_analysis"],
   },
   {
     name: "Chief Financial Officer (CFO)",
@@ -64,6 +71,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "💰",
     logo: "https://cdn-icons-png.flaticon.com/512/2913/2913113.png",
     colorTag: "orange",
+    capabilities: ["financial_analysis", "risk_analysis"],
   },
   {
     name: "Chief Business Officer (CBO)",
@@ -72,6 +80,7 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "🚀",
     logo: "https://cdn-icons-png.flaticon.com/512/1995/1995446.png",
     colorTag: "violet",
+    capabilities: ["product_strategy", "financial_analysis", "research"],
   },
   {
     name: "Project Manager",
@@ -80,5 +89,6 @@ export const defaultAgents: Partial<IAgent>[] = [
     avatar: "📋",
     logo: "https://cdn-icons-png.flaticon.com/512/3050/3050154.png",
     colorTag: "cyan",
+    capabilities: ["risk_analysis", "reasoning", "fact_checking"],
   },
 ];

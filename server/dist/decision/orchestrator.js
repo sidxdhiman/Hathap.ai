@@ -122,6 +122,7 @@ class DecisionOrchestrator {
         decision.currentPhase = 'debating';
         await decision.save();
         const planningMode = opts.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
+        const routingMode = opts.routingMode === 'manual' ? 'manual' : 'auto';
         // In intelligent mode the execution starts `pending` while the planner
         // runs so the Worker never finalizes an empty execution; it is queued once
         // the plan has been compiled into real tasks.
@@ -138,6 +139,12 @@ class DecisionOrchestrator {
             pendingTasks: 0,
             planningStatus: planningMode === 'intelligent' ? 'planning' : undefined,
             planningMode,
+            metadata: {
+                routing: {
+                    mode: routingMode,
+                    modelId: opts.routingModelId,
+                },
+            },
         });
         await execution.save();
         eventBus_1.executionEventBus.emit({

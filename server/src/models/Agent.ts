@@ -23,7 +23,7 @@ const AgentSchema: Schema = new Schema({
   avatar: String,
   colorTag: String,
   logo: String,
-  capabilities: [{ type: String, enum: ['financial_analysis','technical_analysis','research','security_review','legal_analysis','product_strategy','risk_analysis','fact_checking'] }],
+  capabilities: [{ type: String, enum: ['financial_analysis','technical_analysis','research','security_review','legal_analysis','product_strategy','risk_analysis','fact_checking','reasoning'] }],
   tools: [{ type: String }],
   constraints: [{ type: String }],
   userId: { type: Schema.Types.ObjectId, ref: 'User' },

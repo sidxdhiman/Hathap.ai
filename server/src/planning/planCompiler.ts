@@ -114,6 +114,7 @@ export class PlanCompiler {
           planned: true,
           plannedTempId: t.tempId,
           planVersion: plan.version,
+          requirements: t.requirements || [],
         },
       });
 

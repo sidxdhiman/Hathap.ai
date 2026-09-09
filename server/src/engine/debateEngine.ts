@@ -23,6 +23,8 @@ export interface DecisionDebateOptions {
   onUsage?: LLMUsageCallback;
   /** Bounded, provenance-tagged research evidence handed to the agents. */
   evidence?: EvidenceView[];
+  /** Phase 6 routing override: agent + model the router selected for this task. */
+  routing?: { agentId?: string; modelId?: string };
 }
 
 class DebateEngine {
@@ -179,6 +181,22 @@ class DebateEngine {
       ? await Agent.find({ _id: { $in: participantIds }, userId })
       : [];
 
+    // Phase 6 — the router selected the agent that should lead this debate. If
+    // that agent is not among the decision's participants, include it so the
+    // routed choice actually participates (decision path only; courtrooms are
+    // untouched).
+    if (options.routing?.agentId && participantIds.length > 0) {
+      const routedPresent = agents.some(
+        (a) => a._id.toString() === options.routing?.agentId || a.id === options.routing?.agentId
+      );
+      if (!routedPresent) {
+        const routedAgent = await Agent.findOne({ _id: options.routing.agentId, userId });
+        if (routedAgent) {
+          agents.push(routedAgent);
+        }
+      }
+    }
+
     if (agents.length === 0) {
       throw new Error('No valid agent participants could be resolved for this decision.');
     }
@@ -202,6 +220,8 @@ class DebateEngine {
       objective,
       onUsage: options.onUsage,
       evidence: options.evidence,
+      routingAgentId: options.routing?.agentId,
+      routingModelId: options.routing?.modelId,
     };
 
     const strategy = this.getStrategy(strategyKey);

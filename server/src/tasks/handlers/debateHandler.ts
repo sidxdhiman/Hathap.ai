@@ -259,6 +259,12 @@ export const debateHandler: TaskHandler = {
       objective: decision.objective,
       onUsage: context.onUsage,
       evidence,
+      routing: context.routing
+        ? {
+            agentId: context.routing.agentId,
+            modelId: context.routing.modelId,
+          }
+        : undefined,
     });
 
     const claimIds = await persistClaimsFromMessages({

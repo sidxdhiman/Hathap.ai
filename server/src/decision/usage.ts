@@ -10,7 +10,12 @@ export interface CostRecord {
   latencyMs?: number;
 }
 
-const ESTIMATED_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
+export interface ModelPricing {
+  input: number;
+  output: number;
+}
+
+const ESTIMATED_COST_PER_TOKEN: Record<string, ModelPricing> = {
   'gpt-4o': { input: 0.000005, output: 0.000015 },
   'gpt-4o-mini': { input: 0.00000015, output: 0.0000006 },
   'gpt-4-turbo': { input: 0.00001, output: 0.00003 },
@@ -49,6 +54,24 @@ function findPricingForModel(modelName: string): { input: number; output: number
     }
   }
   return undefined;
+}
+
+/**
+ * Public pricing lookup so the routing layer can reason about cost without
+ * maintaining a second table. The single estimated-cost-per-token table above
+ * is the source of truth; unknown models stay unknown (undefined) rather than
+ * being silently assumed cheap.
+ */
+export function getPricingForModel(modelName: string): ModelPricing | undefined {
+  return findPricingForModel(modelName);
+}
+
+export function estimateCostForModel(
+  modelName: string,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  return estimateCost(modelName, inputTokens, outputTokens);
 }
 
 function estimateCost(modelName: string, inputTokens: number, outputTokens: number): number {

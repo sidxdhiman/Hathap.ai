@@ -19,6 +19,7 @@ const stateMachine_1 = require("../decision/stateMachine");
 const evidenceGraphService_1 = require("../decision/evidenceGraphService");
 const planner_1 = require("../planning/planner");
 const DecisionPlan_1 = __importDefault(require("../models/DecisionPlan"));
+const routing_1 = require("../routing");
 const router = express_1.default.Router();
 router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
     try {
@@ -107,9 +108,13 @@ router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
                 .map((q) => ({ query: q.query.trim(), purpose: q.purpose, maxResults: q.maxResults }))
             : [];
         const planningMode = req.body?.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
+        const routingMode = req.body?.routingMode === 'manual' ? 'manual' : 'auto';
+        const routingModelId = typeof req.body?.routingModelId === 'string' ? req.body.routingModelId : undefined;
         const execution = await orchestrator_1.decisionOrchestrator.startDecision(req.params.id, req.userId, {
             researchQueries: researchQueries.slice(0, 5),
             planningMode,
+            routingMode,
+            routingModelId,
         });
         // Accepted: the execution was persisted and queued; it runs in the
         // background. We return the Execution identifier immediately rather than
@@ -121,6 +126,7 @@ router.post('/:id/start', authMiddleware_1.requireAuth, async (req, res) => {
             execution,
             researchQueries,
             planningMode,
+            routingMode,
         });
     }
     catch (error) {
@@ -204,6 +210,71 @@ router.get('/:id/plans/:planId', authMiddleware_1.requireAuth, async (req, res) 
         if (!plan)
             return res.status(404).json({ error: 'Plan not found.' });
         res.json(plan);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/plans/:planId/routing-preview — dry-run planned
+ *  routing. Computed with the live policy but never persisted and never emits
+ *  events; the UI labels this as "Estimated / planned routing". */
+router.get('/:id/plans/:planId/routing-preview', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const plan = await DecisionPlan_1.default.findOne({
+            _id: req.params.planId,
+            decisionId: decision._id,
+        });
+        if (!plan)
+            return res.status(404).json({ error: 'Plan not found.' });
+        const preview = [];
+        for (const plannedTask of plan.tasks || []) {
+            const taskType = plannedTask.type;
+            const requirements = plannedTask.requirements || [];
+            const result = await routing_1.routeTaskRouter.routeTask({
+                userId: String(req.userId),
+                decisionId: decision._id.toString(),
+                executionId: String(plan.executionId),
+                taskType,
+                requirements,
+                emitEvents: false,
+            });
+            preview.push({
+                type: taskType,
+                tempId: plannedTask.tempId,
+                purpose: plannedTask.purpose,
+                requirements,
+                ...(result.status === 'selected'
+                    ? {
+                        status: 'selected',
+                        agent: result.agent ? { id: result.agent.id, name: result.agent.name } : null,
+                        model: {
+                            id: result.model.id,
+                            modelName: result.model.modelName,
+                            provider: result.model.provider,
+                            displayName: result.model.displayName,
+                        },
+                        score: result.score.total,
+                        estimatedCost: result.estimate.estimatedCost,
+                        pricingKnown: result.estimate.pricingKnown,
+                        reasons: result.reasons,
+                        favoredBy: result.score.factors.filter((f) => f.weight > 0).map((f) => ({
+                            name: f.name,
+                            value: f.value,
+                            weight: f.weight,
+                        })),
+                    }
+                    : { status: result.status, reason: 'message' in result ? result.message : result.reason }),
+            });
+        }
+        res.json({
+            planningMode: plan.planningMode,
+            policyVersion: routing_1.routeTaskRouter.policyVersion(),
+            estimated: true,
+            tasks: preview,
+        });
     }
     catch (error) {
         res.status(500).json({ error: error.message });
