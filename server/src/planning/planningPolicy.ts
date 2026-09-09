@@ -56,6 +56,7 @@ export const KNOWN_CAPABILITIES: string[] = [
   'product_strategy',
   'risk_analysis',
   'fact_checking',
+  'reasoning',
 ];
 
 /** Declared purpose per allowlisted task type (shown in the UI). */

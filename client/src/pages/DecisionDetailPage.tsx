@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   GitMerge,
   Workflow,
+  Route,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
@@ -26,7 +27,7 @@ import {
   getStatusColor,
   getStatusText,
 } from '../utils/helpers';
-import { DecisionSnapshot, ResearchTaskSummary, ResearchQueryInput, DecisionPlan, PlanningMode } from '../types';
+import { DecisionSnapshot, ResearchTaskSummary, ResearchQueryInput, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, TaskRouting } from '../types';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -35,6 +36,7 @@ export const DecisionDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const {
     decisions,
+    models,
     fetchDecision,
     startDecision,
     pauseDecision,
@@ -44,6 +46,7 @@ export const DecisionDetailPage: React.FC = () => {
     getDecisionResearch,
     getPlans,
     runPlan,
+    getRoutingPreview,
     showToast,
   } = useApp();
 
@@ -51,7 +54,11 @@ export const DecisionDetailPage: React.FC = () => {
   const [research, setResearch] = useState<ResearchTaskSummary[]>([]);
   const [plans, setPlans] = useState<DecisionPlan[]>([]);
   const [planningMode, setPlanningMode] = useState<PlanningMode>('fixed');
+  const [routingMode, setRoutingMode] = useState<RoutingMode>('auto');
+  const [routingModelId, setRoutingModelId] = useState<string>('');
   const [plannerRunning, setPlannerRunning] = useState(false);
+  const [routingPreview, setRoutingPreview] = useState<RoutingPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [researchInput, setResearchInput] = useState('');
@@ -106,7 +113,7 @@ export const DecisionDetailPage: React.FC = () => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((q) => ({ query: q }));
-      await startDecision(id, queries, planningMode);
+      await startDecision(id, queries, planningMode, routingMode, routingModelId || undefined);
       showToast('success', 'Decision execution started');
       await load();
     } catch (err: any) {
@@ -125,6 +132,20 @@ export const DecisionDetailPage: React.FC = () => {
       showToast('error', err.message || 'Failed to run planner');
     } finally {
       setPlannerRunning(false);
+    }
+  };
+
+  const handleRoutingPreview = async () => {
+    const plan = plans[0];
+    if (!id || !plan) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await getRoutingPreview(id, plan.id);
+      setRoutingPreview(preview);
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to fetch routing preview');
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -295,7 +316,7 @@ export const DecisionDetailPage: React.FC = () => {
                 className="w-full h-28 p-3 rounded bg-theme-bg-secondary border border-theme-border text-theme-text-primary text-sm placeholder-theme-text-secondary resize-none focus:outline-sky-500"
               />
               <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-theme-text-secondary">Planning mode:</span>
                   <button
                     type="button"
@@ -326,6 +347,47 @@ export const DecisionDetailPage: React.FC = () => {
                 <Button onClick={handleRunPlanner} size="sm" variant="secondary" disabled={plannerRunning}>
                   <Workflow size={14} /> {plannerRunning ? 'Planning…' : 'Preview plan'}
                 </Button>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap border-t border-theme-border pt-3">
+                <span className="text-xs text-theme-text-secondary">Routing:</span>
+                <button
+                  type="button"
+                  onClick={() => setRoutingMode('auto')}
+                  className={`text-xs px-2.5 py-1 rounded border ${
+                    routingMode === 'auto'
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-300'
+                      : 'border-theme-border text-theme-text-secondary hover:bg-theme-bg-secondary'
+                  }`}
+                >
+                  Auto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoutingMode('manual')}
+                  className={`text-xs px-2.5 py-1 rounded border ${
+                    routingMode === 'manual'
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-300'
+                      : 'border-theme-border text-theme-text-secondary hover:bg-theme-bg-secondary'
+                  }`}
+                >
+                  Manual
+                </button>
+                {routingMode === 'manual' && (
+                  <select
+                    value={routingModelId}
+                    onChange={(e) => setRoutingModelId(e.target.value)}
+                    className="text-xs px-2 py-1 rounded bg-theme-bg-secondary border border-theme-border text-theme-text-primary focus:outline-sky-500"
+                  >
+                    <option value="">Select a model…</option>
+                    {models.filter((m) => m.enabled).map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName || m.modelName}</option>
+                    ))}
+                  </select>
+                )}
+                <span className="text-[11px] text-theme-text-secondary hidden sm:inline">
+                  Auto routes each planned task to the best available agent + model; Manual pins one model.
+                </span>
               </div>
             </CardBody>
           </Card>
@@ -433,6 +495,76 @@ export const DecisionDetailPage: React.FC = () => {
                       {latestPlan.validation!.errors!.slice(0, 5).map((e, i) => <div key={i}>• {e}</div>)}
                     </div>
                   )}
+
+                  {/* Phase 6: routing preview (estimated) */}
+                  <div className="flex items-center gap-3 border-t border-theme-border pt-3">
+                    <Button onClick={handleRoutingPreview} size="sm" variant="secondary" disabled={previewLoading}>
+                      <Route size={14} /> {previewLoading ? 'Computing…' : (routingPreview ? 'Refresh routing preview' : 'Routing preview (estimated)')}
+                    </Button>
+                    {routingPreview && (
+                      <span className="text-[11px] text-theme-text-secondary">
+                        policy {routingPreview.policyVersion} · <span className="text-amber-300/90">estimated — not yet persisted</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {routingPreview && (
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide text-theme-text-secondary">
+                        Estimated / planned routing ({routingPreview.tasks.length})
+                      </div>
+                      {routingPreview.tasks.map((t, i) => (
+                        <div key={`${t.tempId || t.type}-${i}`} className="p-3 rounded bg-theme-bg-secondary border border-theme-border">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                              t.type === 'research' ? 'bg-sky-500/20 text-sky-300' :
+                              t.type === 'debate' ? 'bg-violet-500/20 text-violet-300' :
+                              t.type === 'verify_claim' ? 'bg-green-500/20 text-green-300' :
+                              t.type === 'red_team' ? 'bg-red-500/20 text-red-300' :
+                              'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {t.type}
+                            </span>
+                            {t.requirements && t.requirements.length > 0 && (
+                              <span className="text-[10px] text-theme-text-secondary">
+                                requires: <span className="font-mono">{t.requirements.join(', ')}</span>
+                              </span>
+                            )}
+                            {t.status === 'selected' ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/20 text-green-400">
+                                {t.agent?.name || '—'} → {t.model?.displayName || t.model?.modelName}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-theme-bg-tertiary text-theme-text-secondary">
+                                {t.status === 'skipped' ? 'skipped' : 'failed'}
+                              </span>
+                            )}
+                            {typeof t.score === 'number' && (
+                              <span className="text-[10px] font-mono text-theme-text-secondary">
+                                score {t.score.toFixed(4)}
+                              </span>
+                            )}
+                            {typeof t.estimatedCost === 'number' && t.pricingKnown && (
+                              <span className="text-[10px] text-theme-text-secondary">
+                                est. cost ${t.estimatedCost.toFixed(6)}
+                              </span>
+                            )}
+                          </div>
+                          {t.reason && <p className="text-[11px] text-amber-300/90 mt-1">{t.reason}</p>}
+                          {t.status !== 'selected' && !t.reason && (
+                            <p className="text-[11px] text-theme-text-secondary mt-1">
+                              Estimated routing is best-effort; attribution appears after execution.
+                            </p>
+                          )}
+                          {t.reasons && t.reasons.length > 0 && (
+                            <div className="text-[10px] text-theme-text-secondary mt-1 space-y-0.5">
+                              {t.reasons.map((r, j) => <div key={j}>• {r}</div>)}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-xs text-theme-text-secondary">No plan has been generated yet.</p>
@@ -440,6 +572,74 @@ export const DecisionDetailPage: React.FC = () => {
             </CardBody>
           </Card>
         )}
+
+        {/* Phase 6: actual routing per task */}
+        {(() => {
+          const routedTasks = (snapshot?.tasks || []).filter((t) => {
+            const routing = (t.metadata?.routing as TaskRouting | undefined);
+            return routing?.selection?.status === 'selected';
+          });
+          if (routedTasks.length === 0) return null;
+          return (
+            <Card className="mb-6">
+              <CardHeader>
+                <span className="flex items-center gap-2 text-sm font-medium text-theme-text-primary">
+                  <Route size={16} /> Model &amp; Agent Routing ({routedTasks.length})
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-theme-bg-tertiary text-theme-text-secondary">persisted</span>
+                </span>
+              </CardHeader>
+              <CardBody className="space-y-3">
+                {routedTasks.map((t) => {
+                  const routing = (t.metadata?.routing as TaskRouting | undefined);
+                  const sel = routing?.selection;
+                  if (!sel) return null;
+                  return (
+                    <div key={t.id} className="p-3 rounded bg-theme-bg-secondary border border-theme-border">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                          t.type === 'research' ? 'bg-sky-500/20 text-sky-300' :
+                          t.type === 'debate' ? 'bg-violet-500/20 text-violet-300' :
+                          t.type === 'verify_claim' ? 'bg-green-500/20 text-green-300' :
+                          t.type === 'red_team' ? 'bg-red-500/20 text-red-300' :
+                          'bg-amber-500/20 text-amber-300'
+                        }`}>{t.type}</span>
+                        <span className="text-xs text-theme-text-primary">
+                          {sel.agent?.name || <span className="text-theme-text-secondary">—</span>}
+                          <span className="text-theme-text-secondary mx-1">→</span>
+                          {sel.model.displayName || sel.model.modelName}
+                          <span className="text-[10px] text-theme-text-secondary ml-1">({sel.model.provider})</span>
+                        </span>
+                        <span className="text-[10px] font-mono text-theme-text-secondary">
+                          score {sel.score.total.toFixed(4)}
+                        </span>
+                        {sel.capabilityGateRelaxed && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">gate relaxed</span>
+                        )}
+                        {sel.fallbackUsed && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">fallback</span>
+                        )}
+                        <span className={`text-[10px] px-2 py-0.5 rounded ${getStatusColor(t.status)} ${getStatusText(t.status)}`}>
+                          {t.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-theme-text-secondary mt-1 flex items-center gap-3 flex-wrap">
+                        <span>mode {routing?.mode || 'auto'}</span>
+                        <span>policy {sel.policyVersion}</span>
+                        <span>{sel.candidateCount} candidates</span>
+                        <span>{sel.estimate.pricingKnown ? `est. cost $${sel.estimate.estimatedCost.toFixed(6)}` : 'cost unknown'}</span>
+                      </div>
+                      {sel.reasons.length > 0 && (
+                        <div className="text-[10px] text-theme-text-secondary mt-1 space-y-0.5">
+                          {sel.reasons.map((r, i) => <div key={i}>• {r}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardBody>
+            </Card>
+          );
+        })()}
 
         {/* Research tasks */}
         {researchTasksCount > 0 && (

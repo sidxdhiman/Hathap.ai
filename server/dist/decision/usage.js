@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getPricingForModel = getPricingForModel;
+exports.estimateCostForModel = estimateCostForModel;
 exports.recordUsage = recordUsage;
 exports.aggregateUsage = aggregateUsage;
 exports.usageSummary = usageSummary;
@@ -40,6 +42,18 @@ function findPricingForModel(modelName) {
         }
     }
     return undefined;
+}
+/**
+ * Public pricing lookup so the routing layer can reason about cost without
+ * maintaining a second table. The single estimated-cost-per-token table above
+ * is the source of truth; unknown models stay unknown (undefined) rather than
+ * being silently assumed cheap.
+ */
+function getPricingForModel(modelName) {
+    return findPricingForModel(modelName);
+}
+function estimateCostForModel(modelName, inputTokens, outputTokens) {
+    return estimateCost(modelName, inputTokens, outputTokens);
 }
 function estimateCost(modelName, inputTokens, outputTokens) {
     const pricing = findPricingForModel(modelName);

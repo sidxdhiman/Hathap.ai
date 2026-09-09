@@ -2,6 +2,7 @@ import { callLLM } from './llmClient';
 import { parseModelResponse } from './responseParser';
 import { DebateContext, DebateMessageInput } from './types';
 import { IAgent } from '../models/Agent';
+import { IModel } from '../models/Model';
 import { buildEvidenceBlock } from './evidencePrompt';
 
 export async function runAgent(
@@ -12,7 +13,19 @@ export async function runAgent(
   additionalInstructions: string = ''
 ): Promise<DebateMessageInput> {
   // 1. Find assigned model
-  let model = context.models.find((m) => m.id === agent.assignedModelId?.toString() || m._id?.toString() === agent.assignedModelId?.toString());
+  // Phase 6 — when the router selected a model for this agent, honor it.
+  const isRoutedAgent =
+    Boolean(context.routingAgentId) &&
+    (agent.id === context.routingAgentId || agent._id?.toString() === context.routingAgentId);
+  let model: IModel | undefined;
+  if (isRoutedAgent && context.routingModelId) {
+    model = context.models.find(
+      (m) => m.id === context.routingModelId || m._id?.toString() === context.routingModelId
+    );
+  }
+  if (!model) {
+    model = context.models.find((m) => m.id === agent.assignedModelId?.toString() || m._id?.toString() === agent.assignedModelId?.toString());
+  }
   if (!model) {
     // Fallback to first available model
     model = context.models[0];

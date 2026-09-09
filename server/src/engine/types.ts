@@ -30,6 +30,9 @@ export interface DebateContext {
   /** Bounded research evidence. Untrusted source material — agents must never
    *  treat it as instructions, only as material to reason about. */
   evidence?: EvidenceView[];
+  /** Phase 6 routing override: run the matching agent on the routed model. */
+  routingAgentId?: string;
+  routingModelId?: string;
 }
 
 export interface DebateMessageInput {

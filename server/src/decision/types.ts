@@ -96,7 +96,8 @@ export type Capability =
   | 'legal_analysis'
   | 'product_strategy'
   | 'risk_analysis'
-  | 'fact_checking';
+  | 'fact_checking'
+  | 'reasoning';
 
 export interface TokenUsage {
   inputTokens: number;
@@ -120,6 +121,7 @@ export interface ExecutionError {
     | 'MODEL_UNAVAILABLE'
     | 'NETWORK_FAILURE'
     | 'AGENT_FAILURE'
+    | 'ROUTING_FAILURE'
     | 'UNKNOWN';
   message: string;
   taskId?: string;
@@ -237,12 +239,23 @@ export interface VerdictResultWithDecision extends VerdictResult {
 
 // ---- Phase 2: task scheduling / execution abstractions ----
 
+/** Routing context handed to handlers so LLM-backed handlers run the model the
+ *  router selected (never a credential; ids + display metadata only). */
+export interface TaskRoutingContext {
+  agentId?: string;
+  agentName?: string;
+  modelId?: string;
+  modelName?: string;
+  provider?: string;
+}
+
 export interface TaskHandlerContext {
   userId: string;
   decisionId: string;
   executionId: string;
   taskId: string;
   onUsage: (usage: TokenUsage) => void;
+  routing?: TaskRoutingContext;
 }
 
 export interface TaskHandlerResult {

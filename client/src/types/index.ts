@@ -515,3 +515,68 @@ export interface DecisionPlan {
   createdAt: Date;
   compiledAt?: Date;
 }
+
+// ---- Phase 6: Intelligent Model & Agent Routing ----
+
+export type RoutingMode = 'auto' | 'manual';
+
+export interface RoutingFactor {
+  name: string;
+  value: number;
+  weight: number;
+  contribution: number;
+  note?: string;
+}
+
+export interface RoutingSelection {
+  status: 'selected';
+  policyVersion: string;
+  mode: RoutingMode;
+  agent: { id: string; name: string; capabilities: string[] } | null;
+  model: {
+    id: string;
+    modelName: string;
+    provider: string;
+    displayName: string;
+    status: string;
+  };
+  score: { total: number; factors: RoutingFactor[]; diversityBonus: number };
+  reasons: string[];
+  candidateCount: number;
+  capabilityGateRelaxed: boolean;
+  fallbackUsed: boolean;
+  fallbackFrom?: { modelId: string; provider?: string };
+  estimate: { estimatedInputTokens: number; estimatedOutputTokens: number; estimatedCost: number; pricingKnown: boolean };
+  routedAt: Date;
+}
+
+/** The routing block persisted on a Task (task.metadata.routing). */
+export interface TaskRouting {
+  mode: RoutingMode;
+  selection: RoutingSelection;
+}
+
+export type RoutingPreviewStatus = 'selected' | 'skipped' | 'failed';
+
+export interface RoutingPreviewTask {
+  type: PlannedTaskType | TaskType;
+  tempId?: string;
+  purpose?: string;
+  requirements?: string[];
+  status: RoutingPreviewStatus;
+  agent?: { id: string; name: string } | null;
+  model?: { id: string; modelName: string; provider: string; displayName: string };
+  score?: number;
+  estimatedCost?: number;
+  pricingKnown?: boolean;
+  reasons?: string[];
+  favoredBy?: RoutingFactor[];
+  reason?: string;
+}
+
+export interface RoutingPreview {
+  planningMode: PlanningMode;
+  policyVersion: string;
+  estimated: boolean;
+  tasks: RoutingPreviewTask[];
+}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview } from '../types';
 
 export type Toast = {
   id: string;
@@ -32,7 +32,7 @@ interface AppContextType {
   getDecision: (id: string) => Decision | undefined;
   fetchDecision: (id: string) => Promise<Decision>;
   createDecision: (input: { title: string; objective: string; context?: string; configuration?: any; participants?: any[] }) => Promise<Decision>;
-  startDecision: (id: string, researchQueries?: any[], planningMode?: PlanningMode) => Promise<any>;
+  startDecision: (id: string, researchQueries?: any[], planningMode?: PlanningMode, routingMode?: RoutingMode, routingModelId?: string) => Promise<any>;
   pauseDecision: (id: string) => Promise<void>;
   resumeDecision: (id: string) => Promise<void>;
   cancelDecision: (id: string) => Promise<void>;
@@ -44,6 +44,7 @@ interface AppContextType {
   getEvidenceGraph: (id: string) => Promise<EvidenceRelationship[]>;
   getPlans: (id: string) => Promise<DecisionPlan[]>;
   runPlan: (id: string) => Promise<any>;
+  getRoutingPreview: (id: string, planId: string) => Promise<RoutingPreview>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -266,12 +267,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved;
   };
 
-  const startDecision = async (id: string, researchQueries: any[] = [], planningMode: PlanningMode = 'fixed'): Promise<any> => {
+  const startDecision = async (id: string, researchQueries: any[] = [], planningMode: PlanningMode = 'fixed', routingMode: RoutingMode = 'auto', routingModelId?: string): Promise<any> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/start`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ researchQueries, planningMode }),
+      body: JSON.stringify({ researchQueries, planningMode, routingMode, routingModelId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to start decision');
@@ -363,6 +364,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return data;
   };
 
+  const getRoutingPreview = async (id: string, planId: string): Promise<RoutingPreview> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/plans/${planId}/routing-preview`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch routing preview');
+    return data;
+  };
+
   const cancelDecision = async (id: string): Promise<void> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
@@ -410,6 +419,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getEvidenceGraph,
         getPlans,
         runPlan,
+        getRoutingPreview,
       }}
     >
       {children}

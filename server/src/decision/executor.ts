@@ -1,8 +1,10 @@
 import Task, { ITask } from '../models/Task';
 import Execution, { IExecution } from '../models/Execution';
+import Decision from '../models/Decision';
 import {
   TaskHandlerRegistry,
   TaskHandlerContext,
+  TaskType,
   TokenUsage,
   TaskError,
 } from './types';
@@ -10,11 +12,14 @@ import { StateMachine } from './stateMachine';
 import { executionEventBus } from './eventBus';
 import { buildTaskError } from './errorClassifier';
 import { aggregateUsage } from './usage';
+import { RouteTaskRouter, TaskRoutingSelection } from '../routing';
 
 export interface ExecutorOptions {
   registry: TaskHandlerRegistry;
   workerId: string;
   backoff?: (attempt: number) => number;
+  /** Injectable router for tests; defaults to the shared singleton. */
+  router?: RouteTaskRouter;
 }
 
 /**
@@ -31,9 +36,11 @@ export interface ExecutorOptions {
  */
 export class TaskExecutor {
   private backoff: (attempt: number) => number;
+  private router: RouteTaskRouter;
 
   constructor(private options: ExecutorOptions) {
     this.backoff = options.backoff || ((attempt: number) => Math.min(1000 * 2 ** (attempt - 1), 30_000));
+    this.router = options.router || new RouteTaskRouter();
   }
 
   /**
@@ -99,12 +106,38 @@ export class TaskExecutor {
     const taskId = task._id.toString();
     const usageCollector: TokenUsage[] = [];
 
+    // Phase 6 — determine WHO performs this task before it runs. Persisted
+    // routing is reused on retries; the model override flows to handlers via
+    // the context and is never a credential.
+    const routing = await this.ensureRouting(userId, execution, task);
+    if (routing.status === 'failed') {
+      return this.finishFailure(execution, task, {
+        code: 'ROUTING_FAILURE',
+        message: routing.message,
+        taskId,
+        kind: 'non_retryable' as const,
+        attempt: task.attempts || 0,
+        createdAt: new Date(),
+      });
+    }
+
     const context: TaskHandlerContext = {
       userId,
       decisionId: String(execution.decisionId),
       executionId: String(execution._id),
       taskId,
       onUsage: (usage) => usageCollector.push(usage),
+      ...(routing.status === 'selected'
+        ? {
+            routing: {
+              agentId: routing.selection.agent?.id,
+              agentName: routing.selection.agent?.name,
+              modelId: routing.selection.model.id,
+              modelName: routing.selection.model.modelName,
+              provider: routing.selection.model.provider,
+            },
+          }
+        : {}),
     };
 
     try {
@@ -167,6 +200,9 @@ export class TaskExecutor {
     const canRetry = taskError.kind === 'retryable' && attempt <= (task.maxRetries ?? 2);
 
     if (canRetry) {
+      // Phase 6 — bounded runtime fallback: reselect a different model once
+      // before retrying, when the failure is model/provider related.
+      await this.maybeFallbackToAlternativeModel(execution, task, taskError);
       const delay = this.backoff(attempt);
       await Task.updateOne(
         { _id: taskId },
@@ -214,6 +250,143 @@ export class TaskExecutor {
     }
 
     return (await Task.findById(taskId)) || task;
+  }
+
+  /**
+   * Phase 6 — resolve (and persist) WHOSE resources run this task.
+   *
+   * Rules:
+   *   - Only executions created through the routing-aware start flow
+   *     (execution.metadata.routing set) are routed. Courtroom-linked and
+   *     legacy executions skip routing and behave exactly as before.
+   *   - A persisted selection is reused (idempotent across retries).
+   *   - A routing failure marks the task non-retryable with ROUTING_FAILURE so
+   *     a misconfiguration surfaces instead of burning retries.
+   */
+  private async ensureRouting(
+    userId: string,
+    execution: IExecution,
+    task: ITask
+  ): Promise<
+    | { status: 'selected'; selection: TaskRoutingSelection }
+    | { status: 'skipped' }
+    | { status: 'failed'; message: string }
+  > {
+    const routeConfig = execution.metadata?.routing as
+      | { mode?: 'auto' | 'manual'; modelId?: string }
+      | undefined;
+    if (!routeConfig) return { status: 'skipped' };
+
+    const taskId = String(task._id);
+    const existing = task.metadata?.routing as { selection?: TaskRoutingSelection } | undefined;
+    if (existing?.selection?.status === 'selected') {
+      return { status: 'selected', selection: existing.selection };
+    }
+
+    const taskType = task.type as TaskType;
+    const primaryProvider =
+      taskType === 'verify_claim' || taskType === 'red_team'
+        ? await this.router.resolvePrimaryProvider(String(execution._id))
+        : undefined;
+
+    const result = await this.router.routeTask({
+      userId,
+      decisionId: String(execution.decisionId),
+      executionId: String(execution._id),
+      taskId,
+      taskType,
+      requirements: (task.metadata?.requirements as string[] | undefined) || [],
+      routingMode: routeConfig.mode === 'manual' ? 'manual' : 'auto',
+      manualModelId: routeConfig.modelId,
+      primaryProvider,
+    });
+
+    if (result.status === 'failed') {
+      return { status: 'failed', message: result.message };
+    }
+    if (result.status === 'skipped') {
+      return { status: 'skipped' };
+    }
+
+    await Task.updateOne(
+      { _id: taskId },
+      {
+        $set: {
+          assignedAgent: result.agent?.id,
+          assignedModel: result.model.id,
+          'metadata.routing': { mode: routeConfig.mode || 'auto', selection: result },
+        },
+      }
+    );
+
+    return { status: 'selected', selection: result };
+  }
+
+  /**
+   * Phase 6 — bounded runtime fallback. When a retryable model/provider failure
+   * occurs on a task that was routed in auto mode, re-route ONCE excluding the
+   * failing model. Permanent errors and manual-mode pins never reselect; if no
+   * alternative exists the task retries normally on its current assignment.
+   */
+  private async maybeFallbackToAlternativeModel(
+    execution: IExecution,
+    task: ITask,
+    taskError: TaskError
+  ): Promise<TaskRoutingSelection | undefined> {
+    const routeConfig = execution.metadata?.routing as
+      | { mode?: 'auto' | 'manual'; modelId?: string }
+      | undefined;
+    if (routeConfig?.mode === 'manual') return undefined;
+
+    const ROUTABLE_FAILURE_CODES = [
+      'MODEL_UNAVAILABLE',
+      'PROVIDER_OUTAGE',
+      'TIMEOUT',
+      'NETWORK_FAILURE',
+      'RATE_LIMIT',
+    ];
+    if (!taskError.code || !ROUTABLE_FAILURE_CODES.includes(taskError.code)) return undefined;
+
+    const fresh = await Task.findById(task._id);
+    const existing = fresh?.metadata?.routing as { selection?: TaskRoutingSelection } | undefined;
+    const current = existing?.selection;
+    if (
+      !current ||
+      current.status !== 'selected' ||
+      current.fallbackUsed ||
+      !current.model?.id
+    ) {
+      return undefined;
+    }
+
+    // Ownership scope for the reselection comes from the owning decision.
+    const decision = await Decision.findById(execution.decisionId).select('userId').lean();
+    if (!decision?.userId) return undefined;
+
+    const result = await this.router.routeFallbackForRetry({
+      userId: String(decision.userId),
+      decisionId: String(execution.decisionId),
+      executionId: String(execution._id),
+      taskId: String(task._id),
+      taskType: task.type as TaskType,
+      requirements: (task.metadata?.requirements as string[] | undefined) || [],
+      routingMode: 'auto',
+      excludeModelIds: [current.model.id],
+    });
+
+    if (result.status !== 'selected') return undefined;
+
+    await Task.updateOne(
+      { _id: task._id },
+      {
+        $set: {
+          assignedAgent: result.agent?.id,
+          assignedModel: result.model.id,
+          'metadata.routing': { mode: 'auto', selection: result },
+        },
+      }
+    );
+    return result;
   }
 
   private async recordUsage(execution: IExecution, usage: TokenUsage[]): Promise<void> {

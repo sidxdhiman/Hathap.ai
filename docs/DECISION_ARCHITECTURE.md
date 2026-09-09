@@ -1043,3 +1043,155 @@ npm run build   # tsc green
 - Client: planning-mode toggle on Start, planner preview panel (task graph,
   termination badges, rationale, planner model).
 - Docs updated (this section).
+
+# Phase 6 — Intelligent Model & Agent Routing
+
+## Principle
+
+The execution engine has always handed tasks to **assigned** agents and their
+assigned models. Phase 6 keeps `assignedModel` authoritative but adds a
+transparent, deterministic **router** that picks the model and agent for each
+task at runtime unless one was already assigned explicitly. Routing is decided
+per execution (auto) or pinned by the user (manual), and never steers a task
+outside the user's own routable models/agents.
+
+## Modes
+
+| Mode | Meaning | Selection source |
+|---|---|---|
+| `auto` | score every candidate model × agent pair; pick the best within budget | `router.ts` scoring (policy `routing-v1`) |
+| `manual` | pin a model id (`modelId`); agent auto-chosen from that model's agents | pinned model + scoring for the agent |
+| `none` | no routing (legacy) | existing `assignedModel` only |
+
+For `auto`, a *candidate model* must have an encrypted API key present, be
+`enabled`, and not be `error`. A *candidate agent* must belong to the user and
+cover the pocket's task region (`taskArea`/`capabilities`). Ownership is
+enforced on both sides — no cross-user routing.
+
+## Scoring (`routing-v1`)
+
+Weighted convex sum (weights normalized to 1; env-overridable):
+
+```
+quality .25   capability .25   specialization .15
+reliability .15   cost .10     latency .10
+```
+
+- Unknowns resolve to neutral priors (`neutralQuality`, `neutralLatency`,
+  `cost=neutral` → `pricingKnown:false`).
+- Reliability: `connected` 0.8, `untested` 0.5, `error` disqualified.
+- Cost: rank-normalized across routable models from the pricing tables
+  (`usage.ts`), i.e. cheapest → 1.0 within the *routable* set (deterministic,
+  no dollary-cost coupling).
+- Capability: Jaccard overlap between task soft requirements and agent
+  capabilities (soft map `TASK_TYPE_SOFT_REQUIREMENTS`; hard gates come from
+  `task.metadata.requirements` set by the planner).
+- Diversity soft bonus (0.04) adds a justified provider card to
+  `red_team`/`verify_claim` when the candidate provider differs from the debate
+  primary provider (a second viewpoint, not physics — it is a soft preference,
+  score-overridable).
+- Determinism: candidates are sorted by `createdAt` then `_id`; exact-score
+  ties are broken by a `1e-9 * ordinal` epsilon derived from that stable order.
+  **On exact ties the later candidate wins** — the same inputs, same models,
+  same agents always produce the same selection.
+- Budget: when `maxEstimatedCostPerTask` is set, candidates whose estimated
+  cost exceeds it are excluded (only enforced when pricing is known, so unknown
+  pricing stays eligible); an empty result → `NO_CANDIDATE_WITHIN_BUDGET`.
+
+The chosen pair rounds via `router.score` (total 0..1, `favoredBy` per-factor
+breakdown, `reasons[]` human notes). Deterministic repeated invocations with
+identical inputs return **identical** results (`policyVersion 'routing-v1'`).
+
+## Hard gates & gates
+
+`task.metadata.requirements` (planner-persisted, optional) is a *hard* gate: a
+candidate agent whose capability set does not contain every requirement is
+eliminated. Soft requirements influence scoring only. Empty hard-gated result →
+relaxation default true → best-overlap candidate with
+`capabilityGateRelaxed:true`; if no model/agent exists at all:
+`NO_AGENT_COVERS_REQUIREMENTS`.
+
+## Failures
+
+| Failure | Meaning | Executor behavior |
+|---|---|---|
+| `NO_AVAILABLE_MODEL` | user has no routable models | task fails non-retryable `ROUTING_FAILURE` |
+| `NO_AVAILABLE_AGENT` | user has no routable agents | task fails non-retryable `ROUTING_FAILURE` |
+| `MANUAL_MODEL_UNAVAILABLE` | manual pin missing/disabled/error/missing key | task fails non-retryable `ROUTING_FAILURE` |
+| `NO_CANDIDATE_WITHIN_BUDGET` | no candidate within `maxEstimatedCostPerTask` (pricing known) | task fails non-retryable `ROUTING_FAILURE` |
+| `NO_AGENT_COVERS_REQUIREMENTS` | hard-gate result empty and no relaxation possible | task fails non-retryable `ROUTING_FAILURE` |
+
+A routing failure is **permanent** (non-retryable) — reselecting can never fix
+"no candidates", so the task surfaces the structured error instead of spinning.
+Router returns `TaskRoutingSkipped` when `modelCount === 0 ||
+agentCount === 0` — those executions behave exactly like pre-Phase-6 (best
+effort), never erroring.
+
+## Fallback (bounded reselection)
+
+- Only in `auto` mode and only for **retryable** task errors. `manual` and
+  permanent errors never reselect.
+- One reselection maximum, excluding the failed model(s); no candidate → the
+  retry proceeds with the original assignment (skipped, normal retry), never
+  an error.
+- Emits `routing.fallback` event with `from`/`to` when a reselection happens.
+- Bounded retries still apply to the task itself; reselection does not spin.
+
+## Integration points
+
+`ensureRouting` is invoked before handler execution and ONLY when
+`execution.metadata.routing` exists (set by `orchestrator /start`, default
+`auto`). So:
+
+- **Courtroom / legacy / pre-existing executions** (no `metadata.routing`) skip
+  routing entirely — backward compatible and byte-identical behavior.
+- **Routed tasks** record `Task.assignedAgent/assignedModel` and
+  `Task.metadata.routing = { mode, selection, fallbackFrom? }`. `verify_claim`
+  agents are chosen from agents whose capabilities include `fact_checking`.
+- `TaskHandlerContext.routing` carries the chosen `{agentId, agentName,
+  modelId, modelName, provider}` to handlers (hell debate uses it to run the
+  *routed* model), defaulting to the current assigned agent when no routing.
+- Events: `routing.started`, `routing.completed` (with policy/selection),
+  `routing.failed`, `routing.fallback`.
+
+## Routing preview (dry-run)
+
+`GET /api/decisions/:id/plans/:planId/routing-preview` returns the estimated
+selection for each plan task **without persisting anything** — client shows a
+per-task "Model: X · Agent: Y · est. $Z · score" panel before start.
+
+## Cost & observability
+
+Cost factors use the rank-normalized pricing table (routable-aware, no
+dollar-cost optimizer yet — a documented scope limit). `metadata.routing`
++ `assignedModel` + `routing.completed` give a full audit trail of what ran on
+which model, when, and why (`reasons[]`).
+
+## Files
+
+- `server/src/routing/routingTypes.ts` — types (selection, factors, failure
+  union, preview/estimate).
+- `server/src/routing/routingPolicy.ts` — weights, soft requirements, budget
+  table, policy assembly (env-overridable).
+- `server/src/routing/candidateResolver.ts` — routable model/agent candidates,
+  ownership, capabilities, budget/deterministic-order seeds.
+- `server/src/routing/scoring.ts` — factor computation + weighted sum + tie
+  epsilon.
+- `server/src/routing/router.ts` — `routeTask` / `routeManualOnly` /
+  `routeWithPinnedModel` / `routeFallbackForRetry` + event emission.
+- `server/src/routing/index.ts` — exports.
+- `server/src/decision/executor.ts` — `ensureRouting` (auto/manual/skip),
+  integration, `ROUTING_FAILURE` mapping, `routeFallbackForRetry`.
+- `client/src/pages/DecisionDetailPage.tsx`, `client/src/context/AppContext.tsx`,
+  `client/src/types/index.ts` — routing UI (Auto/Routing Off toggle + routing no
+  model → disabled) and preview panel.
+
+## Phase 6 deliverable summary
+
+- Deterministic transparent routing of execution tasks (auto/manual), fully
+  backward compatible with pre-Phase-6 executions.
+- Owned candidates, hard planner gates + relax, budget check, bounded fallback,
+  audit events, dry-run preview endpoint.
+- 18 new tests: unit scoring/availability/fallback + executor integration
+  (persist/reuse/complete routed runs); full suite 157 green; server tsc +
+  build green; client tsc + build green. Docs updated (this section).
