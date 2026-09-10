@@ -1195,3 +1195,126 @@ which model, when, and why (`reasons[]`).
 - 18 new tests: unit scoring/availability/fallback + executor integration
   (persist/reuse/complete routed runs); full suite 157 green; server tsc +
   build green; client tsc + build green. Docs updated (this section).
+
+# Phase 7 — Decision Intelligence UI & Observability
+
+## Principle
+
+The Decision Detail page is redesigned around **observable decision
+intelligence**: every claim, piece of evidence, verification verdict, red-team
+finding, reconciliation result, routing decision, token/cost figure, and
+execution event is surfaced from real, persisted backend state. Nothing is
+fabricated, hardcoded, or approximated with placeholder data.
+
+Semantic distinctions are preserved exactly where the backend is explicit:
+
+- **supported ≠ verified** (evidence relationships vs verification results).
+- **unsupported ≠ contradicted** (a claim with no backing evidence vs one with
+  contradicting evidence).
+- **inconclusive ≠ failed** (verification margins/output statuses).
+- **planned routing ≠ actual routing** (plans show the *estimated* cost and the
+  model-bound preview; executed tasks show where the task actually ran).
+- **estimated cost ≠ actual cost** (per-call token pricing vs
+  provider-reported charges).
+
+No new state-management library was introduced; the page consumes the existing
+`AppContext` (snapshot, research, plans, routing preview) plus one new
+read-only endpoint for the event timeline.
+
+## New backend surface (minimal)
+
+Only one endpoint was missing and is now added to
+`server/src/routes/decisions.ts`:
+
+```
+GET /api/decisions/:id/events
+```
+
+- Auth: `requireAuth` (missing/invalid token → 401).
+- Ownership: `Decision.findOne({ _id: id, userId: req.userId })`; any other
+  user or a nonexistent id → 404 (no existence leak).
+- Returns `executionEventBus.listByDecision(decisionId)` — persisted
+  `ExecutionEvent` documents ordered by `createdAt` ascending.
+- Guarded before the `/:id` catch-all route so `/events` is never parsed as an
+  ObjectId.
+
+The event bus itself (`server/src/decision/eventBus.ts`) was already in place
+from Phase 4/5/6 (durable event log + in-process emitter) — no changes needed
+there. Event ordering is deterministic: server sorts by `createdAt`, and the
+client re-sorts with an `_id` tiebreaker.
+
+## Live updates (no WebSockets)
+
+The page polls at `POLL_INTERVAL_MS = 3000`. `ACTIVE_STATUSES` =
+`['investigating', 'reasoning', 'debating', 'verifying', 'awaiting_review']`
+drive the "decision in flight" view (live progress bar, stop/resume controls,
+progress-aware panels). Terminal statuses (`completed`, `failed`, `cancelled`,
+`paused`) show stable states. Reloading the page reconstructs all state from the
+backend — there is no client-side cache of truth.
+
+## UI architecture
+
+`client/src/pages/DecisionDetailPage.tsx` was rewritten as a composition of the
+new `client/src/components/decision/` package (no UI logic left inline):
+
+| Component | Purpose |
+| --- | --- |
+| `ExecutiveSummary` | Final recommendation (reconciliation), overall confidence, verdict breakdown, coverage, and a confidence decomposition whose factor bars are **derived from observed data** (evidence count, verification ratio, contradiction ratio, red-team findings) with the underlying counts shown inline. |
+| `StartDecisionPanel` | Draft-only start control (planning mode + routing mode), mirrors the existing start flow. |
+| `PlanPanel` | Intelligent/fixed plan: rationale, planned stages (research/debate/verification/red team/reconciliation), termination checks, and *estimated* cost — labelled "estimated"; the plan source (`intelligent`/`fallback`/`baseline`) is shown. |
+| `ResearchPanel` | Research query, strategy, results — only rendered when real research outcomes exist. |
+| `EvidenceExplorer` | Evidence cards with source, provenance, classification (`supporting` / `contradicting` / `neutral`). |
+| `ClaimExplorer` | Claims, classification, and evidence relationships (supports / contradicts / related) — claims are first-class UI objects; assertion types (`fact` / `assumption` / `inference`) preserved. |
+| `VerificationPanel` | Per-claim verification results, preserving `supported` / `contradicted` / `inconclusive`; coverage shown, unverified claims called out. |
+| `RedTeamPanel` | Red-team findings with severity, loss-types, and recovery suggestions. |
+| `ReconciliationPanel` | Final verdict recommendation, confidence, rationale; distinguishes the final recommendation from intermediate claims. |
+| `TaskGraph` | Dependency graph from the persisted plan/tasks; no hardcoded shape — if no real graph exists, shows that. Nodes reflect execution status. |
+| `TaskList` | Task table with status, priority, agent/model assignment, phase, error rendering for failed/retrying tasks. |
+| `RoutingPanel` | Actual routing after the fact: per-task capability model, token budget/cost estimates, selection state, fallback notices, policy version, `capabilityGateRelaxed`, selection rationale. |
+| `CostPanel` | Token usage, LLM call count, execution duration, average latency, and **estimated vs actual cost** (actual shown only when provider-reported; otherwise explicitly "Actual cost unavailable"). |
+| `ExecutionTimeline` | Vertical timeline of persisted execution events (execution / task / agent / research / planning / routing), ordered, with task/execution ids and payload metadata. |
+| `EventStream` | Filterable event stream (All / Tasks / Research / Routing / Verification / Red Team / Errors) with live count. |
+
+Tailwind `theme-*` classes and the existing `Card`/`CardHeader`/`CardBody`/`Button`/
+`Alert` primitives are reused; no new design system was introduced.
+
+## Values
+
+- The trust boundary from Phase 5/6 is unchanged: routing candidates are
+  capability-scoped and planner-gated, and the UI only *displays* what the
+  backend already computed.
+- No chain-of-thought, system prompt, raw token usage beyond per-call
+  aggregation, or API keys are rendered. A backend test asserts that event data
+  carries no `apiKey`/`api_key` fields.
+- Confidence is surfaced as the reconciliation value; the factor bars are
+  explicitly labeled as derived from observed data so they are never mistaken
+  for a backend-computed confidence.
+
+## API additions (summary)
+
+- `GET /api/decisions/:id/events` — owned, ordered event timeline
+  (see above). This is the only new server surface in Phase 7.
+
+## Tests (`server/src/tests/decisionIntelligence.test.ts`)
+
+New HTTP+service tests (following the `researchSecurity.test.ts` pattern, no
+supertest):
+
+- Ordered event retrieval (timestamp order verified) and structured payloads.
+- No credential fields (`apiKey`/`api_key`) leak through event data.
+- Cross-user read → 404; unauthenticated → 401; nonexistent decision → 404.
+- Full suite: **161 passing / 0 failing** (was 157 baseline + 4).
+
+## Phase 7 deliverable summary
+
+- Decision Detail page rebuilt as a decision-intelligence observable, composed
+  of 15 new components in `client/src/components/decision/`.
+- One new ownership-scoped endpoint (`GET /:id/events`); the event bus,
+  snapshot, research, plans, and routing-preview APIs were reused as-is.
+- Live 3s polling, no WebSockets; all state reload-safe.
+- Event filters keyed to real event-bus payloads (task events carry
+  `data.type`), stable `_id` tiebreaker ordering.
+- Server `tsc` + build green; client `tsc` + build green; 161 tests green.
+  See `docs/PHASE7_ENGINEERING_REPORT.md` for smoke-test results and known
+  limitations (lint config is pre-existing broken; full LLM pipeline smoke
+  requires provider API keys).

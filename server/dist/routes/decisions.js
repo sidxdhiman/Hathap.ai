@@ -20,6 +20,7 @@ const evidenceGraphService_1 = require("../decision/evidenceGraphService");
 const planner_1 = require("../planning/planner");
 const DecisionPlan_1 = __importDefault(require("../models/DecisionPlan"));
 const routing_1 = require("../routing");
+const eventBus_1 = require("../decision/eventBus");
 const router = express_1.default.Router();
 router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
     try {
@@ -599,6 +600,20 @@ router.get('/:id/claims/:claimId/evidence', authMiddleware_1.requireAuth, async 
             contradicts: contradicting,
             related,
         });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// ---- Phase 7: Observability endpoints ----
+/** GET /api/decisions/:id/events — ordered execution events for the decision timeline */
+router.get('/:id/events', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const events = await eventBus_1.executionEventBus.listByDecision(decision._id.toString());
+        res.json(events);
     }
     catch (error) {
         res.status(500).json({ error: error.message });

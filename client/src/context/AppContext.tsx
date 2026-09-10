@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent } from '../types';
 
 export type Toast = {
   id: string;
@@ -45,6 +45,7 @@ interface AppContextType {
   getPlans: (id: string) => Promise<DecisionPlan[]>;
   runPlan: (id: string) => Promise<any>;
   getRoutingPreview: (id: string, planId: string) => Promise<RoutingPreview>;
+  getDecisionEvents: (id: string) => Promise<DecisionEvent[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -372,6 +373,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return data;
   };
 
+  const getDecisionEvents = async (id: string): Promise<DecisionEvent[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/events`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch decision events');
+    return Array.isArray(data) ? data : [];
+  };
+
   const cancelDecision = async (id: string): Promise<void> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
@@ -420,6 +429,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getPlans,
         runPlan,
         getRoutingPreview,
+        getDecisionEvents,
       }}
     >
       {children}
