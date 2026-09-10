@@ -580,3 +580,17 @@ export interface RoutingPreview {
   estimated: boolean;
   tasks: RoutingPreviewTask[];
 }
+
+// ---- Phase 7: Decision Intelligence types ----
+
+export interface DecisionEvent {
+  _id: string;
+  type: string;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  agentId?: string;
+  retryCount?: number;
+  data?: Record<string, unknown>;
+  createdAt: string;
+}

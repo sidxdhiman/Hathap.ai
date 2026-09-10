@@ -16,6 +16,7 @@ import { decisionPlanner } from '../planning/planner';
 import DecisionPlan from '../models/DecisionPlan';
 import { routeTaskRouter } from '../routing';
 import { TaskType } from '../decision/types';
+import { executionEventBus } from '../decision/eventBus';
 
 const router = express.Router();
 
@@ -591,6 +592,20 @@ router.get('/:id/claims/:claimId/evidence', requireAuth, async (req: AuthRequest
       contradicts: contradicting,
       related,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---- Phase 7: Observability endpoints ----
+
+/** GET /api/decisions/:id/events — ordered execution events for the decision timeline */
+router.get('/:id/events', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const events = await executionEventBus.listByDecision(decision._id.toString());
+    res.json(events);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
