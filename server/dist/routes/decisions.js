@@ -13,6 +13,10 @@ const EvidenceRelationship_1 = __importDefault(require("../models/EvidenceRelati
 const VerificationResult_1 = __importDefault(require("../models/VerificationResult"));
 const RedTeamFinding_1 = __importDefault(require("../models/RedTeamFinding"));
 const ReconciliationResult_1 = __importDefault(require("../models/ReconciliationResult"));
+const DecisionMemory_1 = __importDefault(require("../models/DecisionMemory"));
+const Outcome_1 = __importDefault(require("../models/Outcome"));
+const DecisionFeedback_1 = __importDefault(require("../models/DecisionFeedback"));
+const DecisionLesson_1 = __importDefault(require("../models/DecisionLesson"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const orchestrator_1 = require("../decision/orchestrator");
 const stateMachine_1 = require("../decision/stateMachine");
@@ -21,6 +25,11 @@ const planner_1 = require("../planning/planner");
 const DecisionPlan_1 = __importDefault(require("../models/DecisionPlan"));
 const routing_1 = require("../routing");
 const eventBus_1 = require("../decision/eventBus");
+const decisionMemoryService_1 = require("../memory/decisionMemoryService");
+const decisionRetrievalService_1 = require("../memory/decisionRetrievalService");
+const outcomeService_1 = require("../memory/outcomeService");
+const feedbackService_1 = require("../memory/feedbackService");
+const lessonService_1 = require("../memory/lessonService");
 const router = express_1.default.Router();
 router.get('/', authMiddleware_1.requireAuth, async (req, res) => {
     try {
@@ -95,6 +104,13 @@ router.delete('/:id', authMiddleware_1.requireAuth, async (req, res) => {
         await VerificationResult_1.default.deleteMany({ decisionId: req.params.id });
         await RedTeamFinding_1.default.deleteMany({ decisionId: req.params.id });
         await ReconciliationResult_1.default.deleteMany({ decisionId: req.params.id });
+        await DecisionPlan_1.default.deleteMany({ decisionId: req.params.id });
+        // Phase 8: memory/outcome records are derived user data; deleting the
+        // decision must not leave inaccessible orphans behind.
+        await DecisionMemory_1.default.deleteMany({ decisionId: req.params.id });
+        await Outcome_1.default.deleteMany({ decisionId: req.params.id });
+        await DecisionFeedback_1.default.deleteMany({ decisionId: req.params.id });
+        await DecisionLesson_1.default.deleteMany({ decisionId: req.params.id });
         res.json({ ok: true });
     }
     catch (error) {
@@ -622,4 +638,203 @@ router.get('/:id/events', authMiddleware_1.requireAuth, async (req, res) => {
 function relationsToEvidenceIds(rels) {
     return rels.map((r) => r.evidenceId);
 }
+// ---- Phase 8: Decision Memory & Outcomes ----
+const memoryMeta = (decision) => ({
+    category: typeof decision.metadata?.category === 'string' ? decision.metadata.category : undefined,
+    domain: typeof decision.metadata?.domain === 'string' ? decision.metadata.domain : undefined,
+    problemType: typeof decision.metadata?.problemType === 'string' ? decision.metadata.problemType : undefined,
+    tags: Array.isArray(decision.metadata?.tags) ? decision.metadata.tags.filter((t) => typeof t === 'string') : undefined,
+    entities: Array.isArray(decision.metadata?.entities) ? decision.metadata.entities.filter((e) => typeof e === 'string') : undefined,
+});
+/** GET /api/decisions/:id/memory — the decision's memory view (memory + outcomes
+ *  + feedback + lessons + quality signals). Memory is built on-demand for
+ *  terminal decisions that completed before Phase 8. */
+router.get('/:id/memory', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const decisionId = decision._id.toString();
+        const [memory, outcomes, feedback, lessons, quality] = await Promise.all([
+            decisionMemoryService_1.decisionMemoryService.ensureMemory(decisionId, req.userId),
+            outcomeService_1.outcomeService.list(req.userId, decisionId),
+            feedbackService_1.feedbackService.get(req.userId, decisionId),
+            lessonService_1.lessonsService.list(req.userId, decisionId),
+            decisionMemoryService_1.decisionMemoryService.getDecisionQuality(decisionId, req.userId),
+        ]);
+        res.json({ memory, outcomes, feedback, lessons, quality });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/related — explainable related historical decisions
+ *  owned by the same user (current decision excluded). */
+router.get('/:id/related', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const meta = memoryMeta(decision);
+        const result = await decisionRetrievalService_1.decisionRetrievalService.retrieve({
+            userId: req.userId,
+            excludeDecisionId: decision._id.toString(),
+            title: decision.title,
+            objective: decision.objective,
+            description: decision.context,
+            category: meta.category,
+            domain: meta.domain,
+            problemType: meta.problemType,
+            tags: meta.tags,
+            entities: meta.entities,
+        });
+        res.json(result);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/outcomes — all outcomes plus the expected-vs-actual summary. */
+router.get('/:id/outcomes', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const [outcomes, expectedVsActual] = await Promise.all([
+            outcomeService_1.outcomeService.list(req.userId, decision._id.toString()),
+            outcomeService_1.outcomeService.expectedVsActual(req.userId, decision._id.toString()),
+        ]);
+        res.json({ outcomes, expectedVsActual });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** POST /api/decisions/:id/outcomes — record an expected or actual outcome. */
+router.post('/:id/outcomes', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const kind = req.body?.kind === 'expected' ? 'expected' : 'actual';
+        const input = (0, outcomeService_1.cleanOutcomeInput)(req.body, kind, kind === 'expected' ? 'pending' : 'unknown');
+        const created = await outcomeService_1.outcomeService.create(req.userId, decision._id.toString(), input);
+        res.status(201).json(created);
+    }
+    catch (error) {
+        if (error?.name === 'OutcomeValidationError') {
+            return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+/** PATCH /api/decisions/:id/outcomes/:outcomeId — update an outcome over time. */
+router.patch('/:id/outcomes/:outcomeId', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const patch = (0, outcomeService_1.cleanOutcomePatch)(req.body);
+        const updated = await outcomeService_1.outcomeService.update(req.userId, decision._id.toString(), req.params.outcomeId, patch);
+        if (!updated)
+            return res.status(404).json({ error: 'Outcome not found.' });
+        res.json(updated);
+    }
+    catch (error) {
+        if (error?.name === 'OutcomeValidationError') {
+            return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/feedback — the decision's human feedback (or null). */
+router.get('/:id/feedback', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const feedback = await feedbackService_1.feedbackService.get(req.userId, decision._id.toString());
+        res.json(feedback);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** POST /api/decisions/:id/feedback — submit (or update) human feedback. */
+router.post('/:id/feedback', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const input = (0, feedbackService_1.cleanFeedbackInput)(req.body);
+        const saved = await feedbackService_1.feedbackService.upsert(req.userId, decision._id.toString(), input);
+        res.status(201).json(saved);
+    }
+    catch (error) {
+        if (error?.name === 'FeedbackValidationError') {
+            return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+/** GET /api/decisions/:id/lessons — lessons learned for the decision. */
+router.get('/:id/lessons', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const lessons = await lessonService_1.lessonsService.list(req.userId, decision._id.toString());
+        res.json(lessons);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+/** POST /api/decisions/:id/lessons — record a human lesson or an unconfirmed
+ *  LLM suggestion (never confirmed at creation). */
+router.post('/:id/lessons', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const input = (0, lessonService_1.cleanLessonInput)(req.body);
+        const created = await lessonService_1.lessonsService.create(req.userId, decision._id.toString(), input);
+        res.status(201).json(created);
+    }
+    catch (error) {
+        if (error?.name === 'LessonValidationError') {
+            return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message });
+    }
+});
+/** PATCH /api/decisions/:id/lessons/:lessonId — update a lesson (e.g. a human
+ *  confirms an LLM suggestion). */
+router.patch('/:id/lessons/:lessonId', authMiddleware_1.requireAuth, async (req, res) => {
+    try {
+        const decision = await Decision_1.default.findOne({ _id: req.params.id, userId: req.userId });
+        if (!decision)
+            return res.status(404).json({ error: 'Decision not found.' });
+        const current = await DecisionLesson_1.default.findOne({ _id: req.params.lessonId, decisionId: decision._id });
+        if (!current)
+            return res.status(404).json({ error: 'Lesson not found.' });
+        const patch = {};
+        if (typeof req.body?.text === 'string' && req.body.text.trim())
+            patch.text = req.body.text.trim();
+        if (req.body?.status === 'confirmed' || req.body?.status === 'unconfirmed')
+            patch.status = req.body.status;
+        if (typeof req.body?.metricName === 'string')
+            patch.metricName = req.body.metricName;
+        if (Array.isArray(req.body?.evidenceIds)) {
+            patch.evidenceIds = req.body.evidenceIds.filter((e) => typeof e === 'string');
+        }
+        const updated = await lessonService_1.lessonsService.update(req.userId, decision._id.toString(), req.params.lessonId, patch);
+        if (!updated)
+            return res.status(404).json({ error: 'Lesson not found.' });
+        res.json(updated);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 exports.default = router;

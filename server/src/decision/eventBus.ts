@@ -33,7 +33,16 @@ export type EventType =
   | 'routing.started'
   | 'routing.completed'
   | 'routing.failed'
-  | 'routing.fallback';
+  | 'routing.fallback'
+  // ---- Phase 8: decision memory & outcomes ----
+  | 'memory.created'
+  | 'memory.retrieved'
+  | 'outcome.created'
+  | 'outcome.updated'
+  | 'feedback.created'
+  | 'feedback.updated'
+  | 'lesson.created'
+  | 'lesson.updated';
 
 /**
  * Central event system for the execution engine.

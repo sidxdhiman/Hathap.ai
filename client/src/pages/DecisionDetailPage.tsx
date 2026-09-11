@@ -15,7 +15,7 @@ import { Button } from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
 import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
-import { DecisionSnapshot, ResearchTaskSummary, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent } from '../types';
+import { DecisionSnapshot, ResearchTaskSummary, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionFeedback, DecisionLesson, OutcomeInput, FeedbackInput, LessonInput } from '../types';
 import { ExecutiveSummary } from '../components/decision/ExecutiveSummary';
 import { ExecutionTimeline } from '../components/decision/ExecutionTimeline';
 import { TaskGraph } from '../components/decision/TaskGraph';
@@ -31,6 +31,10 @@ import { EventStream } from '../components/decision/EventStream';
 import { ResearchPanel } from '../components/decision/ResearchPanel';
 import { PlanPanel } from '../components/decision/PlanPanel';
 import { StartDecisionPanel } from '../components/decision/StartDecisionPanel';
+import { MemoryPanel } from '../components/decision/MemoryPanel';
+import { OutcomePanel } from '../components/decision/OutcomePanel';
+import { FeedbackPanel } from '../components/decision/FeedbackPanel';
+import { LessonsPanel } from '../components/decision/LessonsPanel';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -77,6 +81,16 @@ export const DecisionDetailPage: React.FC = () => {
     runPlan,
     getRoutingPreview,
     getDecisionEvents,
+    getDecisionMemory,
+    getRelatedDecisions,
+    getOutcomes,
+    createOutcome,
+    updateOutcome,
+    getFeedback,
+    submitFeedback,
+    getLessons,
+    createLesson,
+    updateLesson,
     showToast,
   } = useApp();
 
@@ -84,6 +98,12 @@ export const DecisionDetailPage: React.FC = () => {
   const [research, setResearch] = useState<ResearchTaskSummary[]>([]);
   const [plans, setPlans] = useState<DecisionPlan[]>([]);
   const [events, setEvents] = useState<DecisionEvent[]>([]);
+  const [memory, setMemory] = useState<MemoryView | null>(null);
+  const [outcomes, setOutcomes] = useState<OutcomesResponse>({ outcomes: [], expectedVsActual: { metricComparisons: [], qualityComputed: false } });
+  const [feedback, setFeedback] = useState<DecisionFeedback | null>(null);
+  const [lessons, setLessons] = useState<DecisionLesson[]>([]);
+  const [related, setRelated] = useState<MemoryRetrievalResult | null>(null);
+  const [memoryBusy, setMemoryBusy] = useState(false);
   const [planningMode, setPlanningMode] = useState<PlanningMode>('fixed');
   const [routingMode, setRoutingMode] = useState<RoutingMode>('auto');
   const [routingModelId, setRoutingModelId] = useState<string>('');
@@ -100,23 +120,110 @@ export const DecisionDetailPage: React.FC = () => {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [snap, res, planList, evts] = await Promise.all([
+      const [snap, res, planList, evts, mem, outs, fb, lss, rel] = await Promise.all([
         getDecisionSnapshot(id),
         getDecisionResearch(id),
         getPlans(id),
         getDecisionEvents(id),
+        getDecisionMemory(id),
+        getOutcomes(id),
+        getFeedback(id),
+        getLessons(id),
+        getRelatedDecisions(id),
       ]);
       setSnapshot(snap);
       setResearch(res);
       setPlans(planList);
       setEvents(evts);
+      setMemory(mem);
+      setOutcomes(outs);
+      setFeedback(fb);
+      setLessons(lss);
+      setRelated(rel);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load decision');
     } finally {
       setLoading(false);
     }
-  }, [id, getDecisionSnapshot, getDecisionResearch, getPlans, getDecisionEvents]);
+  }, [id, getDecisionSnapshot, getDecisionResearch, getPlans, getDecisionEvents, getDecisionMemory, getOutcomes, getFeedback, getLessons, getRelatedDecisions]);
+
+  const refreshRelated = useCallback(async () => {
+    if (!id) return;
+    try {
+      const rel = await getRelatedDecisions(id);
+      setRelated(rel);
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to fetch related decisions');
+    }
+  }, [id, getRelatedDecisions, showToast]);
+
+  const saveOutcome = useCallback(async (input: OutcomeInput) => {
+    if (!id) return;
+    setMemoryBusy(true);
+    try {
+      await createOutcome(id, input);
+      const outs = await getOutcomes(id);
+      setOutcomes(outs);
+      showToast('success', 'Outcome recorded');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to record outcome');
+    } finally {
+      setMemoryBusy(false);
+    }
+  }, [id, createOutcome, getOutcomes, showToast]);
+
+  const patchOutcome = useCallback(async (outcomeId: string, patch: Partial<OutcomeInput>) => {
+    if (!id) return;
+    setMemoryBusy(true);
+    try {
+      await updateOutcome(id, outcomeId, patch);
+      const outs = await getOutcomes(id);
+      setOutcomes(outs);
+      showToast('success', 'Outcome updated');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to update outcome');
+    } finally {
+      setMemoryBusy(false);
+    }
+  }, [id, updateOutcome, getOutcomes, showToast]);
+
+  const saveFeedback = useCallback(async (input: FeedbackInput) => {
+    if (!id) return;
+    try {
+      const fb = await submitFeedback(id, input);
+      setFeedback(fb);
+      showToast('success', 'Feedback saved');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to save feedback');
+      throw err;
+    }
+  }, [id, submitFeedback, showToast]);
+
+  const saveLesson = useCallback(async (input: LessonInput) => {
+    if (!id) return;
+    try {
+      await createLesson(id, input);
+      const lss = await getLessons(id);
+      setLessons(lss);
+      showToast('success', 'Lesson saved');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to save lesson');
+      throw err;
+    }
+  }, [id, createLesson, getLessons, showToast]);
+
+  const confirmLesson = useCallback(async (lessonId: string, patch: Partial<LessonInput>) => {
+    if (!id) return;
+    try {
+      await updateLesson(id, lessonId, patch);
+      const lss = await getLessons(id);
+      setLessons(lss);
+      showToast('success', 'Lesson confirmed');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to update lesson');
+    }
+  }, [id, updateLesson, getLessons, showToast]);
 
   useEffect(() => {
     setLoading(true);
@@ -412,6 +519,35 @@ export const DecisionDetailPage: React.FC = () => {
         {/* Cost & Performance */}
         <SectionTitle>Cost &amp; Performance</SectionTitle>
         <CostPanel executions={snapshot?.executions || []} loading={false} />
+
+        {/* Memory & Outcomes */}
+        <SectionTitle>Memory &amp; Outcomes</SectionTitle>
+        <div className="space-y-6">
+          <MemoryPanel
+            memory={memory?.memory ?? null}
+            quality={memory?.quality ?? null}
+            related={related}
+            relatedLoading={memoryBusy && !related}
+            onRefreshRelated={refreshRelated}
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <OutcomePanel
+              outcomes={outcomes.outcomes}
+              expectedVsActual={outcomes.expectedVsActual}
+              onCreateOutcome={saveOutcome}
+              onUpdateOutcome={patchOutcome}
+              busy={memoryBusy}
+            />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <FeedbackPanel feedback={feedback} onSubmit={saveFeedback} />
+            <LessonsPanel
+              lessons={lessons}
+              onCreateLesson={saveLesson}
+              onUpdateLesson={confirmLesson}
+            />
+          </div>
+        </div>
 
         {/* Observability */}
         <SectionTitle>Observability</SectionTitle>

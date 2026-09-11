@@ -1318,3 +1318,128 @@ supertest):
   See `docs/PHASE7_ENGINEERING_REPORT.md` for smoke-test results and known
   limitations (lint config is pre-existing broken; full LLM pipeline smoke
   requires provider API keys).
+
+# Phase 8 — Decision Memory & Outcomes
+
+## Principle
+
+Every completed/cancelled/failed decision is now an indexable unit of
+historical intelligence. The planner receives bounded, untrusted historical
+memory context; humans can record feedback and lessons; expected vs. actual
+outcomes are tracked with variance analysis; and related-decision retrieval
+uses deterministic structured similarity — no vector DB, no embeddings, no
+generic RAG.
+
+```
+Decision completes/cancels/fails
+         │
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+Worker      Orchestrator
+(completion) (cancellation)
+         │
+         ▼
+  DecisionMemory (structured index)
+         │
+    ┌────┴────┬──────────┬──────────┐
+    ▼         ▼          ▼          ▼
+  Outcomes  Feedback   Lessons   Retrieval
+            (human)   (human/LLM)  → Planner
+```
+
+## Memory lifecycle
+
+- `Worker.completeExecution` → `recordDecisionMemory(decisionId, userId, 'completion')`
+- `DecisionOrchestrator.cancelDecision` → `createForDecision(decisionId, userId, { via: 'cancellation' })`
+- Both are best-effort (try/catch, dynamic import) — memory creation never
+  blocks the decision lifecycle.
+- Tags and categories come from `decision.metadata` only (no LLM calls).
+- Final recommendation comes from `ReconciliationResult` if present.
+- Quality score: category (0.25), domain (0.20), problem type (0.20),
+  tags (0.20), entities (0.10), text Jaccard (0.25), time recency (0.05),
+  output type match (+0.10), capped at 1.0.
+
+## Retrieval
+
+`DecisionMemoryRetrievalService` accepts a `MemoryRetrievalQuery` with
+`userId` (ownership gate), `excludeDecisionId`, structured metadata filters,
+`statuses` (default `['completed','cancelled','failed']`), and `maxResults`.
+Results are enriched with actual outcome status, confirmed lesson count,
+and feedback presence. Planner retrieval uses `emitEvent: false`.
+
+## Planner integration
+
+`buildHistoricalMemory` queries the retrieval service, caps at `maxContextSize`
+(3000 chars), wraps in `<historical_decision_memory>` delimiters, and appends
+a security contract. The planner system prompt explicitly states this is
+untrusted reference data that informs planning but never controls it. The
+historical memory is injected as a separate user message in the planCall,
+never mixed with the decision context.
+
+## Expected vs. actual outcomes
+
+Outcomes are first-class documents (`kind: 'expected' | 'actual'`) with
+typed metrics. `pairMetrics` computes raw variance and direction-aware
+`achieved` status. Missing targets yield `meaningful: false`. Expected
+defaults to `pending`; actual defaults to `unknown`.
+
+## Human feedback
+
+One record per decision (upsert). Statuses: `accepted | rejected | modified |
+unknown`. A rejection is never automatically converted to a model failure —
+the human's explicit statement is respected.
+
+## Lessons
+
+`source: human | llm_suggestion`. An LLM suggestion can never be created as
+`confirmed` — only a human PATCH can confirm it. Lesson counts are surfaced
+in retrieval results.
+
+## Ownership
+
+Every API route verifies via `Decision.findOne({ _id, userId })` and returns
+404 (never 403) for non-owners. Retrieval queries filter by `userId` at
+every level.
+
+## DELETE purge
+
+`DELETE /api/decisions/:id` also removes `DecisionMemory`, `Outcome`,
+`DecisionFeedback`, and `DecisionLesson` for that decision.
+
+## Event types
+
+Eight new events: `memory.created`, `memory.retrieved`, `outcome.created`,
+`outcome.updated`, `feedback.created`, `feedback.updated`, `lesson.created`,
+`lesson.updated`.
+
+## API endpoints (all auth + ownership-scoped via 404)
+
+- `GET /api/decisions/:id/memory` — own memory record
+- `GET /api/decisions/:id/related` — related past decisions
+- `GET /api/decisions/:id/outcomes` — expected vs. actual
+- `POST /api/decisions/:id/outcomes` — create outcome
+- `PATCH /api/decisions/:id/outcomes/:outcomeId` — update outcome
+- `GET /api/decisions/:id/feedback` — own feedback
+- `POST /api/decisions/:id/feedback` — create/update (upsert)
+- `PATCH /api/decisions/:id/feedback/:feedbackId` — update feedback
+- `GET /api/decisions/:id/lessons` — own lessons
+- `POST /api/decisions/:id/lessons` — create lesson
+- `PATCH /api/decisions/:id/lessons/:lessonId` — update lesson
+- `DELETE /api/decisions/:id` — also purges Phase 8 artifacts
+
+## Frontend
+
+Four new components: `MemoryPanel`, `OutcomePanel`, `FeedbackPanel`,
+`LessonsPanel` — integrated into `DecisionDetailPage` under a
+"Memory & Outcomes" section. `AppContext` exposes 14 new methods.
+
+## Tests
+
+- `memory.test.ts` — 30 tests (unit + HTTP + service)
+- `memoryE2E.test.ts` — 3 tests (worker/orchestrator/planner E2E)
+- Full suite: **194 passing / 0 failing** (was 161).
+- Server tsc + build green; client tsc + build green.
+
+See `docs/PHASE8_ENGINEERING_REPORT.md` for detailed coverage and bugs
+found during the build.
