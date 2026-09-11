@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionOutcome, OutcomeInput, DecisionFeedback, FeedbackInput, DecisionLesson, LessonInput } from '../types';
 
 export type Toast = {
   id: string;
@@ -46,6 +46,16 @@ interface AppContextType {
   runPlan: (id: string) => Promise<any>;
   getRoutingPreview: (id: string, planId: string) => Promise<RoutingPreview>;
   getDecisionEvents: (id: string) => Promise<DecisionEvent[]>;
+  getDecisionMemory: (id: string) => Promise<MemoryView>;
+  getRelatedDecisions: (id: string) => Promise<MemoryRetrievalResult>;
+  getOutcomes: (id: string) => Promise<OutcomesResponse>;
+  createOutcome: (id: string, input: OutcomeInput) => Promise<DecisionOutcome>;
+  updateOutcome: (id: string, outcomeId: string, patch: Partial<OutcomeInput>) => Promise<DecisionOutcome>;
+  getFeedback: (id: string) => Promise<DecisionFeedback | null>;
+  submitFeedback: (id: string, input: FeedbackInput) => Promise<DecisionFeedback>;
+  getLessons: (id: string) => Promise<DecisionLesson[]>;
+  createLesson: (id: string, input: LessonInput) => Promise<DecisionLesson>;
+  updateLesson: (id: string, lessonId: string, patch: Partial<LessonInput>) => Promise<DecisionLesson>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -389,6 +399,84 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     refreshDecisions();
   };
 
+  const mapOutcome = (o: any): DecisionOutcome => ({ ...o, id: o._id || o.id });
+  const mapLesson = (l: any): DecisionLesson => ({ ...l, id: l._id || l.id });
+  const mapFeedback = (f: any): DecisionFeedback | null =>
+    f ? { ...f, id: f._id || f.id } : null;
+
+  const getDecisionMemory = async (id: string): Promise<MemoryView> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/memory`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch decision memory');
+    return data;
+  };
+
+  const getRelatedDecisions = async (id: string): Promise<MemoryRetrievalResult> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/related`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch related decisions');
+    return Array.isArray(data) ? { memories: data, totalMatches: 0, truncated: false, policyVersion: '', provider: 'structured' } : data;
+  };
+
+  const getOutcomes = async (id: string): Promise<OutcomesResponse> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/outcomes`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch outcomes');
+    return { outcomes: Array.isArray(data.outcomes) ? data.outcomes.map(mapOutcome) : [], expectedVsActual: data.expectedVsActual || { metricComparisons: [], qualityComputed: false } };
+  };
+
+  const postJson = async (path: string, body: unknown, method: string, errorMsg: string) => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}${path}`, { method, headers, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || errorMsg);
+    return data;
+  };
+
+  const createOutcome = async (id: string, input: OutcomeInput): Promise<DecisionOutcome> => {
+    const data = await postJson(`/api/decisions/${id}/outcomes`, input, 'POST', 'Failed to create outcome');
+    return mapOutcome(data);
+  };
+
+  const updateOutcome = async (id: string, outcomeId: string, patch: Partial<OutcomeInput>): Promise<DecisionOutcome> => {
+    const data = await postJson(`/api/decisions/${id}/outcomes/${outcomeId}`, patch, 'PATCH', 'Failed to update outcome');
+    return mapOutcome(data);
+  };
+
+  const getFeedback = async (id: string): Promise<DecisionFeedback | null> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/feedback`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch feedback');
+    return mapFeedback(data);
+  };
+
+  const submitFeedback = async (id: string, input: FeedbackInput): Promise<DecisionFeedback> => {
+    const data = await postJson(`/api/decisions/${id}/feedback`, input, 'POST', 'Failed to submit feedback');
+    return mapFeedback(data)!;
+  };
+
+  const getLessons = async (id: string): Promise<DecisionLesson[]> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/lessons`, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch lessons');
+    return Array.isArray(data) ? data.map(mapLesson) : [];
+  };
+
+  const createLesson = async (id: string, input: LessonInput): Promise<DecisionLesson> => {
+    const data = await postJson(`/api/decisions/${id}/lessons`, input, 'POST', 'Failed to create lesson');
+    return mapLesson(data);
+  };
+
+  const updateLesson = async (id: string, lessonId: string, patch: Partial<LessonInput>): Promise<DecisionLesson> => {
+    const data = await postJson(`/api/decisions/${id}/lessons/${lessonId}`, patch, 'PATCH', 'Failed to update lesson');
+    return mapLesson(data);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -430,6 +518,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         runPlan,
         getRoutingPreview,
         getDecisionEvents,
+        getDecisionMemory,
+        getRelatedDecisions,
+        getOutcomes,
+        createOutcome,
+        updateOutcome,
+        getFeedback,
+        submitFeedback,
+        getLessons,
+        createLesson,
+        updateLesson,
       }}
     >
       {children}

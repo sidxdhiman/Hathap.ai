@@ -297,8 +297,27 @@ export class Worker {
           decision.confidence = this.extractConfidence(tasks);
           decision.completedAt = new Date();
           await decision.save();
+          await this.recordDecisionMemory(String(decision._id), String(decision.userId), 'completion');
         }
       }
+    }
+  }
+
+  /**
+   * Phase 8 — a completed decision becomes eligible for historical retrieval by
+   * persisting its structured memory index. Best-effort: memory must never
+   * break the completion flow.
+   */
+  private async recordDecisionMemory(
+    decisionId: string,
+    userId: string,
+    via: 'completion' | 'cancellation'
+  ): Promise<void> {
+    try {
+      const { decisionMemoryService } = await import('../memory/decisionMemoryService');
+      await decisionMemoryService.createForDecision(decisionId, userId, { via });
+    } catch (err: any) {
+      console.error('[Worker] failed to record decision memory', decisionId, err?.message);
     }
   }
 

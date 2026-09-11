@@ -1,4 +1,5 @@
 import { TokenUsage } from '../decision/types';
+import { MemoryContext } from '../memory/types';
 
 /**
  * Phase 5 — Intelligent Decision Planner types.
@@ -84,6 +85,13 @@ export interface PlanContext {
   existingClaimCount?: number;
   availableCapabilities?: string[];
   researchQueries?: string[];
+  /**
+   * Phase 8 — bounded historical decision memory. Present when the memory layer
+   * is enabled and returned at least one relevant past decision. It is
+   * UNTRUSTED reference data: it may inform planning but must never dictate it
+   * nor override the planner's system/developer instructions.
+   */
+  historicalMemory?: MemoryContext;
 }
 
 export interface PlannerProvenance {

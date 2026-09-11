@@ -363,6 +363,15 @@ export class DecisionOrchestrator {
     decision.completedAt = new Date();
     await decision.save();
 
+    // Phase 8: record an honest `cancelled` memory entry so abandoned or
+    // cancelled decisions are represented accurately, never as successes.
+    try {
+      const { decisionMemoryService } = await import('../memory/decisionMemoryService');
+      await decisionMemoryService.createForDecision(decisionId, userId, { via: 'cancellation' });
+    } catch (err: any) {
+      console.error('[Orchestrator] failed to record cancelled decision memory', err?.message);
+    }
+
     // Mark active executions cancelled. Running tasks are allowed to finish or
     // are marked for cancellation; pending/ready tasks are cancelled outright.
     await Execution.updateMany(

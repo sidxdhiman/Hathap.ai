@@ -594,3 +594,210 @@ export interface DecisionEvent {
   data?: Record<string, unknown>;
   createdAt: string;
 }
+
+// ---- Phase 8: Decision Memory & Outcomes ----
+
+export type MemoryLifecycleStatus = 'active' | 'completed' | 'cancelled' | 'failed' | 'archived';
+export type MemoryRecommendationSource = 'reconciliation' | 'debate' | 'courtroom' | 'none';
+
+export interface DecisionMemory {
+  id: string;
+  userId: string;
+  decisionId: string;
+  status: MemoryLifecycleStatus;
+  title: string;
+  objective: string;
+  category?: string;
+  domain?: string;
+  problemType?: string;
+  tags: string[];
+  entities: string[];
+  finalRecommendation?: string;
+  recommendationSource: MemoryRecommendationSource;
+  selectedPlanId?: string;
+  importantClaimIds: string[];
+  importantEvidenceIds: string[];
+  agentsUsed: string[];
+  modelsUsed: string[];
+  executionIds: string[];
+  outcomeIds: string[];
+  feedbackId?: string;
+  lessonIds: string[];
+  completedAt?: string;
+  createdVia?: 'completion' | 'cancellation' | 'on-demand';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OutcomeKind = 'expected' | 'actual';
+export type OutcomeStatus = 'pending' | 'partial' | 'success' | 'failure' | 'unknown' | 'cancelled';
+export type MetricDirection = 'increase' | 'decrease' | 'neutral' | 'unknown';
+export type OutcomeSource = 'human' | 'system_observed';
+
+export interface OutcomeMetric {
+  name: string;
+  unit?: string;
+  baseline?: number;
+  target?: number;
+  actual?: number;
+  direction: MetricDirection;
+  source?: string;
+  observedAt?: string;
+}
+
+export interface DecisionOutcome {
+  id: string;
+  userId: string;
+  decisionId: string;
+  kind: OutcomeKind;
+  status: OutcomeStatus;
+  description: string;
+  observedAt?: string;
+  observedMetric?: number;
+  metrics: OutcomeMetric[];
+  source: OutcomeSource;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MetricComparison {
+  metricName: string;
+  unit?: string;
+  baseline?: number;
+  target?: number;
+  actual?: number;
+  direction: MetricDirection;
+  variance?: number;
+  variancePct?: number;
+  achieved?: boolean;
+  meaningful: boolean;
+  observedAt?: string;
+}
+
+export interface ExpectedVsActualSummary {
+  expected?: { outcomeId: string; status: OutcomeStatus; description?: string; observedAt?: string };
+  actual?: { outcomeId: string; status: OutcomeStatus; description?: string; observedAt?: string };
+  metricComparisons: MetricComparison[];
+  qualityComputed: boolean;
+}
+
+export interface OutcomesResponse {
+  outcomes: DecisionOutcome[];
+  expectedVsActual: ExpectedVsActualSummary;
+}
+
+export type FeedbackStatus = 'accepted' | 'rejected' | 'modified' | 'unknown';
+
+export interface DecisionFeedback {
+  id: string;
+  userId: string;
+  decisionId: string;
+  recommendationStatus: FeedbackStatus;
+  reason?: string;
+  comment?: string;
+  submittedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type LessonSource = 'human' | 'llm_suggestion';
+export type LessonStatus = 'confirmed' | 'unconfirmed';
+
+export interface DecisionLesson {
+  id: string;
+  userId: string;
+  decisionId: string;
+  text: string;
+  source: LessonSource;
+  status: LessonStatus;
+  outcomeId?: string;
+  metricName?: string;
+  feedbackId?: string;
+  evidenceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryRetrievalResult {
+  memories: Array<{
+    memoryId: string;
+    decisionId: string;
+    title: string;
+    objective: string;
+    status: MemoryLifecycleStatus;
+    category?: string;
+    domain?: string;
+    problemType?: string;
+    tags: string[];
+    entities: string[];
+    finalRecommendation?: string;
+    recommendationSource: MemoryRecommendationSource;
+    relevance: number;
+    relatedBecause: string[];
+    outcome?: {
+      status?: OutcomeStatus;
+      humanConfirmed: boolean;
+      source?: OutcomeSource;
+      observedAt?: string;
+    };
+    lessonCount: number;
+    feedbackPresent: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  totalMatches: number;
+  truncated: boolean;
+  policyVersion: string;
+  provider: string;
+}
+
+export interface DecisionQualitySignals {
+  recommendationAccepted?: boolean;
+  outcomeAchieved?: boolean;
+  expectedVsActualComputed: boolean;
+  outcomeConfirmed: boolean;
+  hasHumanFeedback: boolean;
+  evidenceCompleteness: {
+    hasEvidence: boolean;
+    hasClaims: boolean;
+    hasVerifications: boolean;
+    hasReconciliation: boolean;
+    verificationStatusPresent: boolean;
+  };
+  recommendationKnown: boolean;
+}
+
+export interface MemoryView {
+  memory: DecisionMemory | null;
+  outcomes: DecisionOutcome[];
+  feedback: DecisionFeedback | null;
+  lessons: DecisionLesson[];
+  quality: DecisionQualitySignals;
+}
+
+export interface OutcomeInput {
+  kind: OutcomeKind;
+  status?: OutcomeStatus;
+  description: string;
+  observedAt?: string;
+  observedMetric?: number;
+  metrics?: OutcomeMetric[];
+  notes?: string;
+}
+
+export interface FeedbackInput {
+  recommendationStatus: FeedbackStatus;
+  reason?: string;
+  comment?: string;
+}
+
+export interface LessonInput {
+  text: string;
+  source: LessonSource;
+  status?: LessonStatus;
+  outcomeId?: string;
+  metricName?: string;
+  feedbackId?: string;
+  evidenceIds?: string[];
+}

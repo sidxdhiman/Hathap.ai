@@ -8,6 +8,10 @@ import EvidenceRelationship from '../models/EvidenceRelationship';
 import VerificationResult from '../models/VerificationResult';
 import RedTeamFinding from '../models/RedTeamFinding';
 import ReconciliationResult from '../models/ReconciliationResult';
+import DecisionMemory from '../models/DecisionMemory';
+import Outcome from '../models/Outcome';
+import DecisionFeedback from '../models/DecisionFeedback';
+import DecisionLesson from '../models/DecisionLesson';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { decisionOrchestrator } from '../decision/orchestrator';
 import { StateMachine } from '../decision/stateMachine';
@@ -17,6 +21,11 @@ import DecisionPlan from '../models/DecisionPlan';
 import { routeTaskRouter } from '../routing';
 import { TaskType } from '../decision/types';
 import { executionEventBus } from '../decision/eventBus';
+import { decisionMemoryService } from '../memory/decisionMemoryService';
+import { decisionRetrievalService } from '../memory/decisionRetrievalService';
+import { outcomeService, cleanOutcomeInput, cleanOutcomePatch } from '../memory/outcomeService';
+import { feedbackService, cleanFeedbackInput } from '../memory/feedbackService';
+import { lessonsService, cleanLessonInput, LessonInput } from '../memory/lessonService';
 
 const router = express.Router();
 
@@ -96,6 +105,13 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     await VerificationResult.deleteMany({ decisionId: req.params.id });
     await RedTeamFinding.deleteMany({ decisionId: req.params.id });
     await ReconciliationResult.deleteMany({ decisionId: req.params.id });
+    await DecisionPlan.deleteMany({ decisionId: req.params.id });
+    // Phase 8: memory/outcome records are derived user data; deleting the
+    // decision must not leave inaccessible orphans behind.
+    await DecisionMemory.deleteMany({ decisionId: req.params.id });
+    await Outcome.deleteMany({ decisionId: req.params.id });
+    await DecisionFeedback.deleteMany({ decisionId: req.params.id });
+    await DecisionLesson.deleteMany({ decisionId: req.params.id });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -614,5 +630,202 @@ router.get('/:id/events', requireAuth, async (req: AuthRequest, res) => {
 function relationsToEvidenceIds(rels: Array<{ evidenceId: string }>): string[] {
   return rels.map((r) => r.evidenceId);
 }
+
+// ---- Phase 8: Decision Memory & Outcomes ----
+
+const memoryMeta = (decision: any) => ({
+  category: typeof decision.metadata?.category === 'string' ? decision.metadata.category : undefined,
+  domain: typeof decision.metadata?.domain === 'string' ? decision.metadata.domain : undefined,
+  problemType: typeof decision.metadata?.problemType === 'string' ? decision.metadata.problemType : undefined,
+  tags: Array.isArray(decision.metadata?.tags) ? decision.metadata.tags.filter((t: unknown) => typeof t === 'string') : undefined,
+  entities: Array.isArray(decision.metadata?.entities) ? decision.metadata.entities.filter((e: unknown) => typeof e === 'string') : undefined,
+});
+
+/** GET /api/decisions/:id/memory — the decision's memory view (memory + outcomes
+ *  + feedback + lessons + quality signals). Memory is built on-demand for
+ *  terminal decisions that completed before Phase 8. */
+router.get('/:id/memory', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const decisionId = decision._id.toString();
+    const [memory, outcomes, feedback, lessons, quality] = await Promise.all([
+      decisionMemoryService.ensureMemory(decisionId, req.userId!),
+      outcomeService.list(req.userId!, decisionId),
+      feedbackService.get(req.userId!, decisionId),
+      lessonsService.list(req.userId!, decisionId),
+      decisionMemoryService.getDecisionQuality(decisionId, req.userId!),
+    ]);
+    res.json({ memory, outcomes, feedback, lessons, quality });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/related — explainable related historical decisions
+ *  owned by the same user (current decision excluded). */
+router.get('/:id/related', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const meta = memoryMeta(decision);
+    const result = await decisionRetrievalService.retrieve({
+      userId: req.userId!,
+      excludeDecisionId: decision._id.toString(),
+      title: decision.title,
+      objective: decision.objective,
+      description: decision.context,
+      category: meta.category,
+      domain: meta.domain,
+      problemType: meta.problemType,
+      tags: meta.tags,
+      entities: meta.entities,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/outcomes — all outcomes plus the expected-vs-actual summary. */
+router.get('/:id/outcomes', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const [outcomes, expectedVsActual] = await Promise.all([
+      outcomeService.list(req.userId!, decision._id.toString()),
+      outcomeService.expectedVsActual(req.userId!, decision._id.toString()),
+    ]);
+    res.json({ outcomes, expectedVsActual });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** POST /api/decisions/:id/outcomes — record an expected or actual outcome. */
+router.post('/:id/outcomes', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const kind = req.body?.kind === 'expected' ? 'expected' : 'actual';
+    const input = cleanOutcomeInput(req.body, kind, kind === 'expected' ? 'pending' : 'unknown');
+    const created = await outcomeService.create(req.userId!, decision._id.toString(), input);
+    res.status(201).json(created);
+  } catch (error: any) {
+    if (error?.name === 'OutcomeValidationError') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** PATCH /api/decisions/:id/outcomes/:outcomeId — update an outcome over time. */
+router.patch('/:id/outcomes/:outcomeId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const patch = cleanOutcomePatch(req.body);
+    const updated = await outcomeService.update(
+      req.userId!,
+      decision._id.toString(),
+      req.params.outcomeId,
+      patch
+    );
+    if (!updated) return res.status(404).json({ error: 'Outcome not found.' });
+    res.json(updated);
+  } catch (error: any) {
+    if (error?.name === 'OutcomeValidationError') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/feedback — the decision's human feedback (or null). */
+router.get('/:id/feedback', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const feedback = await feedbackService.get(req.userId!, decision._id.toString());
+    res.json(feedback);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** POST /api/decisions/:id/feedback — submit (or update) human feedback. */
+router.post('/:id/feedback', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const input = cleanFeedbackInput(req.body);
+    const saved = await feedbackService.upsert(req.userId!, decision._id.toString(), input);
+    res.status(201).json(saved);
+  } catch (error: any) {
+    if (error?.name === 'FeedbackValidationError') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** GET /api/decisions/:id/lessons — lessons learned for the decision. */
+router.get('/:id/lessons', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const lessons = await lessonsService.list(req.userId!, decision._id.toString());
+    res.json(lessons);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** POST /api/decisions/:id/lessons — record a human lesson or an unconfirmed
+ *  LLM suggestion (never confirmed at creation). */
+router.post('/:id/lessons', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const input = cleanLessonInput(req.body);
+    const created = await lessonsService.create(req.userId!, decision._id.toString(), input);
+    res.status(201).json(created);
+  } catch (error: any) {
+    if (error?.name === 'LessonValidationError') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/** PATCH /api/decisions/:id/lessons/:lessonId — update a lesson (e.g. a human
+ *  confirms an LLM suggestion). */
+router.patch('/:id/lessons/:lessonId', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const current = await DecisionLesson.findOne({ _id: req.params.lessonId, decisionId: decision._id });
+    if (!current) return res.status(404).json({ error: 'Lesson not found.' });
+
+    const patch: Partial<LessonInput> = {};
+    if (typeof req.body?.text === 'string' && req.body.text.trim()) patch.text = req.body.text.trim();
+    if (req.body?.status === 'confirmed' || req.body?.status === 'unconfirmed') patch.status = req.body.status;
+    if (typeof req.body?.metricName === 'string') patch.metricName = req.body.metricName;
+    if (Array.isArray(req.body?.evidenceIds)) {
+      patch.evidenceIds = req.body.evidenceIds.filter((e: unknown): e is string => typeof e === 'string');
+    }
+
+    const updated = await lessonsService.update(
+      req.userId!,
+      decision._id.toString(),
+      req.params.lessonId,
+      patch
+    );
+    if (!updated) return res.status(404).json({ error: 'Lesson not found.' });
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export default router;
