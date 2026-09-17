@@ -12,6 +12,7 @@ const models_1 = __importDefault(require("./routes/models"));
 const agents_1 = __importDefault(require("./routes/agents"));
 const courtrooms_1 = __importDefault(require("./routes/courtrooms"));
 const decisions_1 = __importDefault(require("./routes/decisions"));
+const evaluations_1 = __importDefault(require("./routes/evaluations"));
 const setupA2A_1 = require("./a2a/setupA2A");
 const worker_1 = require("./tasks/worker");
 dotenv_1.default.config();
@@ -35,6 +36,7 @@ async function start() {
     app.use('/api/agents', agents_1.default);
     app.use('/api/courtrooms', courtrooms_1.default);
     app.use('/api/decisions', decisions_1.default);
+    app.use('/api/evaluations', evaluations_1.default);
     app.get('/api/health', (req, res) => res.json({ ok: true }));
     (0, setupA2A_1.setupA2A)(app);
     const server = app.listen(PORT, () => {

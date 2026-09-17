@@ -42,7 +42,28 @@ export type EventType =
   | 'feedback.created'
   | 'feedback.updated'
   | 'lesson.created'
-  | 'lesson.updated';
+  | 'lesson.updated'
+  // ---- Phase 9: evaluation & benchmarking ----
+  | 'evaluation.benchmark.created'
+  | 'evaluation.benchmark.updated'
+  | 'evaluation.benchmark.deleted'
+  | 'evaluation.benchmark.case_created'
+  | 'evaluation.benchmark.case_updated'
+  | 'evaluation.benchmark.case_deleted'
+  | 'evaluation.rubric.created'
+  | 'evaluation.rubric.updated'
+  | 'evaluation.baseline.created'
+  | 'evaluation.baseline.deleted'
+  | 'evaluation.comparison.created'
+  | 'evaluation.run.created'
+  | 'evaluation.run.started'
+  | 'evaluation.run.case_completed'
+  | 'evaluation.run.case_error'
+  | 'evaluation.run.partial'
+  | 'evaluation.run.completed'
+  | 'evaluation.run.failed'
+  | 'evaluation.run.cancelled'
+  | 'evaluation.run.deleted';
 
 /**
  * Central event system for the execution engine.
