@@ -22,6 +22,7 @@ export const Header: React.FC = () => {
     { path: '/courtrooms', label: 'Courtrooms' },
     { path: '/models', label: 'Models' },
     { path: '/agents', label: 'Agents' },
+    { path: '/evaluation', label: 'Evaluation' },
   ];
 
   const handleLogoClick = (e: React.MouseEvent) => {

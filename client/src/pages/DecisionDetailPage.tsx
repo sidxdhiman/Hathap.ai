@@ -7,6 +7,9 @@ import {
   RotateCcw,
   XCircle,
   Gauge,
+  Wifi,
+  FileDown,
+  ClipboardCopy,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
@@ -14,8 +17,9 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
+import { useDecisionEventStream } from '../hooks/useDecisionEventStream';
 import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
-import { DecisionSnapshot, ResearchTaskSummary, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionFeedback, DecisionLesson, OutcomeInput, FeedbackInput, LessonInput } from '../types';
+import { DecisionSnapshot, ResearchTaskSummary, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, DecisionStreamMessage, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionFeedback, DecisionLesson, OutcomeInput, FeedbackInput, LessonInput } from '../types';
 import { ExecutiveSummary } from '../components/decision/ExecutiveSummary';
 import { ExecutionTimeline } from '../components/decision/ExecutionTimeline';
 import { TaskGraph } from '../components/decision/TaskGraph';
@@ -35,8 +39,6 @@ import { MemoryPanel } from '../components/decision/MemoryPanel';
 import { OutcomePanel } from '../components/decision/OutcomePanel';
 import { FeedbackPanel } from '../components/decision/FeedbackPanel';
 import { LessonsPanel } from '../components/decision/LessonsPanel';
-
-const POLL_INTERVAL_MS = 3000;
 
 const ACTIVE_STATUSES = ['investigating', 'reasoning', 'debating', 'verifying', 'awaiting_review'];
 
@@ -81,6 +83,7 @@ export const DecisionDetailPage: React.FC = () => {
     runPlan,
     getRoutingPreview,
     getDecisionEvents,
+    getDecisionReport,
     getDecisionMemory,
     getRelatedDecisions,
     getOutcomes,
@@ -113,7 +116,6 @@ export const DecisionDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [researchInput, setResearchInput] = useState('');
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const decision = decisions.find((d) => d.id === id);
 
@@ -235,17 +237,64 @@ export const DecisionDetailPage: React.FC = () => {
 
   const status = snapshot?.status || decision?.status || 'draft';
 
-  useEffect(() => {
-    const isActive = ACTIVE_STATUSES.includes(status);
-    if (isActive && !pollRef.current) {
-      pollRef.current = setInterval(() => { load(); }, POLL_INTERVAL_MS);
+  // Live updates: prefer the SSE stream; fall back to polling automatically.
+  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleLoad = useCallback(() => {
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = setTimeout(() => { void load(); }, 700);
+  }, [load]);
+  useEffect(() => () => { if (loadTimerRef.current) clearTimeout(loadTimerRef.current); }, []);
+
+  const handleStreamEvent = useCallback((evt: DecisionStreamMessage) => {
+    setEvents((prev) => {
+      const idx = prev.findIndex((e) => e._id === evt._id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = evt as unknown as DecisionEvent;
+        return next;
+      }
+      return [...prev, evt as unknown as DecisionEvent];
+    });
+  }, []);
+
+  const isActive = ACTIVE_STATUSES.includes(status);
+  const stream = useDecisionEventStream({
+    id,
+    active: isActive && !error,
+    onEvent: handleStreamEvent,
+    onUpdate: scheduleLoad,
+    pollIntervalMs: 3000,
+  });
+
+  const handleExportReport = async () => {
+    if (!id) return;
+    try {
+      const markdown = await getDecisionReport(id);
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `decision-report-${id}.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      showToast('success', 'Report exported');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to export report');
     }
-    if (!isActive && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+  };
+
+  const handleCopyReport = async () => {
+    if (!id) return;
+    try {
+      const markdown = await getDecisionReport(id);
+      await navigator.clipboard.writeText(markdown);
+      showToast('success', 'Report copied to clipboard');
+    } catch (err: any) {
+      showToast('error', err.message || 'Failed to copy report');
     }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [status, load]);
+  };
 
   const handleStart = async () => {
     if (!id) return;
@@ -263,6 +312,46 @@ export const DecisionDetailPage: React.FC = () => {
       showToast('error', err.message || 'Failed to start decision');
     }
   };
+
+  // Auto-start when arriving from the create-decision flow (?autostart=1).
+  const autoStartRef = useRef(new URLSearchParams(window.location.search).has('autostart'));
+  useEffect(() => {
+    if (!id || !autoStartRef.current) return;
+    const known = snapshot?.status ?? decision?.status;
+    if (known !== 'draft') return;
+    autoStartRef.current = false;
+    let cfg: any = null;
+    try {
+      const raw = sessionStorage.getItem('hathap_pending_start');
+      if (raw) cfg = JSON.parse(raw);
+    } catch {
+      /* ignore malformed pending start */
+    }
+    sessionStorage.removeItem('hathap_pending_start');
+    const planning: PlanningMode =
+      cfg && cfg.planningMode === 'intelligent' ? 'intelligent' : 'fixed';
+    const routing: RoutingMode = cfg && cfg.routingMode === 'manual' ? 'manual' : 'auto';
+    const routedModel: string | undefined =
+      cfg && typeof cfg.routingModelId === 'string' ? cfg.routingModelId : undefined;
+    const queries = Array.isArray(cfg?.researchQueries)
+      ? cfg.researchQueries
+          .map((q: any) => ({ query: String(q?.query ?? q).trim() }))
+          .filter((q: any) => q.query)
+      : [];
+    if (planning === 'intelligent') setPlanningMode('intelligent');
+    if (routing === 'manual') {
+      setRoutingMode('manual');
+      if (routedModel) setRoutingModelId(routedModel);
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+    startDecision(id, queries, planning, routing, routedModel)
+      .then(() => {
+        showToast('success', 'Decision execution started');
+        void load();
+      })
+      .catch((err: any) => showToast('error', err.message || 'Failed to start decision'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, status, decision, snapshot, startDecision, load, showToast]);
 
   const handleRunPlanner = async () => {
     if (!id) return;
@@ -315,7 +404,6 @@ export const DecisionDetailPage: React.FC = () => {
 
   if (!id) return null;
 
-  const isActive = ACTIVE_STATUSES.includes(status);
   const latestExec = snapshot?.executions?.[0];
   const progress = snapshot?.progress ?? {
     progress: latestExec?.progress ?? 0,
@@ -387,11 +475,32 @@ export const DecisionDetailPage: React.FC = () => {
                     {Math.round(snapshot.confidence * 100)}% confidence
                   </span>
                 )}
+                {isActive && (
+                  <span className="flex items-center gap-1">
+                    <Wifi
+                      size={12}
+                      className={
+                        stream.status === 'live' ? 'text-green-400' : 'text-yellow-400'
+                      }
+                    />
+                    {stream.mode === 'sse'
+                      ? stream.status === 'live'
+                        ? 'Live updates'
+                        : 'Connecting…'
+                      : 'Polling fallback'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            <Button onClick={handleCopyReport} size="sm" variant="secondary" title="Copy the Markdown decision report">
+              <ClipboardCopy size={16} /> Copy Report
+            </Button>
+            <Button onClick={handleExportReport} size="sm" variant="secondary" title="Download the Markdown decision report">
+              <FileDown size={16} /> Export Report
+            </Button>
             {status === 'draft' && (
               <Button onClick={handleStart} size="sm">
                 <Play size={16} /> Start

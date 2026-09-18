@@ -86,8 +86,11 @@ export class ExecutionEventBus {
     const stamped: ExecutionEventRecord = { ...record, timestamp: record.timestamp || new Date() };
 
     // Always fan out to in-process listeners synchronously first so observers
-    // (future SSE/WebSocket adapters) never miss an update.
+    // (SSE/WebSocket adapters) never miss an update. Wildcard listeners
+    // (registered via onAny) receive every event, including ones whose type is
+    // not known to this module yet.
     this.emitter.emit(stamped.type, stamped);
+    this.emitter.emit('*', stamped);
 
     // Persist asynchronously (fire-and-forget; persistence failures must not
     // break the execution flow, which is governed by document state).
@@ -110,6 +113,15 @@ export class ExecutionEventBus {
 
   off(type: EventType | string, listener: (record: ExecutionEventRecord) => void): void {
     this.emitter.off(type, listener);
+  }
+
+  /** Subscribe to every event regardless of type (used by SSE streams). */
+  onAny(listener: (record: ExecutionEventRecord) => void): void {
+    this.emitter.on('*', listener);
+  }
+
+  offAny(listener: (record: ExecutionEventRecord) => void): void {
+    this.emitter.off('*', listener);
   }
 
   async listByExecution(executionId: string): Promise<IExecutionEvent[]> {

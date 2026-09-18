@@ -19,8 +19,9 @@ import { evidenceGraphService } from '../decision/evidenceGraphService';
 import { decisionPlanner } from '../planning/planner';
 import DecisionPlan from '../models/DecisionPlan';
 import { routeTaskRouter } from '../routing';
-import { TaskType } from '../decision/types';
+import { TaskType, ExecutionEventRecord } from '../decision/types';
 import { executionEventBus } from '../decision/eventBus';
+import { decisionReportService } from '../decision/reportService';
 import { decisionMemoryService } from '../memory/decisionMemoryService';
 import { decisionRetrievalService } from '../memory/decisionRetrievalService';
 import { outcomeService, cleanOutcomeInput, cleanOutcomePatch } from '../memory/outcomeService';
@@ -624,6 +625,126 @@ router.get('/:id/events', requireAuth, async (req: AuthRequest, res) => {
     res.json(events);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+function serializeStreamEvent(ev: ExecutionEventRecord): Record<string, unknown> {
+  const asAny = ev as any;
+  const createdAt = asAny.createdAt || ev.timestamp || new Date();
+  const persistedId = asAny?._id ? String(asAny._id) : undefined;
+  return {
+    _id: persistedId || `live:${new Date(createdAt).getTime()}`,
+    type: ev.type,
+    decisionId: ev.decisionId,
+    executionId: ev.executionId,
+    taskId: ev.taskId,
+    agentId: ev.agentId,
+    retryCount: ev.retryCount,
+    data: ev.data,
+    createdAt: new Date(createdAt).toISOString(),
+  };
+}
+
+/**
+ * GET /api/decisions/:id/events/stream — Server-Sent Events stream for a
+ * decision's execution events.
+ *
+ * Auth + ownership are enforced before the stream is opened. The stream:
+ *   1. replays bounded persisted history so a subscriber never misses events
+ *      (honors `Last-Event-ID` for reconnect continuity),
+ *   2. follows the in-process event bus live, filtered to this decision,
+ *   3. sends a keepalive comment every 15s so idle connections stay alive
+ *      behind proxies.
+ */
+const MAX_STREAM_REPLAY = 500;
+router.get('/:id/events/stream', requireAuth, async (req: AuthRequest, res) => {
+  const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId }).catch(() => null);
+  if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+  const decisionId = decision._id.toString();
+
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders?.();
+
+  let seq = 0;
+  let closed = false;
+  const send = (event: string, payload: unknown) => {
+    if (closed || res.writableEnded || res.destroyed) return;
+    seq += 1;
+    res.write(`id: ${Date.now()}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  try {
+    let replayCount = 0;
+    const lastEventId = Number(req.headers['last-event-id'] || 0);
+    const persisted = await executionEventBus.listByDecision(decisionId);
+    for (const ev of persisted.slice(-MAX_STREAM_REPLAY)) {
+      const at = ev.createdAt ? ev.createdAt.getTime() : 0;
+      if (lastEventId && at <= lastEventId) continue;
+      replayCount += 1;
+      send('execution-event', serializeStreamEvent(ev.toObject ? ev.toObject() : (ev as any)));
+    }
+    send('stream.connected', {
+      decisionId,
+      replayCount,
+      connectedAt: new Date().toISOString(),
+    });
+
+    const heartbeat = setInterval(() => {
+      if (closed) return;
+      res.write(': keepalive\n\n');
+    }, 15000);
+
+    // Follow the in-process bus. Wildcard so new event types (added in later
+    // phases) stream without code changes here.
+    const listener = (record: ExecutionEventRecord) => {
+      if (record.decisionId !== decisionId) return;
+      send('execution-event', serializeStreamEvent(record));
+    };
+    executionEventBus.onAny(listener);
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      executionEventBus.offAny(listener);
+      try {
+        res.end();
+      } catch {
+        /* already ended */
+      }
+    };
+    req.on('close', cleanup);
+    res.on('close', cleanup);
+    res.on('error', cleanup);
+  } catch (error: any) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.end();
+    }
+  }
+});
+
+/** GET /api/decisions/:id/report — Markdown decision report (secret-safe,
+ *  ownership-scoped). Include `?download=1` to force a download attachment. */
+router.get('/:id/report', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const decision = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+    const result = await decisionReportService.generate(req.userId!, req.params.id);
+    res.set('Content-Type', 'text/markdown; charset=utf-8');
+    if (req.query.download === '1' || req.query.download === 'true') {
+      res.set('Content-Disposition', `attachment; filename="${result.fileName}"`);
+    }
+    res.send(result.markdown);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 

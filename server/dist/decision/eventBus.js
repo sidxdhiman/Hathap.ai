@@ -27,8 +27,11 @@ class ExecutionEventBus {
     emit(record) {
         const stamped = { ...record, timestamp: record.timestamp || new Date() };
         // Always fan out to in-process listeners synchronously first so observers
-        // (future SSE/WebSocket adapters) never miss an update.
+        // (SSE/WebSocket adapters) never miss an update. Wildcard listeners
+        // (registered via onAny) receive every event, including ones whose type is
+        // not known to this module yet.
         this.emitter.emit(stamped.type, stamped);
+        this.emitter.emit('*', stamped);
         // Persist asynchronously (fire-and-forget; persistence failures must not
         // break the execution flow, which is governed by document state).
         ExecutionEvent_1.default.create({
@@ -48,6 +51,13 @@ class ExecutionEventBus {
     }
     off(type, listener) {
         this.emitter.off(type, listener);
+    }
+    /** Subscribe to every event regardless of type (used by SSE streams). */
+    onAny(listener) {
+        this.emitter.on('*', listener);
+    }
+    offAny(listener) {
+        this.emitter.off('*', listener);
     }
     async listByExecution(executionId) {
         return ExecutionEvent_1.default.find({ executionId }).sort({ createdAt: 1 });

@@ -801,3 +801,210 @@ export interface LessonInput {
   feedbackId?: string;
   evidenceIds?: string[];
 }
+
+// ---- Phase 10: Evaluation & benchmarking UI ----
+
+export type EvaluationRunKind = 'standard' | 'baseline' | 'ablation';
+export type EvaluationRunStatus = 'draft' | 'queued' | 'running' | 'completed' | 'failed' | 'partial' | 'cancelled';
+export type EvaluationCaseStatus = 'passed' | 'failed' | 'error' | 'skipped';
+export type SystemKind = 'static' | 'decision-engine' | 'external';
+export type CriterionKey =
+  | 'structural'
+  | 'quality'
+  | 'evidence'
+  | 'reasoning'
+  | 'efficiency'
+  | 'outcome';
+
+export interface EvaluationLimits {
+  maxCases: number;
+  maxSliceMs: number;
+  maxDecisionWaitMs: number;
+  timeoutMs: number;
+}
+
+export interface SystemUnderTest {
+  kind: SystemKind;
+  label: string;
+  provider?: string;
+  modelId?: string;
+  modelName?: string;
+  decisionSettings?: Record<string, unknown>;
+}
+
+export interface EvaluationBaselineConfig {
+  baselineId?: string;
+  thresholds: Record<string, number>;
+}
+
+export interface EvaluationRun {
+  id: string;
+  userId: string;
+  name: string;
+  benchmarkId: string;
+  benchmarkTitle?: string;
+  rubric?: { rubricId?: string; version?: number };
+  kind: EvaluationRunKind;
+  status: EvaluationRunStatus;
+  systemUnderTest: SystemUnderTest;
+  baseline?: EvaluationBaselineConfig;
+  passThreshold?: number;
+  limits: EvaluationLimits;
+  progress: { total: number; completed: number; running: number; error: number; skipped: number };
+  error?: { message?: string };
+  startedAt?: Date;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CompositeCategory {
+  key: CriterionKey;
+  score?: number;
+  weight: number;
+  included: boolean;
+  applicable: boolean;
+  enabled: boolean;
+}
+
+export interface CompositeMetrics {
+  categories: CompositeCategory[];
+  score?: number;
+  includedCategories: CriterionKey[];
+  excludedCategories: Array<{ key: CriterionKey; reason: string }>;
+  coefficients: Partial<Record<CriterionKey, number>>;
+}
+
+export interface EvaluationCaseResult {
+  id: string;
+  runId: string;
+  benchmarkId?: string;
+  caseId: string;
+  caseTitle?: string;
+  caseVersion?: number;
+  status: EvaluationCaseStatus;
+  artifact?: Record<string, unknown>;
+  structural?: { score?: number; [k: string]: unknown };
+  quality?: { score?: number; [k: string]: unknown };
+  evidence?: { score?: number; [k: string]: unknown };
+  reasoning?: { score?: number; [k: string]: unknown };
+  efficiency?: { score?: number; [k: string]: unknown };
+  outcome?: { score?: number; [k: string]: unknown };
+  metrics?: CompositeMetrics;
+  error?: { message?: string; phase?: string };
+  startedAt?: string;
+  completedAt?: string;
+  createdAt?: string;
+}
+
+export interface BenchmarkCase {
+  id: string;
+  benchmarkId?: string;
+  title: string;
+  prompt: string;
+  context?: string;
+  category?: string;
+  tags: string[];
+  difficulty?: 'easy' | 'medium' | 'hard';
+  expectedStructure?: Record<string, unknown>;
+  providedAnswer?: Record<string, unknown>;
+  version: number;
+  createdAt?: Date;
+}
+
+export interface Benchmark {
+  id: string;
+  userId?: string;
+  name: string;
+  description?: string;
+  category?: string;
+  tags: string[];
+  cases?: BenchmarkCase[];
+  caseCount?: number;
+  status: 'active' | 'archived';
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface Rubric {
+  id: string;
+  userId?: string;
+  name: string;
+  description?: string;
+  criteria: Array<{ key: CriterionKey; weight: number; enabled: boolean; [k: string]: unknown }>;
+  version: number;
+  createdAt?: string;
+}
+
+export interface Baseline {
+  id: string;
+  userId?: string;
+  name: string;
+  description?: string;
+  runId?: string;
+  strategy: string;
+  thresholds: Record<string, number>;
+  status: 'active' | 'archived';
+  createdAt: Date;
+}
+
+export type ComparisonDirection = 'improvement' | 'regression' | 'unchanged' | 'missing';
+
+export interface ComparisonCaseRow {
+  caseId: string;
+  caseTitle?: string;
+  scoreA?: number;
+  scoreB?: number;
+  delta?: number;
+  direction?: ComparisonDirection;
+}
+
+export interface ComparisonSummary {
+  compared: number;
+  missingA: number;
+  missingB: number;
+  regressions: number;
+  improvements: number;
+  unchanged: number;
+  aggregateA?: number;
+  aggregateB?: number;
+  aggregateDelta?: number;
+  regressionDetected: boolean;
+  note?: string;
+}
+
+export interface Comparison {
+  userId: string;
+  name?: string;
+  runAId: string;
+  runBId?: string;
+  baselineId?: string;
+  type: 'run_vs_run' | 'run_vs_baseline';
+  summary: ComparisonSummary;
+  perCase: ComparisonCaseRow[];
+  id?: string;
+  createdAt?: Date;
+}
+
+export interface AggregateRunScore {
+  cases: number;
+  included: number;
+  score?: number;
+}
+
+// ---- Phase 10: SSE stream + report ----
+
+export interface DecisionStreamMessage {
+  _id: string;
+  type: string;
+  decisionId?: string;
+  executionId?: string;
+  taskId?: string;
+  agentId?: string;
+  retryCount?: number;
+  data?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type StreamMode = 'sse' | 'polling';
+export type StreamStatus = 'connecting' | 'live' | 'fallback' | 'stopped';
