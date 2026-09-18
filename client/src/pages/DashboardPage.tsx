@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -11,6 +11,7 @@ import {
   Users,
   FileText,
   FileCheck,
+  Globe,
 } from 'lucide-react';
 import logo from '../../assets/logo-1.png';
 import { Header } from '../components/layout/Header';
@@ -19,10 +20,19 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
 import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
+import { ResearchStatus } from '../types';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { courtrooms, models, agentTemplates, decisions, needsOnboarding, isLoading } = useApp();
+  const { courtrooms, models, agentTemplates, decisions, needsOnboarding, isLoading, getResearchStatus, runWebGroundedDemo } = useApp();
+
+  const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
+
+  useEffect(() => {
+    getResearchStatus()
+      .then(setResearchStatus)
+      .catch(() => setResearchStatus(null));
+  }, [getResearchStatus]);
 
   useEffect(() => {
     if (!isLoading && needsOnboarding && !localStorage.getItem('onboarding_skipped')) {
@@ -113,6 +123,55 @@ export const DashboardPage: React.FC = () => {
             })}
           </Grid>
         </div>
+
+        {/* Web-grounded research status */}
+        {researchStatus && (
+          <div className="mb-8">
+            <Card>
+              <CardBody>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`mt-0.5 w-8 h-8 flex items-center justify-center border ${
+                      researchStatus.real
+                        ? 'bg-green-500/20 border-green-600 text-green-400'
+                        : researchStatus.mock
+                        ? 'bg-yellow-500/20 border-yellow-600 text-yellow-400'
+                        : 'bg-red-500/20 border-red-600 text-red-400'
+                    }`}>
+                      <Globe size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-theme-text-primary">
+                          Web-grounded research
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded ${
+                          researchStatus.real
+                            ? 'bg-green-500/20 text-green-400'
+                            : researchStatus.mock
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {researchStatus.real ? `Live ${researchStatus.provider}` : researchStatus.mock ? 'Mock (labeled)' : 'Not configured'}
+                        </span>
+                        {researchStatus.mode && (
+                          <span className="text-[10px] text-theme-text-secondary">{researchStatus.mode}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-theme-text-secondary mt-1">
+                        {researchStatus.real
+                          ? `Research tasks run against ${researchStatus.provider} with real web-grounded sources.`
+                          : researchStatus.mock
+                          ? 'Research runs in explicit mock mode — clearly labeled, never presented as real sources.'
+                          : 'Add a research provider API key to enable web-grounded evidence.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="mb-12">

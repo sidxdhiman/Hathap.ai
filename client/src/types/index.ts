@@ -416,8 +416,51 @@ export interface ResearchTaskSummary {
     provenanceKind?: EvidenceProvenanceKind;
     sourceReliability?: SourceReliability;
     relevanceScore?: number;
+    provider?: string;
     retrievedAt: Date;
   }>;
+}
+
+export interface ResearchStatus {
+  provider: string;
+  real: boolean;
+  mock: boolean;
+  configured: boolean;
+  mode: 'auto' | 'brave' | 'mock' | 'duckduckgo';
+  envHint?: string;
+  rationale?: string;
+}
+
+export interface WebGroundedDemoRequest {
+  decisionId: string;
+  query: string;
+  purpose?: string;
+  maxResults?: number;
+}
+
+export interface WebGroundedDemoResult {
+  ok: boolean;
+  provider?: string;
+  real?: boolean;
+  mock?: boolean;
+  evidence?: Array<{
+    id: string;
+    title: string;
+    snippet?: string;
+    sourceName?: string;
+    sourceUrl?: string;
+    provider?: string;
+    provenanceKind?: EvidenceProvenanceKind;
+    sourceReliability?: SourceReliability;
+    relevanceScore?: number;
+    retrievedAt: Date;
+  }>;
+  error?: {
+    code: string;
+    message: string;
+    retryAfterMs?: number;
+  };
+  researchSetupInstructions?: string;
 }
 
 export interface ResearchQueryInput {

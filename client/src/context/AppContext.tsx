@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionOutcome, OutcomeInput, DecisionFeedback, FeedbackInput, DecisionLesson, LessonInput } from '../types';
+import { Model, AgentTemplate, Courtroom, Decision, ResearchTaskSummary, ResearchStatus, WebGroundedDemoRequest, WebGroundedDemoResult, VerificationResult, RedTeamFinding, ReconciliationResult, EvidenceRelationship, DecisionPlan, PlanningMode, RoutingMode, RoutingPreview, DecisionEvent, MemoryView, MemoryRetrievalResult, OutcomesResponse, DecisionOutcome, OutcomeInput, DecisionFeedback, FeedbackInput, DecisionLesson, LessonInput } from '../types';
 
 export type Toast = {
   id: string;
@@ -38,6 +38,8 @@ interface AppContextType {
   cancelDecision: (id: string) => Promise<void>;
   getDecisionSnapshot: (id: string) => Promise<any>;
   getDecisionResearch: (id: string) => Promise<ResearchTaskSummary[]>;
+  getResearchStatus: () => Promise<ResearchStatus>;
+  runWebGroundedDemo: (input: WebGroundedDemoRequest) => Promise<WebGroundedDemoResult>;
   getVerifications: (id: string) => Promise<VerificationResult[]>;
   getRedTeamFindings: (id: string) => Promise<RedTeamFinding[]>;
   getReconciliation: (id: string) => Promise<ReconciliationResult | null>;
@@ -324,6 +326,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Array.isArray(data) ? data : [];
   };
 
+  const getResearchStatus = async (): Promise<ResearchStatus> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/research/status`, { headers });
+    if (res.status === 404) {
+      // Research status endpoint not available on older servers — never leak keys here.
+      return { provider: 'auto', real: false, mock: false, configured: false, mode: 'auto' };
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch research status');
+    return data;
+  };
+
+  const runWebGroundedDemo = async (input: WebGroundedDemoRequest): Promise<WebGroundedDemoResult> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/research/demo`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && !data?.ok) {
+      // Demo intentionally returns a structured 400 (never a silent mock) when
+      // no real provider is configured — surface the setup guidance to the UI.
+      return {
+        ok: false,
+        provider: data?.provider,
+        error: data?.error || { code: 'PROVIDER_UNAVAILABLE', message: 'Web-grounded demo is unavailable' },
+        researchSetupInstructions: data?.researchSetupInstructions,
+      };
+    }
+    return data;
+  };
+
   const getVerifications = async (id: string): Promise<VerificationResult[]> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/verifications`, { headers });
@@ -521,6 +556,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cancelDecision,
         getDecisionSnapshot,
         getDecisionResearch,
+        getResearchStatus,
+        runWebGroundedDemo,
         getVerifications,
         getRedTeamFindings,
         getReconciliation,
