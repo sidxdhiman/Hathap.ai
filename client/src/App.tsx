@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { EvaluationProvider } from './context/EvaluationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
@@ -14,6 +15,8 @@ import { CourtroomDetailPage } from './pages/CourtroomDetailPage';
 import { CreateCourtroomPage } from './pages/CreateCourtroomPage';
 import { DecisionsPage } from './pages/DecisionsPage';
 import { DecisionDetailPage } from './pages/DecisionDetailPage';
+import { CreateDecisionPage } from './pages/CreateDecisionPage';
+import { EvaluationPage } from './pages/EvaluationPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ToastContainer } from './components/ui/Toast';
@@ -41,7 +44,8 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter>
           <AppProvider>
-          <Routes>
+            <EvaluationProvider>
+              <Routes>
             <Route path="/" element={<LoggedInRoute><LandingPage /></LoggedInRoute>} />
             <Route path="/login" element={<LoggedInRoute><LoginPage /></LoggedInRoute>} />
             <Route path="/signup" element={<LoggedInRoute><SignupPage /></LoggedInRoute>} />
@@ -118,6 +122,14 @@ export const App: React.FC = () => {
               }
             />
             <Route
+              path="/decisions/new"
+              element={
+                <ProtectedRoute>
+                  <CreateDecisionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/decisions/:id"
               element={
                 <ProtectedRoute>
@@ -125,10 +137,19 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/evaluation"
+              element={
+                <ProtectedRoute>
+                  <EvaluationPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-          <ToastContainer />
-        </AppProvider>
+            </Routes>
+            <ToastContainer />
+            </EvaluationProvider>
+          </AppProvider>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

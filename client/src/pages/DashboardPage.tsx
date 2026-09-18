@@ -9,6 +9,8 @@ import {
   CheckCircle,
   Pause,
   Users,
+  FileText,
+  FileCheck,
 } from 'lucide-react';
 import logo from '../../assets/logo-1.png';
 import { Header } from '../components/layout/Header';
@@ -16,11 +18,11 @@ import { Layout, Container, PageHeader, Grid } from '../components/layout/Layout
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
-import { formatDate } from '../utils/helpers';
+import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { courtrooms, models, agentTemplates, needsOnboarding, isLoading } = useApp();
+  const { courtrooms, models, agentTemplates, decisions, needsOnboarding, isLoading } = useApp();
 
   useEffect(() => {
     if (!isLoading && needsOnboarding && !localStorage.getItem('onboarding_skipped')) {
@@ -53,9 +55,24 @@ export const DashboardPage: React.FC = () => {
       icon: TrendingUp,
       color: 'from-orange-500 to-orange-600',
     },
+    {
+      label: 'Total Decisions',
+      value: decisions.length,
+      icon: FileText,
+      color: 'from-sky-500 to-sky-600',
+    },
+    {
+      label: 'Active Decisions',
+      value: decisions.filter((d) => d.status === 'debating' || d.status === 'verifying').length,
+      icon: FileCheck,
+      color: 'from-cyan-500 to-cyan-600',
+    },
   ];
 
   const recentCourtrooms = courtrooms.slice(0, 3);
+  const activeDecisions = decisions
+    .filter((d) => d.status === 'debating' || d.status === 'verifying' || d.status === 'awaiting_review')
+    .slice(0, 3);
 
   return (
     <Layout>
@@ -101,6 +118,22 @@ export const DashboardPage: React.FC = () => {
         <div className="mb-12">
           <h2 className="text-2xl font-bold mb-6">Quick Actions</h2>
           <Grid cols={3}>
+            <Card
+              hover
+              className="cursor-pointer"
+              onClick={() => navigate('/decisions/new')}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-sky-500/20 border border-sky-600 flex items-center justify-center">
+                  <FileText size={24} className="text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Create Decision</h3>
+                  <p className="text-theme-text-secondary text-sm">Run research + AI debate</p>
+                </div>
+              </div>
+            </Card>
+
             <Card
               hover
               className="cursor-pointer"
@@ -206,6 +239,52 @@ export const DashboardPage: React.FC = () => {
                     <div className="flex-shrink-0">
                       <div className="w-12 h-12 bg-blue-500/10 border border-blue-600 flex items-center justify-center">
                         <img src={logo} alt="Hathap Logo" className="w-6 h-6" />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Active Decisions */}
+        {activeDecisions.length > 0 && (
+          <div className="mt-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Active Decisions</h2>
+              <Button variant="secondary" onClick={() => navigate('/decisions')}>
+                View All
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {activeDecisions.map((decision) => (
+                <Card
+                  key={decision.id}
+                  hover
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/decisions/${decision.id}`)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <h3 className="text-lg font-semibold">{decision.title}</h3>
+                        <span className={`text-xs px-2 py-0.5 rounded ${getStatusColor(decision.status)} ${getStatusText(decision.status)}`}>
+                          {decision.status}
+                        </span>
+                      </div>
+                      <p className="text-theme-text-secondary text-sm mb-3">{decision.objective}</p>
+                      <div className="flex items-center gap-4 text-sm text-theme-text-muted">
+                        <span className="flex items-center gap-1">
+                          <Clock size={14} />
+                          {formatDate(decision.createdAt)}
+                        </span>
+                        {typeof decision.confidence === 'number' && (
+                          <span className="flex items-center gap-1">
+                            <FileCheck size={14} />
+                            {Math.round(decision.confidence * 100)}% confidence
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

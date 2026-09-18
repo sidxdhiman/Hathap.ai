@@ -46,6 +46,7 @@ interface AppContextType {
   runPlan: (id: string) => Promise<any>;
   getRoutingPreview: (id: string, planId: string) => Promise<RoutingPreview>;
   getDecisionEvents: (id: string) => Promise<DecisionEvent[]>;
+  getDecisionReport: (id: string) => Promise<string>;
   getDecisionMemory: (id: string) => Promise<MemoryView>;
   getRelatedDecisions: (id: string) => Promise<MemoryRetrievalResult>;
   getOutcomes: (id: string) => Promise<OutcomesResponse>;
@@ -391,6 +392,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Array.isArray(data) ? data : [];
   };
 
+  const getDecisionReport = async (id: string): Promise<string> => {
+    const { API, headers } = getHeaders();
+    const res = await fetch(`${API}/api/decisions/${id}/report`, { headers });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to fetch decision report');
+    }
+    return res.text();
+  };
+
   const cancelDecision = async (id: string): Promise<void> => {
     const { API, headers } = getHeaders();
     const res = await fetch(`${API}/api/decisions/${id}/cancel`, { method: 'POST', headers });
@@ -518,6 +529,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         runPlan,
         getRoutingPreview,
         getDecisionEvents,
+        getDecisionReport,
         getDecisionMemory,
         getRelatedDecisions,
         getOutcomes,

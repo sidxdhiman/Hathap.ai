@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, FileText, Gauge } from 'lucide-react';
+import { ChevronRight, FileText, Gauge, Plus } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container, PageHeader } from '../components/layout/Layout';
 import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
 import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
 import { Decision } from '../types';
@@ -19,6 +20,11 @@ export const DecisionsPage: React.FC = () => {
         <PageHeader
           title="Decisions"
           description="Persistent decision runs backed by research and multi-agent debate"
+          action={
+            <Button size="sm" onClick={() => navigate('/decisions/new')}>
+              <Plus size={16} /> New Decision
+            </Button>
+          }
         />
         <div className="space-y-4">
           {isLoading ? (
@@ -30,8 +36,13 @@ export const DecisionsPage: React.FC = () => {
               <FileText className="mx-auto mb-4 text-theme-text-secondary" size={48} />
               <p className="text-theme-text-secondary">No decisions yet.</p>
               <p className="text-sm text-theme-text-secondary mt-1">
-                Start one from the dashboard or via the API.
+                Create a decision to run research and a multi-agent debate on a problem.
               </p>
+              <div className="mt-4 flex justify-center">
+                <Button onClick={() => navigate('/decisions/new')}>
+                  <Plus size={16} /> Create your first decision
+                </Button>
+              </div>
             </Card>
           ) : (
             decisions.map((d: Decision) => (
