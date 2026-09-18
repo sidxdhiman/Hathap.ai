@@ -8,6 +8,7 @@ import agentsRoutes from './routes/agents';
 import courtroomsRoutes from './routes/courtrooms';
 import decisionsRoutes from './routes/decisions';
 import evaluationsRoutes from './routes/evaluations';
+import researchRoutes from './routes/research';
 import { setupA2A } from './a2a/setupA2A';
 import { worker } from './tasks/worker';
 
@@ -41,6 +42,7 @@ async function start() {
   app.use('/api/courtrooms', courtroomsRoutes);
   app.use('/api/decisions', decisionsRoutes);
   app.use('/api/evaluations', evaluationsRoutes);
+  app.use('/api/research', researchRoutes);
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 

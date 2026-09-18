@@ -124,6 +124,12 @@ npm install
 # In server directory
 cp .env.example .env
 # Edit .env with your MongoDB URI, JWT secret, and encryption secret
+# Web-grounded research (Phase 11): add a Brave Developer API key to go real, e.g.
+#   BRAVE_SEARCH_API_KEY=BSA_xxxxxxxxxxxxxxxxxxxx
+#   HATHAP_RESEARCH_PROVIDER=brave        # 'auto' (default) also works once the key is set
+# Without a key, research runs in explicit mock mode (+ a one-click web-grounded
+# demo route at POST /api/research/demo returns setup instructions, never silent
+# placeholder data). See docs/PHASE11_ENGINEERING_REPORT.md.
 ```
 
 5. Start the development servers:

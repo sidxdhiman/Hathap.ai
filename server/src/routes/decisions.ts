@@ -437,6 +437,8 @@ router.get('/:id/research', requireAuth, async (req: AuthRequest, res) => {
             sourceReliability: e.sourceReliability,
             relevanceScore: e.relevanceScore,
             retrievedAt: e.retrievedAt,
+            provider: e.provider,
+            mock: e.provider === 'mock',
           })),
         };
       })
