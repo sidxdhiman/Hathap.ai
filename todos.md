@@ -1,30 +1,28 @@
 # Hathap.ai — Phase 11 todos (Real Web-Grounded Research)
 
-Last updated: end of Phase 11 work session.
-Everything on disk is Phase-11 complete **except the server test file listed in
-"Remaining"**. Client is verified green. The two remaining tasks are: (1) resolve
-the server `tsc` errors in the research provider test file, (2) final verify +
-commit + push.
+Last updated: after Phase 11 verification.
+The remaining items (server test tsc fix, full verify, commit + push) are now
+complete. Server suite is 246/246, server `tsc --noEmit` clean, server build
+green, client `tsc --noEmit` + `npm run build` green, and the completed commit
+was pushed to `main` with a clean tree.
 
 ## Remaining (blocking the ship)
-- [ ] **Fix `server/src/tests/researchProvider.test.ts` tsc errors** (run
-      `npx tsc --noEmit` in `server/`). Current errors seen at last check:
-      - `(70,16)(71,16)(73,13)(74,13): TS2532 Object is possibly 'undefined'` —
-        `results[0].provider/.metadata/.snippet/.content` indexing under strict
-        `noUncheckedIndexedAccess`; narrow before indexing (e.g. assert
-        `results.length === 1` then access via a narrowed assignment, or use
-        non-null-local `const first = results[0]` after a length check).
-      - `(129,44)(136,44)(144,35): TS2345` — arguments to the provider resolver /
-        status call are objects where a `string` is expected; wait — verify the
-        actual current signature (rename `resolvingResearchProvider` →
-        `resolveResearchProvider`, confirm `describeResearchStatus`/`researchSetupInstructions`
-        signatures) against `server/src/research/researchConfig.ts` before
-        rewriting these calls.
-- [ ] Re-run `npx tsc --noEmit` (server) — must be clean.
-- [ ] Re-run `npm test` in `server/` — full suite green (was 231/231).
-- [ ] Re-run client `npx tsc --noEmit` + `npm run build` — confirm still green.
-- [ ] `git add -A`, commit (Phase 11 + POST_PHASE10_AUDIT.md), push to `main`,
-      confirm clean tree.
+- [x] **Fix `server/src/tests/researchProvider.test.ts` tsc errors** (run
+      `npx tsc --noEmit` in `server/`). Fixed against the actual signatures:
+      - `(70,16)(71,16)(73,13)(74,13): TS2532` — caused by the optional
+        `metadata?`/`snippet?`/`content?` fields on `ResearchResult` (repo
+        tsconfig is `strict` only — no `noUncheckedIndexedAccess`). Fixed by
+        narrowing via `const first = results[0]` plus `assert.ok(first.metadata
+        | .snippet | .content)` assertion-function narrowing (also fixed a
+        latent pre-existing bug: `instanceof Date.constructor` → `instanceof
+        Date`, which was never exercised because this test was not yet executed).
+      - `(129,44)(136,44)(144,35): TS2345` — `resolveResearchProvider` signature
+        is `(override?: string, env: ResearchEnv)`; the env object is now passed
+        as the second argument.
+- [x] Re-run `npx tsc --noEmit` (server) — clean, 0 errors.
+- [x] Re-run `npm test` in `server/` — full suite green (246/246).
+- [x] Re-run client `npx tsc --noEmit` + `npm run build` — confirmed green.
+- [x] `git add -A`, commit, push to `main`, clean tree confirmed.
 
 ## Done
 - [x] Server Brave research source (`server/src/research/braveResearchSource.ts`) —
@@ -36,9 +34,10 @@ commit + push.
 - [x] Server factory rework — explicit provider, auto mode, mock always labeled.
 - [x] Server routes (`server/src/routes/research.ts`) — `/api/research/status` +
       demo route; reportService provider lines; `.env(.example)` Brave key.
-- [x] Server tests wired: `researchSecurity.test.ts` (in npm test list) + new
-      `researchProvider.test.ts` (exists on disk, not yet in npm test list —
-      decide: add to `server/package.json` test script or fold into security test).
+- [x] Server tests wired: `researchSecurity.test.ts` and
+      `researchProvider.test.ts` both listed in the `npm test` script
+      (`server/package.json`) — confirmed included; no test-runner changes
+      needed.
 - [x] Client types (`client/src/types/index.ts`) — `provider` on evidence,
       `ResearchStatus`, `WebGroundedDemoRequest/Result`, `retrievedAt`.
 - [x] Client AppContext — `getResearchStatus()` + `runWebGroundedDemo()`.

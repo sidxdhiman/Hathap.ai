@@ -65,13 +65,17 @@ test('Brave provider maps successful payload into clamped results with brave met
   const source = new BraveResearchSource({ apiKey: 'test-key', fetchFn: makeResearchFetch(sampleBravePayload()) });
   const results = await source.search('graphql vs rest');
   assert.equal(results.length, 1, 'only well-formed http(s) results with a title survive');
-  assert.equal(results[0].title, 'GraphQL vs REST trade-offs');
-  assert.equal(results[0].url, 'https://graphql.org/compare');
-  assert.equal(results[0].metadata.provider, 'brave');
-  assert.equal(results[0].metadata.mock, false);
-  assert.ok(results[0].retrievedAt instanceof Date.constructor, 'retrievedAt carries a Date');
-  assert.ok(results[0].snippet.includes('field-level comparison'), 'description feeds the snippet');
-  assert.ok(results[0].content.includes('exactly the data they need'), 'extra_snippets feed content');
+  const first = results[0];
+  assert.equal(first.title, 'GraphQL vs REST trade-offs');
+  assert.equal(first.url, 'https://graphql.org/compare');
+  assert.ok(first.metadata, 'metadata is stamped');
+  assert.equal(first.metadata.provider, 'brave');
+  assert.equal(first.metadata.mock, false);
+  assert.ok(first.retrievedAt instanceof Date, 'retrievedAt carries a Date');
+  assert.ok(first.snippet, 'snippet is populated from the description');
+  assert.ok(first.snippet.includes('field-level comparison'), 'description feeds the snippet');
+  assert.ok(first.content, 'content is populated from extra_snippets');
+  assert.ok(first.content.includes('exactly the data they need'), 'extra_snippets feed content');
 });
 
 test('Brave results never exceed per-result or per-query content limits', async () => {
@@ -126,14 +130,14 @@ test('missing api key is a hard configuration error (never a silent mock)', asyn
 });
 
 test('explicit mock resolves to the synthetic provider and is clearly labeled', () => {
-  const resolved = resolveResearchProvider({ provider: 'mock', nodeEnv: 'test', braveApiKey: undefined });
+  const resolved = resolveResearchProvider('mock', { provider: 'mock', nodeEnv: 'test', braveApiKey: undefined });
   assert.equal(resolved.provider, 'mock');
   assert.equal(resolved.mock, true);
   assert.equal(resolved.real, false);
 });
 
 test('brave resolves when a key is present', () => {
-  const resolved = resolveResearchProvider({ provider: 'brave', nodeEnv: 'test', braveApiKey: 'live-key' });
+  const resolved = resolveResearchProvider('brave', { provider: 'brave', nodeEnv: 'test', braveApiKey: 'live-key' });
   assert.equal(resolved.provider, 'brave');
   assert.equal(resolved.real, true);
   assert.equal(resolved.mock, false);
@@ -141,7 +145,7 @@ test('brave resolves when a key is present', () => {
 
 test('brave without a key is a configuration error — production never mocks silently', () => {
   assert.throws(
-    () => resolveResearchProvider({ provider: 'brave', nodeEnv: 'production', braveApiKey: undefined }),
+    () => resolveResearchProvider('brave', { provider: 'brave', nodeEnv: 'production', braveApiKey: undefined }),
     (err: ResearchError) => err.researchCode === 'INVALID_CONFIGURATION'
   );
 });
