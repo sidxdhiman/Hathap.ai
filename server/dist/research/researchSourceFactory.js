@@ -3,56 +3,77 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createResearchSource = createResearchSource;
 exports.getResearchSource = getResearchSource;
 exports.resetResearchSource = resetResearchSource;
-const researchError_1 = require("./researchError");
+exports.resetMockWarning = resetMockWarning;
 const mockResearchSource_1 = require("./mockResearchSource");
 const duckDuckGoResearchSource_1 = require("./duckDuckGoResearchSource");
+const braveResearchSource_1 = require("./braveResearchSource");
+const researchConfig_1 = require("./researchConfig");
 /**
- * Research source factory — resolves the configured provider.
+ * Research source factory — resolves the configured provider and caches the
+ * singleton for the research service seam.
  *
- * Configuration is server-side only (environment variables), never exposed to
- * the client:
- *   HATHAP_RESEARCH_PROVIDER=mock|duckduckgo   (default: mock)
+ * Resolution (via researchConfig.resolveResearchProvider):
+ *   HATHAP_RESEARCH_PROVIDER=brave   -> Brave Research Provider (real web search)
+ *   HATHAP_RESEARCH_PROVIDER=mock    -> Deterministic mock (dev/test only)
+ *   HATHAP_RESEARCH_PROVIDER=duckduckgo -> Legacy key-less DDG provider
+ *   (unset)                          -> auto: Brave if key present, else mock
  *
- * The default is the deterministic mock provider. It is NOT real web research;
- * the single warning below makes that explicit whenever the mock is resolved.
- * Production research requires configuring a real provider (e.g. duckduckgo).
+ * The default is auto. Mock is NEVER presented as real research — it is
+ * clearly surfaced via /api/research/status and evidence metadata.
  *
- * The factory is a small seam so future providers (Brave, SerpAPI, Tavily, …)
- * can be added without touching the research service or task engine.
+ * The factory is a small seam so new providers can be added without touching
+ * the research service or task engine.
  */
-let warnedMock = false;
 let cached = null;
-function configuredProvider(override) {
-    return (override || process.env.HATHAP_RESEARCH_PROVIDER || 'mock').toLowerCase().trim();
-}
-function warnOnceMock() {
-    if (warnedMock)
-        return;
-    warnedMock = true;
-    console.warn('[Research] WARNING: using the deterministic mock research provider (synthetic data). ' +
-        'This is NOT real web research. Configure HATHAP_RESEARCH_PROVIDER=duckduckgo (or a future provider) for production research.');
-}
+let cachedProvider = null;
 function createResearchSource(overrides = {}) {
-    const provider = configuredProvider(overrides.provider);
+    const resolved = (0, researchConfig_1.resolveResearchProvider)(overrides.provider);
+    const provider = resolved.provider;
     switch (provider) {
-        case 'duckduckgo':
-            return new duckDuckGoResearchSource_1.DuckDuckGoResearchSource({ timeoutMs: overrides.timeoutMs, fetchFn: overrides.fetchFn });
         case 'mock':
-            warnOnceMock();
+            warnMockOnce(resolved.reason);
             return new mockResearchSource_1.MockResearchSource();
-        default:
-            throw new researchError_1.ResearchError('INVALID_CONFIGURATION', `Unsupported research provider "${provider}". Supported: mock, duckduckgo.`);
+        case 'duckduckgo':
+            return new duckDuckGoResearchSource_1.DuckDuckGoResearchSource({
+                timeoutMs: overrides.timeoutMs,
+                fetchFn: overrides.fetchFn,
+            });
+        case 'brave':
+            return new braveResearchSource_1.BraveResearchSource({
+                apiKey: overrides.apiKey,
+                timeoutMs: overrides.timeoutMs,
+                fetchFn: overrides.fetchFn,
+            });
     }
 }
-/** Registry-style memoized instance used by the research service. */
+/**
+ * Registry-style memoized instance used by the research service. When no
+ * provider override is given, caches the auto-resolved provider until
+ * resetResearchSource() is called (tests or explicit env swap).
+ */
 function getResearchSource(provider) {
-    if (cached && configuredProvider(provider) === cached.name)
+    const resolved = (0, researchConfig_1.resolveResearchProvider)(provider);
+    const name = resolved.provider;
+    if (cached && cachedProvider === name)
         return cached;
-    cached = createResearchSource({ provider });
+    cached = createResearchSource({ provider: provider || undefined });
+    cachedProvider = name;
     return cached;
 }
 /** Test-only: clear the memoized provider so tests can swap providers. */
 function resetResearchSource() {
     cached = null;
+    cachedProvider = null;
+}
+let warnedMock = false;
+function warnMockOnce(reason) {
+    if (warnedMock)
+        return;
+    warnedMock = true;
+    console.warn(`[Research] ${reason}. The mock is NOT real web research. ` +
+        'Add BRAVE_SEARCH_API_KEY to server/.env for real web research.');
+}
+/** Re-export for tests that need to reset warning state. */
+function resetMockWarning() {
     warnedMock = false;
 }

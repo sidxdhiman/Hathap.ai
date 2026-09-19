@@ -151,12 +151,16 @@ class DecisionReportService {
                     const src = [e.sourceName, e.sourceUrl].filter(Boolean).join(' · ');
                     md.push(`- **Source:** ${truncate(src, 400)}`);
                 }
+                md.push(`- **Type:** ${e.sourceType}`);
+                if (e.provider)
+                    md.push(`- **Provider:** ${e.provider === 'mock' ? 'mock (synthetic — not real web research)' : e.provider}`);
+                if (e.retrievedAt)
+                    md.push(`- **Retrieved:** ${new Date(e.retrievedAt).toISOString()}`);
                 if (e.sourceReliability)
                     md.push(`- **Reliability:** ${e.sourceReliability}`);
                 if (typeof e.relevanceScore === 'number') {
                     md.push(`- **Relevance:** ${Math.round(e.relevanceScore * 100)}%`);
                 }
-                md.push(`- **Type:** ${e.sourceType}`);
                 md.push('');
                 md.push(truncate(e.content || e.snippet, 600));
                 md.push('');
