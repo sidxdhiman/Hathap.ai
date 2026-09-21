@@ -1,6 +1,13 @@
 # Hathap.ai — Phase 11 todos (Real Web-Grounded Research)
 
 Last updated: after Phase 11 verification.
+
+## Phase 12.2 follow-up
+- [ ] Review the remote GitHub Actions CI results triggered by the Phase 12.2
+      commit (`f73d6bc`, pushed to `main`): confirm the Server job (typecheck,
+      254/254 tests, build) and Client job (typecheck, build) pass on the
+      Actions tab; address any runner-only failures if the remote run differs
+      from the local clean-check.
 The remaining items (server test tsc fix, full verify, commit + push) are now
 complete. Server suite is 246/246, server `tsc --noEmit` clean, server build
 green, client `tsc --noEmit` + `npm run build` green, and the completed commit
