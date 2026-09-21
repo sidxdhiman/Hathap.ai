@@ -95,9 +95,9 @@ Hathap.ai/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 20 (LTS) — pinned in `.nvmrc` at the repository root
 - npm or yarn
-- MongoDB (local or Atlas)
+- MongoDB (local or Atlas, needed to run the server)
 
 ### Installation
 
@@ -161,6 +161,67 @@ cd server
 npm run build
 ```
 The compiled build will be in the `server/dist` directory.
+
+## 🔧 Development & CI (Reproducible Verification)
+
+The repository is verifiable from a clean checkout. The GitHub Actions workflow at
+`.github/workflows/ci.yml` runs the exact commands below on every push to `main` and
+every pull request targeting `main`.
+
+### Node version
+
+- Node.js **20 (LTS)** — pinned in `.nvmrc` at the repository root.
+- CI (`actions/setup-node@v4`) reads `.nvmrc` via `node-version-file`, so CI and local
+  development stay in sync.
+
+### Clean install
+
+Both `server/` and `client/` ship their own `package-lock.json`. Use `npm ci` (not
+`npm install`) for reproducible installs:
+
+```bash
+cd server
+npm ci
+
+cd ../client
+npm ci
+```
+
+### Environment variables
+
+- Copy `server/.env.example` to `server/.env` and fill in real values locally.
+- `server/.env` is local-only and git-ignored — never commit it.
+- `.env.example` is the tracked template (placeholders only, safe to commit).
+- Minimum variables:
+  - `MONGODB_URI` — MongoDB connection string (default `mongodb://localhost:27017/hathap`)
+  - `JWT_SECRET` — strong random value (>= 16 chars) for auth signing; required in production
+  - `API_KEY_ENCRYPTION_SECRET` — >= 32 chars for AES-256-GCM at-rest encryption
+  - Optional: `CORS_ORIGINS`, `BRAVE_SEARCH_API_KEY`, `HATHAP_RESEARCH_PROVIDER`
+- The server test suite runs against `mongodb://localhost:27017/hathap_test*` databases
+  in deterministic mock mode; tests do not require real provider API keys.
+
+### Run / verify
+
+```bash
+# Server (from server/)
+npm run dev          # dev server on http://localhost:4000
+npm test             # full test suite (requires local MongoDB)
+npx tsc --noEmit     # typecheck
+npm run build        # build server/dist
+
+# Client (from client/)
+npm run dev          # dev server on http://localhost:5173
+npx tsc --noEmit     # typecheck
+npm run build        # build client/dist
+```
+
+### What CI checks
+
+- **Server job** (`npm ci`, `npx tsc --noEmit`, `npm test`, `npm run build`), with a
+  MongoDB service container so tests need no external database.
+- **Client job** (`npm ci`, `npx tsc --noEmit`, `npm run build`).
+- CI uses fake/test-only values only; no real credentials are stored in the workflow or
+  required to pass.
 
 ## 🔑 Key Pages
 
