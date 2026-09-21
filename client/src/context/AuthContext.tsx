@@ -27,6 +27,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
+  // Known security limitation: the JWT is stored in localStorage (readable by
+  // any script on the page). A session-cookie / SameSite migration is a future
+  // hardening item; documented rather than changed in Phase 12.1.
   useEffect(() => {
     if (token) localStorage.setItem('hathap_token', token);
     else localStorage.removeItem('hathap_token');

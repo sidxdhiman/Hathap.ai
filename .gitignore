@@ -1,2 +1,13 @@
+# dependencies
 /client/node_modules
 /server/node_modules
+
+# local environment / secret-bearing files — keep .env.example files tracked
+.env
+.env.local
+.env.*.local
+server/.env
+
+# committed build output is no longer tracked (Phase 12.1 repository hygiene)
+server/dist/
+client/dist/

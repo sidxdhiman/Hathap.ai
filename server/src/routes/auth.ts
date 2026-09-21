@@ -4,9 +4,9 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Agent from '../models/Agent';
 import { defaultAgents } from '../utils/defaultAgents';
+import { getJwtSecret } from '../config/security';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 router.post('/signup', async (req, res) => {
   const { email, password, name } = req.body;
@@ -29,7 +29,7 @@ router.post('/signup', async (req, res) => {
       console.error('Failed to create default agents on signup:', err);
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
   } catch (e) {
     res.status(500).json({ error: 'Server error' });
@@ -44,7 +44,7 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
   } catch (e) {
     res.status(500).json({ error: 'Server error' });

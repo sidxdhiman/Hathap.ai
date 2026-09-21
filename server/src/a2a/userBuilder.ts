@@ -2,15 +2,14 @@ import { Request } from 'express';
 import jwt from 'jsonwebtoken';
 import { UnauthenticatedUser, type User } from '@a2a-js/sdk/server';
 import { HathapUser } from './types';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+import { getJwtSecret } from '../config/security';
 
 export async function hathapUserBuilder(req: Request): Promise<User> {
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) {
     try {
       const token = auth.split(' ')[1];
-      const data = jwt.verify(token, JWT_SECRET) as { id: string; email?: string };
+      const data = jwt.verify(token, getJwtSecret()) as { id: string; email?: string };
       return new HathapUser(data.id, data.email || data.id);
     } catch {
       // Fall through to other auth methods

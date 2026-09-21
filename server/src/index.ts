@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/auth';
@@ -11,6 +13,7 @@ import evaluationsRoutes from './routes/evaluations';
 import researchRoutes from './routes/research';
 import { setupA2A } from './a2a/setupA2A';
 import { worker } from './tasks/worker';
+import { isProductionEnvironment, getJwtSecret, isAllowedCorsOrigin } from './config/security';
 
 dotenv.config();
 
@@ -21,12 +24,47 @@ if (!process.env.API_KEY_ENCRYPTION_SECRET || process.env.API_KEY_ENCRYPTION_SEC
   process.exit(1);
 }
 
+// Production refuses to start without an explicit, strong JWT signing secret.
+// There is no predictable/default JWT secret in production.
+if (isProductionEnvironment()) {
+  try {
+    getJwtSecret();
+  } catch (err: any) {
+    console.error(`FATAL: ${err?.message || 'JWT_SECRET is not configured for production.'}`);
+    process.exit(1);
+  }
+}
+
 const app = express();
-app.use(cors());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Env-driven CORS: allow-list (CORS_ORIGINS), localhost dev origins, same-origin
+// requests, and non-browser (no-Origin) requests. Unknown cross-origin browser
+// requests are rejected instead of reflecting every origin.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  const allowed =
+    !origin ||
+    isAllowedCorsOrigin(origin) ||
+    (typeof host === 'string' && (origin === `http://${host}` || origin === `https://${host}`));
+  const corsMiddleware = cors({ origin: allowed ? true : false });
+  return corsMiddleware(req, res, next);
+});
 app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hathap';
+
+// Conservative limiter for authentication endpoints only. Intentionally not
+// applied globally so it cannot interfere with the task scheduler, SSE,
+// research, or normal Decision execution.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
 
 async function start() {
   await mongoose.connect(MONGODB_URI);
@@ -36,7 +74,7 @@ async function start() {
   // worker picks up queued/running executions and recovers interrupted ones.
   worker.start();
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/models', modelsRoutes);
   app.use('/api/agents', agentsRoutes);
   app.use('/api/courtrooms', courtroomsRoutes);
