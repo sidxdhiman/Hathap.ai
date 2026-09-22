@@ -213,7 +213,8 @@ npm run build        # build server/dist
 npm run dev          # dev server on http://localhost:5173
 npm run lint         # ESLint (fails on any warning)
 npm test             # Vitest unit/component tests (jsdom, no backend/network needed)
-npx tsc --noEmit     # typecheck
+npx tsc --noEmit     # typecheck application source (src)
+npm run typecheck:config  # typecheck Vite build config (vite.config.ts via tsconfig.node-check.json)
 npm run build        # build client/dist
 ```
 
@@ -221,7 +222,10 @@ npm run build        # build client/dist
 
 - **Server job** (`npm ci`, `npx tsc --noEmit`, `npm test`, `npm run build`), with a
   MongoDB service container so tests need no external database.
-- **Client job** (`npm ci`, `npm run lint`, `npm test`, `npx tsc --noEmit`, `npm run build`).
+- **Client job** (`npm ci`, `npm run lint`, `npm test`, `npx tsc --noEmit`,
+  `npm run typecheck:config`, `npm run build`) — both the application source project
+  (`tsconfig.json`) and the Vite build-config project (`tsconfig.node.json` /
+  `vite.config.ts`) are typechecked separately.
 - CI uses fake/test-only values only; no real credentials are stored in the workflow or
   required to pass.
 
@@ -366,6 +370,7 @@ npm run build     # Build for production
 npm run preview   # Preview production build
 npm run lint      # Run ESLint
 npm test          # Run Vitest unit/component tests
+npm run typecheck:config  # Typecheck the Vite build config (vite.config.ts)
 ```
 
 **Backend (server/):**

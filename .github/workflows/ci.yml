@@ -56,7 +56,7 @@ jobs:
         run: npm run build
 
   client:
-    name: Client (lint + typecheck + build)
+    name: Client (lint + test + typecheck + build)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -78,6 +78,9 @@ jobs:
       - name: Typecheck
         working-directory: client
         run: npx tsc --noEmit
+      - name: Typecheck (build config)
+        working-directory: client
+        run: npm run typecheck:config
       - name: Build
         working-directory: client
         run: npm run build
