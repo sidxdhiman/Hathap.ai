@@ -212,6 +212,7 @@ npm run build        # build server/dist
 # Client (from client/)
 npm run dev          # dev server on http://localhost:5173
 npm run lint         # ESLint (fails on any warning)
+npm test             # Vitest unit/component tests (jsdom, no backend/network needed)
 npx tsc --noEmit     # typecheck
 npm run build        # build client/dist
 ```
@@ -220,7 +221,7 @@ npm run build        # build client/dist
 
 - **Server job** (`npm ci`, `npx tsc --noEmit`, `npm test`, `npm run build`), with a
   MongoDB service container so tests need no external database.
-- **Client job** (`npm ci`, `npm run lint`, `npx tsc --noEmit`, `npm run build`).
+- **Client job** (`npm ci`, `npm run lint`, `npm test`, `npx tsc --noEmit`, `npm run build`).
 - CI uses fake/test-only values only; no real credentials are stored in the workflow or
   required to pass.
 
@@ -230,11 +231,12 @@ npm run build        # build client/dist
 [`docs/SECURITY_AUDIT_REPORT.md`](docs/SECURITY_AUDIT_REPORT.md)):
 
 - **Server**: `npm audit` → **0 vulnerabilities**.
-- **Client**: `npm audit` → **10 documented findings** that only resolve via semver-major
-  upgrades (Vite → 8, `@typescript-eslint` → 8, React Router → 7). A blocking audit gate
-  would fail required CI against an intentional, documented dependency state, so audit is
-  kept out of the required path. Run `npm audit` in `client/` and `server/` whenever
-  dependencies are touched and review the output against the report.
+- **Client**: `npm audit` → **12 documented findings** that only resolve via semver-major
+  upgrades (Vite → 8, `@typescript-eslint` → 8, React Router → 7, Vitest mocker → 4.1.11).
+  A blocking audit gate would fail required CI against an intentional, documented
+  dependency state, so audit is kept out of the required path. Run `npm audit` in
+  `client/` and `server/` whenever dependencies are touched and review the output against
+  the report.
 
 ## 🔑 Key Pages
 
@@ -363,6 +365,7 @@ npm run dev       # Start Vite development server
 npm run build     # Build for production
 npm run preview   # Preview production build
 npm run lint      # Run ESLint
+npm test          # Run Vitest unit/component tests
 ```
 
 **Backend (server/):**

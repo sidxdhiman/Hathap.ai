@@ -72,6 +72,9 @@ jobs:
       - name: Lint
         working-directory: client
         run: npm run lint
+      - name: Test
+        working-directory: client
+        run: npm test
       - name: Typecheck
         working-directory: client
         run: npx tsc --noEmit

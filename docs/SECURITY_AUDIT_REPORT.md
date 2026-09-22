@@ -67,3 +67,21 @@ Configs unchanged. `package.json` files byte-identical; only lockfiles updated.
 
 - Server: `npm audit` → **found 0 vulnerabilities**
 - Client: `npm audit` → 10 remaining (3 moderate, 7 high) — all in §3 residual set; none actionable without a semver-major bump.
+
+## 6. Phase 12.8 addendum (client test tooling)
+
+`test(client): add unit testing foundation` introduced **Vitest ^3.2.6** (Vite-native
+and Vite-5-compatible — its internal Vite range is `^5.0.0 || ^6 || ^7`). It was
+selected at the lowest version that both works with the repo's Vite 5 pin and clears
+the Vitest **UI-server** RCE advisory. Current client audit total: **10 → 12**
+(5 moderate, 7 high) with the following new dev-only entries beyond the §3 baseline:
+
+| Package | Sev | Rationale for accepting | Fix path |
+|---------|-----|-------------------------|----------|
+| `vitest` + `@vitest/mocker` + `vite-node` (GHSA-82fw-gwwq-j7x9) | moderate | Path traversal / arbitrary file read via the **`@vitest/mocker` redirect mock** (`vi.mock` with a redirect) and its dev-server surface. This repo only asserts on real module imports and never uses redirect mocks or a dev-server host, so the boundary is unreachable. All versions `<4.1.11` are affected; `4.1.11` peer-requires Vite ≥ 6, conflicting with the intentional Vite 5 pin. | Bump Vitest ≥ 4.1.11 when the Vite → 8 upgrade lands (§3) |
+
+The critical rating that initially appeared for `vitest <= 4.1.10` (GHSA-5xrq-8626-4rwp,
+Vitest UI server RCE) is **resolved** by the `^3.2.6` pin — this repo only ever runs
+`vitest run` (CLI, no `--ui` server). No finding was suppressed (no audit ignore lists,
+no `npm audit fix`, no Vite upgrade); the entries are dev/test-time only and are revisited
+together with the Vite major-version upgrade tracked in §3.
