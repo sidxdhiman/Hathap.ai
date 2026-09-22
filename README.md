@@ -224,6 +224,18 @@ npm run build        # build client/dist
 - CI uses fake/test-only values only; no real credentials are stored in the workflow or
   required to pass.
 
+### Security audit
+
+`npm audit` is not a CI gate by design. Baseline (Phase 12.6, see
+[`docs/SECURITY_AUDIT_REPORT.md`](docs/SECURITY_AUDIT_REPORT.md)):
+
+- **Server**: `npm audit` → **0 vulnerabilities**.
+- **Client**: `npm audit` → **10 documented findings** that only resolve via semver-major
+  upgrades (Vite → 8, `@typescript-eslint` → 8, React Router → 7). A blocking audit gate
+  would fail required CI against an intentional, documented dependency state, so audit is
+  kept out of the required path. Run `npm audit` in `client/` and `server/` whenever
+  dependencies are touched and review the output against the report.
+
 ## 🔑 Key Pages
 
 ### Login Page (`/`)
@@ -358,6 +370,7 @@ npm run lint      # Run ESLint
 npm run dev       # Start development server with hot reload
 npm run build     # Compile TypeScript to JavaScript
 npm start         # Run compiled production build
+npm test          # Run the full test suite (requires local MongoDB)
 ```
 
 ### Code Quality
