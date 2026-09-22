@@ -16,7 +16,7 @@ import {
 import logo from '../../assets/logo-1.png';
 import { Header } from '../components/layout/Header';
 import { Layout, Container, PageHeader, Grid } from '../components/layout/Layout';
-import { Card, CardBody, CardHeader } from '../components/ui/Card';
+import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
 import { formatDate, getStatusColor, getStatusText } from '../utils/helpers';
@@ -24,7 +24,7 @@ import { ResearchStatus } from '../types';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { courtrooms, models, agentTemplates, decisions, needsOnboarding, isLoading, getResearchStatus, runWebGroundedDemo } = useApp();
+  const { courtrooms, models, agentTemplates, decisions, needsOnboarding, isLoading, getResearchStatus } = useApp();
 
   const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
 

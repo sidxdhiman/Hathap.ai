@@ -227,12 +227,27 @@ export const DecisionDetailPage: React.FC = () => {
     }
   }, [id, updateLesson, getLessons, showToast]);
 
+  const decisionRef = useRef(decision);
+  useEffect(() => {
+    decisionRef.current = decision;
+  }, [decision]);
+
+  const fetchDecisionRef = useRef(fetchDecision);
+  useEffect(() => {
+    fetchDecisionRef.current = fetchDecision;
+  }, [fetchDecision]);
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
   useEffect(() => {
     setLoading(true);
-    if (!decision && id) {
-      fetchDecision(id).catch(() => {});
+    if (!decisionRef.current && id) {
+      void fetchDecisionRef.current(id).catch(() => {});
     }
-    load();
+    void loadRef.current();
   }, [id]);
 
   const status = snapshot?.status || decision?.status || 'draft';
@@ -350,7 +365,6 @@ export const DecisionDetailPage: React.FC = () => {
         void load();
       })
       .catch((err: any) => showToast('error', err.message || 'Failed to start decision'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, status, decision, snapshot, startDecision, load, showToast]);
 
   const handleRunPlanner = async () => {

@@ -7,7 +7,6 @@ import { Card, CardBody, CardHeader, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { TextArea } from '../components/ui/Input';
-import { Select } from '../components/ui/Input';
 import { useApp } from '../context/AppContext';
 import { Courtroom } from '../types';
 

@@ -12,7 +12,6 @@ import { Header } from '../components/layout/Header';
 import { Layout, Container } from '../components/layout/Layout';
 import { Card, CardBody, CardFooter, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import logo from '../assets/logo-1.png';
 import { Input } from '../components/ui/Input';
 import { TextArea } from '../components/ui/Input';
 import { Select } from '../components/ui/Input';

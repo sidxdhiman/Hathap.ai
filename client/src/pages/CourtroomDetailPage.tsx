@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Play,
-  Pause,
   UserPlus,
-  Settings,
   MessageSquare,
   CheckCircle,
   AlertCircle,
@@ -33,7 +31,7 @@ export const CourtroomDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [errorSuggestions, setErrorSuggestions] = useState<string[]>([]);
 
-  const fetchDebateData = async () => {
+  const fetchDebateData = useCallback(async () => {
     try {
       const API = (import.meta.env.VITE_API_URL as string) || '';
       const token = localStorage.getItem('hathap_token');
@@ -50,13 +48,13 @@ export const CourtroomDetailPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to load debate data', err);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) {
       fetchDebateData();
     }
-  }, [id, courtroom?.status]);
+  }, [id, courtroom?.status, fetchDebateData]);
 
   if (!courtroom) {
     return (
@@ -122,7 +120,7 @@ export const CourtroomDetailPage: React.FC = () => {
 
       if (!res.ok) {
         const data = await res.json();
-        let message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
+        const message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
         
         // Parse error message and provide suggestions
         const suggestions: string[] = [];

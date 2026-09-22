@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { Layout, Container, PageHeader } from '../components/layout/Layout';
-import { Card, CardBody, CardHeader, CardFooter } from '../components/ui/Card';
+import { Card, CardBody, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, TextArea, Select } from '../components/ui/Input';
 import { useEvaluation } from '../context/EvaluationContext';

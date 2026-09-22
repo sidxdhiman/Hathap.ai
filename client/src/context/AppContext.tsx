@@ -82,13 +82,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const getHeaders = () => {
+  const getHeaders = useCallback(() => {
     const API = (import.meta.env.VITE_API_URL as string) || '';
     const token = localStorage.getItem('hathap_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return { API, headers };
-  };
+  }, []);
 
   const showToast = useCallback((variant: Toast['variant'], message: string) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -102,7 +102,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     try {
       const { API, headers } = getHeaders();
       const [mRes, aRes, cRes] = await Promise.all([
@@ -118,11 +118,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [getHeaders]);
 
   useEffect(() => {
     refreshData();
-  }, []);
+  }, [refreshData]);
 
   const needsOnboarding =
     !isLoading && (models.length === 0 || models.every((model) => !model.hasApiKey));
@@ -244,7 +244,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) {
       console.error('Failed to refresh decisions', e);
     }
-  }, []);
+  }, [getHeaders]);
 
   const getDecision = (id: string) => decisions.find((d) => d.id === id);
 

@@ -8,7 +8,6 @@ import {
   Play,
   CheckCircle2,
   AlertTriangle,
-  TrendingUp,
   UserCheck,
   ShieldAlert,
   Layers,

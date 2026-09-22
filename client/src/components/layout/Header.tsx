@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Settings, LogOut, Menu, X, User } from 'lucide-react';
+import { LogOut, Menu, X, User } from 'lucide-react';
 import { useState } from 'react';
 import logo from '../../../assets/logo-1.png';
 import { useAuth } from '../../context/AuthContext';

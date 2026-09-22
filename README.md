@@ -211,6 +211,7 @@ npm run build        # build server/dist
 
 # Client (from client/)
 npm run dev          # dev server on http://localhost:5173
+npm run lint         # ESLint (fails on any warning)
 npx tsc --noEmit     # typecheck
 npm run build        # build client/dist
 ```
@@ -219,7 +220,7 @@ npm run build        # build client/dist
 
 - **Server job** (`npm ci`, `npx tsc --noEmit`, `npm test`, `npm run build`), with a
   MongoDB service container so tests need no external database.
-- **Client job** (`npm ci`, `npx tsc --noEmit`, `npm run build`).
+- **Client job** (`npm ci`, `npm run lint`, `npx tsc --noEmit`, `npm run build`).
 - CI uses fake/test-only values only; no real credentials are stored in the workflow or
   required to pass.
 

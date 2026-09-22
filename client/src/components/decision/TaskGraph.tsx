@@ -33,7 +33,6 @@ const STATUS_DOT: Record<string, string> = {
 function computeLayers(tasks: Task[]): string[][] {
   if (tasks.length === 0) return [];
   const idSet = new Set(tasks.map((t) => t.id));
-  const byId = new Map(tasks.map((t) => [t.id, t]));
   const placed = new Set<string>();
   const layers: string[][] = [];
 
