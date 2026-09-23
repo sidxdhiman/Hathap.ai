@@ -383,7 +383,7 @@ npm test          # Run the full test suite (requires local MongoDB)
 
 ### Code Quality
 
-- TypeScript strict mode enabled
+- TypeScript typechecking enforced in CI (server runs strict mode; the client is typechecked non-strict)
 - ESLint configured
 - Responsive design tested
 - Cross-browser compatible
