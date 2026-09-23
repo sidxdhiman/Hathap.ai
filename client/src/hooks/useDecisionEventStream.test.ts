@@ -16,6 +16,48 @@ function sseResponse(frames: Array<{ event: string; data: string }>) {
   return { ok: true, body: stream };
 }
 
+// Opens and sends its frame(s), then goes silent: further reads stay pending.
+function silentAfterOpen(frame = 'event: stream.connected\ndata: {}\n\n') {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(frame));
+    },
+    pull() {
+      return new Promise<void>(() => {});
+    },
+  });
+}
+
+// Emits frames at absolute fake-clock timestamps (measured from Date.now()).
+function streamWithScheduledFrames(frames: Array<{ at: number; frame: string }>) {
+  const encoder = new TextEncoder();
+  let next = 0;
+  let scheduled = false;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      return new Promise<void>((resolve) => {
+        const tryEmit = () => {
+          const frame = frames[next];
+          if (!frame) return;
+          if (Date.now() >= frame.at) {
+            scheduled = false;
+            controller.enqueue(encoder.encode(frame.frame));
+            next += 1;
+            resolve();
+            return;
+          }
+          if (!scheduled) {
+            scheduled = true;
+            setTimeout(tryEmit, frame.at - Date.now());
+          }
+        };
+        tryEmit();
+      });
+    },
+  });
+}
+
 describe('useDecisionEventStream', () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -88,6 +130,139 @@ describe('useDecisionEventStream', () => {
         await vi.advanceTimersByTimeAsync(3000);
       });
       expect(onUpdate).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to polling when no bytes arrive within the silence window', async () => {
+    vi.useFakeTimers();
+    try {
+      const onUpdate = vi.fn();
+      fetchMock.mockResolvedValue({ ok: true, body: silentAfterOpen() } as Response);
+      const { result } = renderHook(() =>
+        useDecisionEventStream({ id: 'd1', active: true, onUpdate, pollIntervalMs: 3000 })
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+      expect(result.current.status).toBe('live');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(25000);
+      });
+      expect(result.current.mode).toBe('polling');
+      expect(result.current.status).toBe('fallback');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(onUpdate).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets the silence watchdog on any received bytes', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      const onUpdate = vi.fn();
+      fetchMock.mockResolvedValue({
+        ok: true,
+        body: streamWithScheduledFrames([
+          { at: 0, frame: 'event: stream.connected\ndata: {}\n\n' },
+          { at: 20000, frame: ': heartbeat\n\n' },
+        ]),
+      } as Response);
+      const { result } = renderHook(() =>
+        useDecisionEventStream({ id: 'd1', active: true, onUpdate, pollIntervalMs: 3000 })
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+      expect(result.current.status).toBe('live');
+
+      // A heartbeat at t=20s restarts the 25s window, so a 43s-old stream
+      // that keeps producing bytes is still healthy.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(43000);
+      });
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('live');
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      // Only once 25s elapse since the *last* bytes do we degrade.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(result.current.mode).toBe('polling');
+      expect(result.current.status).toBe('fallback');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(onUpdate).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the watchdog and poll timers on unmount', async () => {
+    vi.useFakeTimers();
+    try {
+      const onUpdate = vi.fn();
+      fetchMock.mockResolvedValue({ ok: true, body: silentAfterOpen() } as Response);
+      const { result, unmount } = renderHook(() =>
+        useDecisionEventStream({ id: 'd1', active: true, onUpdate, pollIntervalMs: 3000 })
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+      expect(result.current.status).toBe('live');
+
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40000);
+      });
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('live');
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resets timers and state when the stream becomes inactive', async () => {
+    vi.useFakeTimers();
+    try {
+      const onUpdate = vi.fn();
+      fetchMock.mockResolvedValue({ ok: true, body: silentAfterOpen() } as Response);
+      const props = { id: 'd1', active: true as boolean, onUpdate, pollIntervalMs: 3000 };
+      const { result, rerender } = renderHook(
+        (p: typeof props) => useDecisionEventStream(p),
+        { initialProps: props }
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+      expect(result.current.status).toBe('live');
+
+      rerender({ ...props, active: false });
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('stopped');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40000);
+      });
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('stopped');
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
