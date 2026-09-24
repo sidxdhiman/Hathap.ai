@@ -40,16 +40,16 @@ export const LandingPage: React.FC = () => {
       a: "Yes. In the Hathap dashboard, you can define custom roles, specify focus guidelines, select target models (such as GPT-4o, Claude 3.5 Sonnet, or Llama 3), and set personality traits for each agent to match your organization's standards."
     },
     {
-      q: "Does Hathap integrate with our existing tools?",
-      a: "Absolutely. Hathap can connect to your project management tools, document repos, and CI/CD pipelines to pull relevant context, code structures, or financial spreadsheets directly into the decision workspace."
+      q: "How much research and context does Hathap consider?",
+      a: "You provide the proposal, background data, and any constraints. During a debate Hathap can also run web research to retrieve supporting evidence for the claims under discussion, and each evidence item is recorded with its source and retrieval metadata in the Decision Report."
     },
     {
       q: "Is our business data kept secure and private?",
-      a: "Security is our top priority. We use isolated workspaces, enterprise-grade encryption, and offer strict data residency controls. Your submissions and discussion histories are never used to train public LLM models."
+      a: "All data you create is scoped to your account and is never shared across users or workspaces. Models are connected using your own API keys, and your submissions and discussion histories are not exposed to other Hathap users."
     },
     {
       q: "What is the format of the Decision Report?",
-      a: "Each discussion generates a clean, downloadable Decision Report. It contains a calculated risk score (0-100), consensus summary, individual agent critiques, potential failure modes, compliance gaps, and a list of structured action items."
+      a: "Each discussion generates a clean, downloadable Markdown Decision Report. It contains a recommendation, an executive summary, the evidence gathered (with sources), each claim's verification status, red-team findings, an open-questions / reconciliation section, model routing, and cost & usage details."
     }
   ];
 

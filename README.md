@@ -5,7 +5,7 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 ## 🎯 Features
 
 ### Core Functionality
-- **Authentication**: Placeholder authentication system
+- **Authentication**: JWT-based signup/login with per-user data scoping, password change, data export, and account deletion
 - **Dashboard**: Overview with statistics and recent courtrooms
 - **Models Management**: Connect and manage AI models from multiple providers
 - **Agent Templates**: Create reusable AI agent personas with custom prompts
@@ -245,8 +245,8 @@ npm run build        # build client/dist
 ## 🔑 Key Pages
 
 ### Login Page (`/`)
-- Simple placeholder authentication
-- Demo credentials: use any email and password
+- JWT-based signup and login
+- Demo credentials: register an account with any email and password
 
 ### Dashboard (`/dashboard`)
 - Overall statistics
@@ -316,7 +316,7 @@ The backend is a Node.js + Express + TypeScript server located in the `server/` 
 - **OpenAI Integration**: LLM-powered agent responses
 
 ### API Endpoints:
-- `/api/auth/*` - Authentication (login, signup)
+- `/api/auth/*` - Authentication (signup, login, me, change-password, export-data, delete-account)
 - `/api/models/*` - AI model management
 - `/api/agents/*` - Agent template CRUD
 - `/api/courtrooms/*` - Courtroom and debate management

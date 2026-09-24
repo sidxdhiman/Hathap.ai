@@ -283,9 +283,13 @@ export const debateHandler: TaskHandler = {
 
     // ---- Phase 4/5: Schedule downstream verification / red team / reconciliation ----
     // Phase 5 intelligent plans gate these stages via the plan's termination
-    // flags. Legacy (fixed-mode) executions without a plan get the full Phase 4
-    // graph, exactly as before.
-    const termination = await resolvePlanTermination(context.executionId);
+    // flags. Legacy (fixed-mode) executions without a plan get the Phase 4
+    // graph honoring the decision's stored `verificationEnabled` toggle, so a
+    // user who turns verification off actually skips the verify_claim tasks.
+    const termination = await resolvePlanTermination(
+      context.executionId,
+      decision.configuration?.verificationEnabled
+    );
     const phase4TaskIds = await schedulePhase4DownstreamTasks(
       context,
       result,
@@ -309,26 +313,34 @@ export const debateHandler: TaskHandler = {
 
 /**
  * Resolve the termination flags that control the Phase 4 downstream graph.
- * Fixed-mode executions (no plan) keep the legacy behavior (all stages on).
+ * Fixed-mode executions (no plan) honor the decision's stored
+ * `verificationEnabled` toggle: verification is skipped when the user turned it
+ * off, and kept on otherwise (legacy behavior for decisions without a flag).
  * Intelligent-mode executions honor the plan's termination flags.
  */
-async function resolvePlanTermination(
-  executionId: string
+export async function resolvePlanTermination(
+  executionId: string,
+  verificationEnabled?: unknown | null
 ): Promise<{ verify: boolean; redTeam: boolean; reconciliation: boolean }> {
+  const verify = verificationEnabled !== false;
   try {
     const Execution = (await import('../../models/Execution')).default;
     const DecisionPlan = (await import('../../models/DecisionPlan')).default;
     const execution = await Execution.findById(executionId);
     const planId = execution?.planId;
-    if (!planId) return { verify: true, redTeam: true, reconciliation: true };
+    if (!planId) {
+      return { verify, redTeam: true, reconciliation: true };
+    }
     const plan = await DecisionPlan.findById(planId);
-    if (!plan?.termination) return { verify: true, redTeam: true, reconciliation: true };
+    if (!plan?.termination) {
+      return { verify, redTeam: true, reconciliation: true };
+    }
     return {
       verify: plan.termination.requiresVerification !== false,
       redTeam: plan.termination.requiresRedTeam !== false,
       reconciliation: plan.termination.requiresReconciliation !== false,
     };
   } catch {
-    return { verify: true, redTeam: true, reconciliation: true };
+    return { verify, redTeam: true, reconciliation: true };
   }
 }

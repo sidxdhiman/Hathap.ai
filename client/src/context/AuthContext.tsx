@@ -12,6 +12,9 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  exportData: () => Promise<Record<string, unknown>>;
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,8 +71,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    const res = await fetch(`${API}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Password change failed');
+    }
+  };
+
+  const exportData = async () => {
+    const res = await fetch(`${API}/api/auth/export-data`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Data export failed');
+    }
+    return res.json();
+  };
+
+  const deleteAccount = async () => {
+    const res = await fetch(`${API}/api/auth/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Account deletion failed');
+    }
+    logout();
+  };
+
   return (
-    <AuthContext.Provider value={{ token, user, login, signup, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ token, user, login, signup, logout, changePassword, exportData, deleteAccount }}>
+      {children}
+    </AuthContext.Provider>
   );
 };
 

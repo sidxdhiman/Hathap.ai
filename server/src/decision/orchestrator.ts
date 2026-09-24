@@ -75,7 +75,7 @@ export class DecisionOrchestrator {
         maxRounds: input.configuration?.maxRounds || 3,
         maxAgents: input.configuration?.maxAgents || 10,
         pauseOnAgreement: input.configuration?.pauseOnAgreement ?? true,
-        verificationEnabled: input.configuration?.verificationEnabled ?? false,
+        verificationEnabled: input.configuration?.verificationEnabled ?? true,
       },
       participants: input.participants || [],
       assumptions: input.assumptions || [],
