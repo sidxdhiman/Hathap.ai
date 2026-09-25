@@ -344,15 +344,16 @@ Uses React Context API (`AppContext`) for global state:
 
 ## 📝 Future Enhancements
 
-- Backend API integration
-- Real WebSocket communication
-- Actual AI model API calls
-- User persistence and authentication
-- Export debate transcripts
-- Advanced analytics
-- Custom debate modes
-- Model parameter fine-tuning
-- Debate history and analytics
+Already implemented (for reference, so they are not re-listed below): the
+Express backend API, real multi-provider AI model calls, user authentication
+and persistence, decision/evidence export, debate history, and the fixed +
+intelligent planning engines.
+
+Genuinely future work:
+
+- Real WebSocket communication (live updates currently use server-sent events)
+- Advanced analytics across decisions
+- Model parameter fine-tuning from the UI
 - Team collaboration features
 
 ## 📄 License

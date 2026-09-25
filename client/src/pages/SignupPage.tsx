@@ -10,7 +10,7 @@ import logo from '../../assets/logo-1.png';
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
   const auth = useAuth();
-  const { refreshData } = useApp();
+  const { refreshData, showToast } = useApp();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,8 +23,8 @@ export const SignupPage: React.FC = () => {
       await auth.signup(name, email, password);
       refreshData();
       navigate('/onboarding');
-    } catch (e) {
-      alert('Signup failed');
+    } catch (err) {
+      showToast('error', (err as Error).message || 'Signup failed');
     } finally {
       setIsLoading(false);
     }

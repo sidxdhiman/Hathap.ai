@@ -58,7 +58,38 @@ describe('AuthProvider', () => {
         error = err;
       }
     });
+    expect((error as Error).message).toBe('bad credentials');
+    expect(result.current.token).toBeNull();
+    expect(result.current.user).toBeNull();
+  });
+
+  it('surfaces the server error message when login fails without an error body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}, false));
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    let error: unknown;
+    await act(async () => {
+      try {
+        await result.current.login('a@b.com', 'wrong');
+      } catch (err) {
+        error = err;
+      }
+    });
     expect((error as Error).message).toBe('Invalid credentials');
+    expect(result.current.token).toBeNull();
+  });
+
+  it('surfaces the server error message when signup fails', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'User exists' }, false));
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    let error: unknown;
+    await act(async () => {
+      try {
+        await result.current.signup('New', 'new@b.com', 'pw');
+      } catch (err) {
+        error = err;
+      }
+    });
+    expect((error as Error).message).toBe('User exists');
     expect(result.current.token).toBeNull();
     expect(result.current.user).toBeNull();
   });

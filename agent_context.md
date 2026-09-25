@@ -4,6 +4,17 @@
 
 Hathap.AI is a multi-agent AI debate and collaboration platform that enables users to create virtual "Courtrooms" where multiple AI agents powered by different LLM models can debate, collaborate, and reach consensus on complex topics. The platform supports multiple debate strategies (consensus, majority vote, devil's advocate, judge mode, open debate), integrates with various AI providers (OpenAI, Anthropic, Google Gemini, DeepSeek, Ollama, and OpenAI-compatible APIs), and provides real-time visualization of agent interactions. Built with a React + TypeScript frontend and Node.js + Express + MongoDB backend, it offers JWT-based authentication, per-user workspace management, customizable agent personas with system prompts, and an Agent-to-Agent (A2A) protocol for inter-agent communication. The platform is designed for technical decision-making, brainstorming, architectural reviews, and exploring multiple perspectives on complex problems through structured AI collaboration.
 
+> **Status note (Phase 14, 2026):** This file is an early-phase design snapshot.
+> Where a section below describes *current state*, treat the following as the
+> authoritative, up-to-date facts: the repo has a full server test suite
+> (272 tests) and client vitest suite, a GitHub Actions CI workflow
+> (`.github/workflows/ci.yml`) running server + client gates on every push,
+> helmet security headers and an auth-endpoint rate limiter
+> (`server/src/index.ts`), a `CORS_ORIGINS` allow-list with production
+> reject-by-default (`server/src/config/security.ts`), and production
+> enforcement of a strong `JWT_SECRET`. Contradictions in sections below are
+> stale; check the README and `docs/` before relying on them.
+
 ---
 
 # Table of Contents
@@ -886,7 +897,7 @@ Future considerations:
 - No cross-user collaboration (yet)
 - No public courtrooms or shared templates (yet)
 - No role-based access control within teams (yet)
-- No API rate limiting per user (consider adding)
+- General (non-auth) API endpoints are not per-user rate limited (auth endpoints are; see #15)
 - No resource quotas (unlimited models, agents, courtrooms)
 
 ---
@@ -1217,10 +1228,16 @@ npm start
 
 ## Testing
 
-Currently no test suite implemented. Recommended additions:
-- Jest for unit tests
-- React Testing Library for component tests
-- Supertest for API endpoint tests
+Test suites are implemented and run in CI:
+
+- Server: `npm test` in `server/` runs the full suite under
+  `server/src/tests/` (272 tests across ~23 files; node's test runner).
+- Client: `npm test` in `client/` runs the Vitest suite (~58 tests / 13 files,
+  React Testing Library + Vitest).
+- CI: `.github/workflows/ci.yml` runs server (typecheck, tests, build) and
+  client (lint, tests, typecheck, build) gates on every push.
+
+Not yet added:
 - Playwright or Cypress for E2E tests
 
 ## Linting
@@ -1562,11 +1579,11 @@ Not currently implemented. When adding tests:
 ## Rate Limiting
 
 ### Current State
-- No rate limiting implemented
+- Auth endpoints are rate limited via `express-rate-limit` (`server/src/index.ts`)
+- General (non-auth) endpoints are not rate limited yet
 
 ### Recommendations
-- Implement rate limiting middleware (express-rate-limit)
-- Per-user limits:
+- Extend per-user limits beyond auth endpoints:
   - API requests: 100 requests/minute
   - Debate starts: 10/hour
   - Signups: 5/hour per IP
@@ -1663,18 +1680,22 @@ Not currently implemented. When adding tests:
 3. **Trusted Environment**: Assumes server environment is secure
 4. **API Key Trust**: Assumes users provide legitimate API keys
 5. **No Token Revocation**: Stolen tokens valid until expiration
-6. **CORS Configuration**: Currently permissive for development
-7. **Rate Limiting**: No protection against abuse/DoS
+6. **CORS Configuration**: Allow-list based (`CORS_ORIGINS` env); development
+   allows the Vite origins, production rejects unlisted browser origins
+7. **Rate Limiting**: Auth endpoints protected; broader protection beyond auth
+   endpoints still to be extended
 
 **Recommendations for Production:**
 - Enable HTTPS/TLS for all connections
-- Implement rate limiting
-- Add CSRF protection for cookie-based auth
-- Implement security headers (helmet.js)
+- Add CSRF protection for cookie-based auth (JWT-in-header flow is not CSRF-exposed)
 - Regular security audits and dependency updates
 - Add monitoring for suspicious activity
 - Implement proper logging (without sensitive data)
 - Add WAF (Web Application Firewall)
+
+**Already implemented:** security headers via `helmet` and auth-endpoint rate
+limiting (`server/src/index.ts`), production `JWT_SECRET` enforcement
+(`server/src/config/security.ts`).
 
 ---
 
@@ -1818,17 +1839,16 @@ Not currently implemented. When adding tests:
 ## Technical Debt
 
 ⚠️ **Code Quality:**
-- No comprehensive test coverage
+- Test suites exist and run in CI (server 272 tests, client Vitest suite); edge-path coverage is still partial
 - Limited error handling in some routes
 - Some duplicate code between strategies
 - Frontend state management could be refactored
 - No input validation library (manual validation)
 
 ⚠️ **Security:**
-- No rate limiting
-- No CSRF protection
-- Permissive CORS for development (needs production config)
-- No security headers (helmet.js not configured)
+- Rate limiting configured for auth endpoints only
+- No CSRF protection (not applicable to the JWT-in-header flow, but cookie flows would need it)
+- CORS is allow-list based; production rejects unlisted origins (`CORS_ORIGINS`)
 - Password requirements too weak (6 characters minimum)
 - No account lockout after failed login attempts
 

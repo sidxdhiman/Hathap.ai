@@ -14,7 +14,7 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const auth = useAuth();
-  const { refreshData } = useApp();
+  const { refreshData, showToast } = useApp();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +24,7 @@ export const LoginPage: React.FC = () => {
       refreshData();
       navigate('/dashboard');
     } catch (err) {
-      alert('Login failed');
+      showToast('error', (err as Error).message || 'Login failed');
     } finally {
       setIsLoading(false);
     }
