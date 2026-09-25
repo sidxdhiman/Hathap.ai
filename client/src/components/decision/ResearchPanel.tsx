@@ -59,7 +59,7 @@ export const ResearchPanel: React.FC<ResearchPanelProps> = ({ research, loading 
                 <span className="text-sm text-theme-text-primary">
                   {rt.input && 'query' in rt.input ? String((rt.input as Record<string, unknown>).query) : '—'}
                 </span>
-                {rt.input && 'purpose' in rt.input && rt.input.purpose && rt.input.purpose !== 'background' && (
+                {rt.input && 'purpose' in rt.input && typeof rt.input.purpose === 'string' && rt.input.purpose !== 'background' && (
                   <span className="text-xs text-theme-text-secondary ml-2">{String(rt.input.purpose)}</span>
                 )}
               </div>

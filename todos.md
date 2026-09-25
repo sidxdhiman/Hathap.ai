@@ -1,61 +1,70 @@
-# Hathap.ai — Phase 14 todos (Truthful docs + auth error surfacing)
+# Hathap.ai — Phase 15 todos (Client strict mode)
 
-Last updated: Phase 14 (after inspection at commit `6411cb8`).
+Last updated: Phase 15 (after completion of Phase 14 at commit `9935c04`).
+
+## Phase 15 scope
+
+- [x] Inspect the baseline and verify HEAD == the Phase 14 commit.
+- [x] Investigate the four candidate debt items (client `strict:false`, JWT in
+      localStorage, 12 residual npm audit findings, auth-only rate limiting) and
+      record evidence-based findings.
+- [x] Enable client TypeScript `strict: true` and fix the single blocked error —
+      client and server now share the same strict configuration.
+- [x] Re-run the full client + server quality gates and audits; commit and push.
+
+## Phase 15 findings (evidence recorded)
+
+- **Client strict mode**: enabling `--strict` produced exactly one error
+  (`ResearchPanel.tsx` JSX child of type `unknown`); the `any`-typed codebase
+  already satisfied the rest of the strict checks. Client and server are now
+  both `strict: true`.
+- **JWT in localStorage / cookie-session migration**: deferred, not forced.
+  Auth is Bearer-token over `Authorization` headers read from `localStorage`
+  across 6 client files (`AuthContext`, `AppContext`, `EvaluationContext`,
+  `useDecisionEventStream`, `CourtroomDetailPage`) plus server middleware that
+  reads the header only. There is no server-side session store, no logout
+  endpoint, and the production deployment topology (frontend vs API origin,
+  HTTPS) is not defined in this repo — cookie `SameSite`/`Secure` semantics
+  cannot be chosen responsibly yet. A migration would be a broad cross-cutting
+  change (server middleware, CORS credentials, CSRF, every client fetch,
+  ~10 test files) and is deliberately not forced into Phase 15.
+- **npm audit**: client still 12 findings (5 moderate, 7 high); each requires a
+  semver-major upgrade (vite 5 → 8, `@typescript-eslint` 6 → 8, react-router
+  v7) and is dev/test-time only — documented in `docs/SECURITY_AUDIT_REPORT.md`.
+  No upgrade was made for the sake of the count. Server audit remains 0.
+- **Rate limiting**: auth endpoints limited (30 / 15 min) via
+  `express-rate-limit`; the code comment documents why it is intentionally not
+  global. Broader limits risk interfering with SSE, polling, and the execution
+  worker; not a Phase 15 change.
 
 ## Where we are
 
-Phases 1-13 are committed and pushed to `main`. The full quality gates pass
-locally at the Phase 13 baseline (`6411cb8`):
+Phases 1-14 are committed and pushed to `main`. Quality gates at the Phase 15
+baseline: server `tsc --noEmit` clean, 272/272 tests, build green; client
+`tsc --noEmit` clean (now under `strict: true`), lint clean, 60/60 tests,
+`typecheck:config` clean, build green.
 
-- Server: `tsc --noEmit` clean, **272/272** tests pass, `npm run build` green.
-- Client: `tsc --noEmit` clean, `npm run lint` clean, vitest suite green
-  (~58 tests / 13 files), `tsc -p tsconfig --noEmit` for `vite.config.ts` clean,
-  `npm run build` green.
-- Security: server `npm audit --omit=dev` reports 0 findings; client audit
-  findings are a documented residual set (see `docs/SECURITY_AUDIT_REPORT.md`).
-- CI: `.github/workflows/ci.yml` runs the server and client jobs on every push.
-- Auth endpoints shipped in Phase 13: `/api/auth/me`, `/change-password`,
-  `/export-data`, `/account` (delete), with the ProfilePage bound to real data.
-
-The Phase 12.2 item to "review the remote GitHub Actions run for `f73d6bc`" is
-superseded: many subsequent commits (Phases 12.3-13) were pushed and verified
-locally with the same gates; the local and CI job sets are identical.
-
-## Phase 14 scope
-
-- [x] Inspect the repo at the Phase 13 baseline and record what is actually true.
-- [x] Refresh this ledger so it reflects Phases 12-13 reality instead of Phase 11.
-- [x] README "Future Enhancements" — remove items that are already implemented.
-- [x] `agent_context.md` — fix claims contradicted by the repo (tests, CI, rate
-      limiting, CORS, security headers) and add a dated current-state note.
-- [x] Login/Signup — surface the server-provided error message instead of a
-      generic `alert()` so users see the real failure reason (e.g. "User exists").
-- [ ] Re-run full validation (server tsc/tests/build; client tsc/lint/test/
-      typecheck:config/build), commit, push, report.
-
-## Done (Phases 11-13 recap)
+## Done (Phases 11-14 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
-  resolution (`brave | mock | duckduckgo | auto`), research status/demo routes,
-  web-grounded dashboard banner, provider-labeled evidence. `researchProvider`
-  test tsc fixes; suite 246/246 at the time.
+  resolution, research status/demo routes, web-grounded dashboard banner.
 - Phase 12: Auth hardening — production `JWT_SECRET` enforcement, CORS
-  allow-list, helmet, auth endpoint rate limiting; removal of mock/loose
-  research fallbacks; client strict-ish config reviews; security audit report.
+  allow-list, helmet, auth endpoint rate limiting; client test tooling; audit
+  remediation + documented residual set.
 - Phase 13: Honest-surface fixes — auth endpoints (`/me`, change-password,
-  export-data, delete account), ProfilePage bound to real API data,
-  `verificationEnabled` default on and honored in fixed mode, LandingPage no
-  longer claims fake verdicts, README auth labeling.
+  export-data, delete account), real ProfilePage binding, `verificationEnabled`
+  default on, truthful LandingPage/README claims.
+- Phase 14: Truthful docs (`todos.md`, README Future Enhancements,
+  `agent_context.md`) and auth error surfacing (login/signup show the real
+  server message via toasts).
 
 ## Remaining (ship blockers / known debt)
 
-- Client `tsconfig.json` has `strict: false` while the server is `strict: true`
-  (gap, tracked; a strict-mode migration is a large client-wide refactor).
-- JWT is stored in `localStorage` (readable by any page script). A
-  session-cookie / SameSite migration is a future hardening item, documented in
-  `AuthContext.tsx`.
+- JWT stored in `localStorage` (readable by any page script). HTTP-only session
+  cookie migration is deferred pending a defined deployment topology and a
+  dedicated cross-cutting phase (see Phase 15 findings above).
 - Client `npm audit` residual findings (12) are documented in
-  `docs/SECURITY_AUDIT_REPORT.md`; keep pinned to those versions or bump when
-  compatible.
+  `docs/SECURITY_AUDIT_REPORT.md`; revisit together with a Vite →
+  `@typescript-eslint` major upgrade in a dedicated phase.
 - Login rate limiting covers auth endpoints only; broader per-endpoint limits
   are not yet configured.
