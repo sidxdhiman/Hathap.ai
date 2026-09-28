@@ -12,6 +12,9 @@ Last updated: Phase 16 (after completion of Phase 15 at commit `3c4cf44`).
 - [x] Compare the bearer/localStorage model with a cookie-session model,
       including CSRF, CORS-credentials and session-invalidation consequences.
 - [x] Choose the smallest responsible scope and write it down.
+- [x] Review the Phase 16 architecture document against browser specifications
+      and correct the site-vs-origin error in the `SameSite` analysis (§4.3, §5.1,
+      §6.1 of the design doc, plus this file and the deployment checklist).
 - [x] Re-run the full quality gates and audits; commit and push.
 
 ## Outcome: B — architecture-first
@@ -32,13 +35,19 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   production guidance is a *host suggestion list* pairing a CDN/static host with
   a Node host (`DEPLOYMENT_CHECKLIST.md`, `agent_context.md`) — different
   registrable domains, i.e. cross-**site**. The server never serves the SPA.
-- **Why cookies could not be safely implemented now.** With the documented
-  cross-site hosting pairing, `SameSite=Lax`/`Strict` cookies are never sent
-  (silent 401s in production only) and `SameSite=None` needs HTTPS plus a shared
-  registrable domain the repo does not own; cross-origin dev is plain HTTP, where
-  `SameSite=None` is rejected outright. `trust proxy` is never configured, so
-  neither the `Secure` decision nor a reliable same-origin check can be made
-  from code today.
+- **Why cookies could not be safely implemented now.** The blocking input is the
+  **same-site vs cross-site** question, not "can we set a cookie". `SameSite` is
+  evaluated on the *site* (scheme + registrable domain), not the *origin*, so
+  subdomains and different ports are same-site and `SameSite=Lax` works there.
+  But with the documented cross-**site** hosting pairing, `SameSite=Lax`/`Strict`
+  cookies are never sent (silent 401s in production only) and `SameSite=None` is
+  forced — which requires HTTPS and removes all `SameSite` CSRF protection, making
+  the CSRF token the sole defence. Whether production is same-site or cross-site
+  is a one-line operator answer the repository does not contain, and the two
+  outcomes need materially different designs. HTTPS is only asserted in prose
+  (`agent_context.md`: "Assumes production deployment uses HTTPS"), never
+  configured; `trust proxy` is never configured, so neither the `Secure` decision
+  nor a reliable same-origin check can be made from code today.
 - **Session model chosen for the future phase**: keep the stateless HS256 JWT,
   move it into an `HttpOnly` cookie, and add a revocable `User.tokenVersion`
   (`ver` claim) so logout, password change and account deletion actually

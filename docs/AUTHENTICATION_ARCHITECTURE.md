@@ -15,8 +15,17 @@ been built or tested yet. It is a specification for a future phase.
 
 **Phase 16 outcome: B — architecture-first.** The cookie migration was **not**
 implemented in this phase because the repository does not define a production
-deployment topology, and cookie `SameSite` / `Secure` / `Domain` semantics are
-*undefined* until it does. Implementing cookies first would mean guessing.
+deployment topology, and cookie `SameSite` / `Secure` semantics are *undefined*
+until it does. Implementing cookies first would mean guessing.
+
+Precisely, the migration is blocked on two one-line facts that the code cannot
+supply (§4.3, §10.1):
+
+1. **Is the API on the same registrable domain as the SPA?** This decides whether
+   `SameSite` contributes any CSRF protection. If not, `SameSite=None` is forced
+   and the CSRF token becomes the only defence.
+2. **Is the public origin HTTPS?** `Secure` is required in every case, and
+   `SameSite=None` is impossible without it.
 
 The one decision that is safe to make now, and is recorded here, is the
 **session model**: keep the existing stateless HS256 JWT and move it into an
@@ -60,7 +69,7 @@ Every line reference below was read directly from the tree at the baseline commi
 |---|---|---|
 | Token persistence | `localStorage` keys `hathap_token` and `hathap_user`, written back by effects on every state change | `client/src/context/AuthContext.tsx:23-44` |
 | Token retrieval | `localStorage.getItem('hathap_token')` read directly in 5 modules, outside any shared HTTP layer | `AuthContext.tsx:23`, `AppContext.tsx:87`, `EvaluationContext.tsx:73`, `pages/CourtroomDetailPage.tsx:37` and `:112`, `hooks/useDecisionEventStream.ts:164` |
-| API calls | ~76 authenticated `fetch` call sites build `Authorization: Bearer` by hand. There is **no** shared API client | `AppContext.tsx` (~40), `EvaluationContext.tsx` (~20), `AuthContext.tsx` (5), `CourtroomDetailPage.tsx` (3), `useDecisionEventStream.ts:1` |
+| API calls | 70 authenticated `fetch` call sites build `Authorization: Bearer` by hand (72 total, minus the 2 public `login`/`signup` calls). There is **no** shared API client | `AppContext.tsx` (39), `EvaluationContext.tsx` (24), `AuthContext.tsx` (3 of 5), `CourtroomDetailPage.tsx` (3), `useDecisionEventStream.ts` (1) |
 | API base URL | `import.meta.env.VITE_API_URL` if set, otherwise relative `/api` (dev proxy) | `client/src/context/AuthContext.tsx:46-51` and the same pattern in the other four modules |
 | Protected routing | `ProtectedRoute` checks token *presence* only; there is no server validation on load, so a stale/expired token renders the whole app shell and fails per call | `client/src/App.tsx:25-31` |
 | Auth restoration | Lazy `useState` init from `localStorage`; no `/api/auth/me` bootstrap call | `client/src/context/AuthContext.tsx:23-31` |
@@ -117,7 +126,8 @@ which is the same order of work the routes already do.
 | The server never serves the SPA. There is no static mount and no SPA fallback in the production app | `server/src/index.ts:38-104` (verified: no `express.static`, no `sendFile`) |
 | Production CORS is deny-by-default; cross-origin production requires an explicit `CORS_ORIGINS` allow-list | `server/src/config/security.ts:87-95`, `server/.env.example:15-20` |
 | Same-origin production "works" only because of the `Origin === http(s)://${Host}` comparison, which assumes the proxy preserves `Host` | `server/src/index.ts:45-49` |
-| No TLS/proxy assumption is documented anywhere; `trust proxy` is never configured | verified: no `trust proxy` / `X-Forwarded` / `req.secure` in `server/src` |
+| No TLS/proxy assumption is *configured* anywhere; `trust proxy` is never configured | verified: no `trust proxy` / `X-Forwarded` / `req.secure` in `server/src` |
+| HTTPS is only an **assumption in prose**, never a configuration | `agent_context.md` "**HTTPS in Production**: Assumes production deployment uses HTTPS"; `DEPLOYMENT_CHECKLIST.md` → "Navigate to `https://your-domain.com`". No `Secure`-related setting or deploy artifact corroborates it |
 | **No deployment artifacts exist in the repository.** No Dockerfile, compose file, nginx/Caddy config, Procfile, `vercel.json`, `netlify.toml`, or infrastructure-as-code | verified: `git ls-files` matches only `.github/workflows/ci.yml` |
 | The only documented production guidance is a host *suggestion list*, and the suggested pairings are **different registrable domains** | `DEPLOYMENT_CHECKLIST.md` → "Step 1: Backend Deployment" / "Step 2: Frontend Deployment"; `agent_context.md` §3 "Deployment" |
 | CI does not set `NODE_ENV`, so production defaults are never exercised anywhere | `.github/workflows/ci.yml:31-37` |
@@ -138,23 +148,63 @@ are also cross-**site**). No proxy, origin, or domain is pinned anywhere.
 
 ### 4.3 Why this blocks a cookie implementation
 
-Cookie transport is a function of topology, not a drop-in replacement:
+Cookie transport is a function of topology, not a drop-in replacement.
+
+**First, the distinction that actually governs cookie behaviour.** `SameSite` is
+evaluated on the **site**, not the **origin**. A site is *scheme + registrable
+domain*; an origin additionally includes the port. So `app.example.com` and
+`api.example.com` are **cross-origin but same-site**, and `localhost:5173` →
+`localhost:4000` is likewise cross-origin but same-site. A request is cross-site
+only when the registrable domain or the scheme differs. Consequence: **cookies are
+always sent on same-site requests regardless of the `SameSite` value**, so
+`SameSite=Lax` (and `Strict`) survives subdomain and port changes. It is *not*
+true that `Lax`/`Strict` are "not sent on cross-origin XHR/fetch" — they are not
+sent on cross-**site** subrequests. (Verified against the MDN `SameSite`
+reference, the W3C 2020 Chrome SameSite talk, and a CISA advisory that states the
+rule directly: a `Sec-Fetch-Site: same-site` value means "the same registrable
+domain and scheme but a different origin", and "cookies are always sent on
+same-site requests regardless of SameSite".)
+
+Applying that rule:
 
 | Topology | Cookie that actually works | Why the others fail |
 |---|---|---|
-| S1 same-origin | `__Host-hathap_session; Secure; SameSite=Strict; Path=/` | — |
-| S2 cross-origin, **same site** (e.g. `app.example.com` + `api.example.com`) | `SameSite=None; Secure` (or `Domain=example.com` + `Lax`) | `Lax`/`Strict` are not sent on cross-origin XHR/fetch — silent 401s |
-| S2 cross-origin, **cross site** (the documented host pairing) | **No `SameSite` value works safely** | Browsers reject `SameSite=None` without `Secure` (so HTTPS is mandatory) and apply stricter default handling to such cookies; `Lax`/`Strict` are not sent cross-site at all |
+| S1 same-origin | `__Host-hathap_session; Secure; HttpOnly; SameSite=Strict; Path=/` | — best case: `__Host-` blocks subdomain cookie injection and `Strict` blocks every cross-site request class |
+| S2 cross-origin, **same site** (e.g. `app.example.com` + `api.example.com`) | `Secure; HttpOnly; SameSite=Lax; Path=/` (optionally `Domain=example.com`; omit `Domain` and the cookie stays host-only on the API) | `Strict` is *also* usable here, but it breaks sign-in from an external link. `SameSite=None` would work and is **not** wanted — it discards all `SameSite` protection for no benefit |
+| S2 cross-origin, **cross site** (the shape the documented host list implies: `*.vercel.app` + `*.herokuapp.com`) | `Secure; HttpOnly; SameSite=None; Path=/` — the only value sent, and it is forced | `Lax`/`Strict` are not sent at all → silent 401s. `None` requires `Secure`, so HTTPS is mandatory, and it provides **zero** CSRF protection, so the token and Origin checks in §6.3 become the *only* line of defence |
 
-So under the *documented* production guidance, a naive `SameSite=Lax` migration
-produces an app that authenticates in development and 401s in production, and the
-naive `SameSite=None; Secure` alternative requires HTTPS plus a shared
-registrable domain that the repository does not own or configure. Development
-adds a second trap: cross-origin development is `http://localhost:5173` →
-`http://localhost:4000`, and `SameSite=None` cookies are rejected over plain HTTP,
-so a cross-origin dev setup cannot exercise the production cookie policy at all.
+So the blocking question is not "can we write a cookie" — it is narrower and
+sharper: **is the API on the same registrable domain as the SPA, and is the public
+origin HTTPS?** The first decides whether `SameSite` contributes any CSRF
+protection at all. The second decides whether a `Secure` cookie is deliverable
+outside `localhost`.
 
-This is the concrete reason implementation is deferred, not a preference.
+The repository genuinely does not answer either. The hosting guidance is a
+*generic suggestion list* — frontend on "Vercel, Netlify, or any static
+hosting", backend on "Heroku, Railway, AWS, DigitalOcean" (`agent_context.md`
+§"Deployment", `DEPLOYMENT_CHECKLIST.md` Step 1/Step 2) — with no origin, no
+domain, and no proxy pinned anywhere. Default PaaS domains make it cross-**site**;
+custom domains on both sides make it same-site. Those two outcomes need
+materially different security designs (§6.1), and shipping the wrong one either
+breaks production sign-in or silently removes the primary CSRF defence.
+
+There is weak evidence for HTTPS: `agent_context.md` states "HTTPS in
+Production: Assumes production deployment uses HTTPS", and the checklist's
+verification step says to navigate to `https://your-domain.com`. That is an
+assumption in prose, not a configuration — there is no `trust proxy`, no
+`Secure`-related setting, and no deployment artifact to corroborate it.
+
+Development does not constrain the choice either way, and should not be
+over-weighted: the default dev topology is same-origin through the Vite proxy
+(`client/vite.config.ts:9-16`), and a cross-origin dev setup
+(`localhost:5173` → `localhost:4000`) is still *same-site*, so `Lax` works there
+too. The one real dev trap is that a cross-site dev setup on plain HTTP cannot
+carry a `SameSite=None` cookie at all — which is another reason not to pick the
+cross-site design speculatively.
+
+This is the concrete reason implementation is deferred: an unrecorded, single-word
+operator decision changes the security posture, and guessing it wrong is worse
+than not shipping.
 
 ### 4.4 Deployment decision record (must be completed before implementation)
 
@@ -179,16 +229,28 @@ It also matches the app's current single-process assumptions.
 
 ### 5.1 Transport
 
-- One cookie, `__Host-` prefixed in S1, host-only (never set `Domain`):
-  `Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=<session ttl>`.
-- `__Host-` prefix requires `Secure` + `Path=/` + no `Domain`, so it is only
-  available over HTTPS. In S1, TLS terminates at the edge, so the app always sets
-  `Secure` and the deployment checklist must assert that the public origin is
-  HTTPS; in a non-production local run the app may set `Secure` too (browsers
-  accept `Secure` cookies on `http://localhost`), which keeps one code path.
-- In S2, `SameSite` is `None` **only** if the operator confirms same-site + HTTPS;
-  otherwise S2 is not migratable and the bearer flow must be retained for that
-  deployment. That trade-off must be written down, not assumed.
+The `SameSite` value is a direct function of the §4.4 answer, so it must be
+selected by configuration rather than hard-coded. The cookie is always host-only
+(never set `Domain`), always `HttpOnly`, and always `Secure` where the origin is
+HTTPS:
+
+| §4.4 answer | Cookie |
+|---|---|
+| S1 same-origin | `__Host-hathap_session; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=<ttl>` |
+| S2, same site | `hathap_session; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=<ttl>` (`Strict` is also valid; prefer `Lax` if sign-in must survive an external link) |
+| S2, cross site | `hathap_session; Secure; HttpOnly; SameSite=None; Path=/; Max-Age=<ttl>` — forced, and it removes all `SameSite` CSRF protection, so §6.3 becomes the only defence |
+
+- `__Host-` is only valid in S1: the prefix requires `Secure` + `Path=/` + no
+  `Domain`, and browsers only honour it from a secure origin. In S2, use the
+  unprefixed name.
+- `Secure` is set unconditionally in production and may also be set in local
+  development — browsers treat `http://localhost` as a secure context and accept
+  `Secure` cookies there, which keeps a single code path across environments.
+  It must **not** be set for a non-localhost plaintext origin, or the browser
+  will silently drop the cookie.
+- If the operator answers "cross site" and declines HTTPS, the cookie migration
+  is not viable at all and the bearer flow must be retained for that deployment.
+  That trade-off must be written down, not assumed.
 
 ### 5.2 Payload and lifetime
 
@@ -231,8 +293,8 @@ authenticated (user) | anonymous
   While `loading`, render a neutral loading state instead of redirecting.
 - A single `client/src/api/client.ts` owns the base URL, `credentials: 'include'`,
   the CSRF header, and **one** `401` handler that atomically clears auth state and
-  redirects to `/login`. All ~76 call sites route through it. This module is a hard
-  prerequisite: adding `credentials` and a CSRF header to 76 hand-rolled fetches is
+  redirects to `/login`. All 70 call sites route through it. This module is a hard
+  prerequisite: adding `credentials` and a CSRF header to 70 hand-rolled fetches is
   not a reviewable change.
 - The SSE hook keeps fetch-based streaming and simply adds
   `credentials: 'include'`; no `EventSource` rewrite is needed.
@@ -252,17 +314,21 @@ The current limiter is mounted on the entire `/api/auth` router
 
 ### 6.1 SameSite alone is not the control
 
-`SameSite=Strict`/`Lax` is a real mitigation but must not be the only one,
-because its strength depends on the topology decision and on browser behavior:
+`SameSite=Strict`/`Lax` is a real mitigation, but it must not be the only layer,
+and its strength depends on the §4.4 topology decision:
 
-- Under S2 (cross-origin) the cookie is not same-site-restricted at all, so
-  SameSite provides **zero** protection.
-- Even same-site, a compromised or user-controlled **sibling subdomain**
-  (`evil.example.com`) is same-site and can issue credentialed requests. S1 with
-  a `__Host-` cookie removes subdomain cookie-injection, but a sibling can still
-  act as a same-site CSRF origin.
+- Under **cross-site** S2 the cookie carries no site restriction at all
+  (`SameSite=None` is forced), so SameSite provides **zero** protection and the
+  §6.3 layers are load-bearing.
+- Under **same-site** S2, or under S1, SameSite does block cross-site requests —
+  but not same-site ones. A compromised or user-controlled **sibling subdomain**
+  (`evil.example.com`) is same-site, so it can issue credentialed requests of any
+  method against the API and the browser will attach the cookie. S1 with a
+  `__Host-` cookie stops that sibling from *overwriting* the cookie, but not from
+  *using* it. Only a CSRF token (which a sibling cannot read) closes this.
 - Legacy/embedded clients and some non-browser HTTP stacks do not implement
-  SameSite at all.
+  SameSite at all, and a `SameSite=None` decision would be relied upon by exactly
+  the clients least likely to enforce anything.
 
 Therefore: **defense in depth, two independent layers.**
 
@@ -347,8 +413,8 @@ multi-replica deployments.
 |---|---|
 | `client/src/api/client.ts` **(new)** | Base URL resolution, `credentials: 'include'`, `X-CSRF-Token` injection, single `401` → session-clear + redirect, and a small typed `apiFetch`. |
 | `client/src/context/AuthContext.tsx` | Drop `hathap_token`/`hathap_user` and all `localStorage` token handling; add `status: loading/authenticated/anonymous`; `/me` bootstrap; `logout()` calls the endpoint. |
-| `client/src/context/AppContext.tsx` | Route all ~40 calls through the client; stop swallowing 401 into `[]`. |
-| `client/src/context/EvaluationContext.tsx` | Route all ~20 calls through the client. |
+| `client/src/context/AppContext.tsx` | Route all 39 calls through the client; stop swallowing 401 into `[]`. |
+| `client/src/context/EvaluationContext.tsx` | Route all 24 calls through the client. |
 | `client/src/pages/CourtroomDetailPage.tsx` | Route the 3 calls through the client. |
 | `client/src/hooks/useDecisionEventStream.ts` | `credentials: 'include'`; drop the header/localStorage read. |
 | `client/src/App.tsx` | Gate routes on `status`; render a loading state; redirect on `anonymous`. |
@@ -444,3 +510,38 @@ Line references in §2 and §4 are against the Phase 16 baseline commit
 `3c4cf44`. Files modified in this phase (`README.md`, `DEPLOYMENT_CHECKLIST.md`,
 `agent_context.md`, `todos.md`) are cited by section name, not line number, so
 they stay correct after this commit.
+
+### 10.1 Correction applied to this document
+
+A review pass on the Phase 16 commit found that the first draft of §4.3, §5.1 and
+§6.1 conflated **site** with **origin**. It claimed that `SameSite=Lax`/`Strict`
+cookies are "not sent on cross-origin XHR/fetch", and recommended
+`SameSite=None; Secure` for a same-site cross-origin deployment. Both are wrong:
+`SameSite` is evaluated on the site (scheme + registrable domain), cookies are
+sent on same-site requests regardless of the attribute value, and forcing
+`SameSite=None` would have **removed** the primary CSRF defence in a deployment
+that did not need it removed.
+
+The corrected sections were verified against the MDN `Set-Cookie`/`SameSite`
+reference, the W3C 2020 Chrome SameSite presentation, and a CISA advisory that
+states the rule explicitly ("`Sec-Fetch-Site: same-site` … means the same
+registrable domain and scheme but a different origin"; "cookies are always sent on
+same-site requests regardless of SameSite"). The same correction was applied to
+`DEPLOYMENT_CHECKLIST.md`.
+
+**The correction narrows the blocking question; it does not remove it.** Once the
+`SameSite` error is removed, the reasons to defer are exactly two, both still
+unanswerable from the repository:
+
+1. **Same-site or cross-site?** This decides whether `SameSite` contributes any
+   CSRF protection at all. Default PaaS domains (`*.vercel.app` + `*.herokuapp.com`)
+   imply cross-site; custom domains on both sides imply same-site. The two need
+   materially different designs.
+2. **HTTPS?** `Secure` is required in every case and `SameSite=None` is
+   impossible without it. The repository asserts HTTPS in prose but never
+   configures or deploys it.
+
+Both are one-line operator answers (§4.4). Neither can be inferred from the code
+without guessing, and guessing wrong means either a production sign-in outage or a
+silently weakened CSRF posture. The §4.4 decision record is therefore retained as
+the gate for the implementation phase.

@@ -202,10 +202,14 @@ starting the migration:
 
 - [ ] **Topology** — same-origin (SPA + API behind one origin) or cross-origin?
 - [ ] If cross-origin: is the API on the **same registrable domain** as the SPA?
-      (Cookies with `SameSite=Lax`/`Strict` are not sent cross-origin, and
-      `SameSite=None` requires HTTPS. If the two are on unrelated domains, the
-      bearer flow must be retained.)
-- [ ] Is the public origin HTTPS for both SPA and API?
+      `SameSite` is evaluated on the *site* (scheme + registrable domain), not the
+      *origin*, so subdomains and different ports are still same-site and
+      `SameSite=Lax` works for them. If the API is on an **unrelated** domain
+      (e.g. `*.vercel.app` + `*.herokuapp.com`), `SameSite=None; Secure` is
+      forced, which removes all `SameSite` CSRF protection and makes the CSRF
+      token the only defence.
+- [ ] Is the public origin HTTPS for both SPA and API? (`SameSite=None` requires
+      it, and a `Secure` cookie is dropped on any other plaintext origin.)
 - [ ] Where does TLS terminate, and how many proxy hops sit in front of Express?
       (`trust proxy` is currently never configured.)
 - [ ] Exact origins to place in `CORS_ORIGINS` (only if cross-origin).
