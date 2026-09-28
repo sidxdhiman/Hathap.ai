@@ -242,6 +242,20 @@ npm run build        # build client/dist
   `client/` and `server/` whenever dependencies are touched and review the output against
   the report.
 
+### Authentication and sessions
+
+Authentication is a stateless HS256 JWT (`{ id }`, 7-day expiry) sent by the
+browser as `Authorization: Bearer <token>` and read from `localStorage`. There is
+no server-side session store and no logout endpoint, so a token remains valid
+until it expires (including after a password change or account deletion).
+
+Moving to `HttpOnly` session cookies is designed but **not implemented**: cookie
+`SameSite`/`Secure`/`Domain` depend on the production topology (same-origin vs
+cross-origin, HTTPS termination), which this repository does not define. The
+current-state inventory, the target session/CSRF/CORS design, the exact code and
+test plan, and the deployment decision record that must be completed first are in
+[`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md).
+
 ## 🔑 Key Pages
 
 ### Login Page (`/`)

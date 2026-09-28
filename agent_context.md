@@ -14,6 +14,14 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > reject-by-default (`server/src/config/security.ts`), and production
 > enforcement of a strong `JWT_SECRET`. Contradictions in sections below are
 > stale; check the README and `docs/` before relying on them.
+>
+> **Authentication note (Phase 16, 2026):** auth is still a stateless JWT in an
+> `Authorization: Bearer` header, persisted by the client in `localStorage`, with
+> no server-side logout or revocation. The move to `HttpOnly` session cookies is
+> designed but deliberately **not** implemented, because the production deployment
+> topology (same-origin vs cross-origin, HTTPS) is undefined in this repository.
+> See `docs/AUTHENTICATION_ARCHITECTURE.md` before trusting sections 3, 7, 10, or
+> 16 below.
 
 ---
 

@@ -186,8 +186,32 @@ Expected: All features work identically
 - [ ] API keys not exposed in error messages
 - [ ] No sensitive data logged
 - [ ] Error messages don't leak information
-- [ ] Tokens not visible in localStorage
+- [ ] Tokens not visible in localStorage — **open item**; the cookie-session
+      migration is specified but unimplemented, see
+      [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md)
 - [ ] HTTPS ready (for production)
+
+---
+
+## Authentication & Session Prerequisites (Phase 16)
+
+Session cookies (`HttpOnly`, `Secure`, `SameSite`) cannot be configured until the
+production topology is pinned down. The repository documents two mutually
+exclusive shapes and currently commits to neither. Record the answers here before
+starting the migration:
+
+- [ ] **Topology** — same-origin (SPA + API behind one origin) or cross-origin?
+- [ ] If cross-origin: is the API on the **same registrable domain** as the SPA?
+      (Cookies with `SameSite=Lax`/`Strict` are not sent cross-origin, and
+      `SameSite=None` requires HTTPS. If the two are on unrelated domains, the
+      bearer flow must be retained.)
+- [ ] Is the public origin HTTPS for both SPA and API?
+- [ ] Where does TLS terminate, and how many proxy hops sit in front of Express?
+      (`trust proxy` is currently never configured.)
+- [ ] Exact origins to place in `CORS_ORIGINS` (only if cross-origin).
+- [ ] Does a reverse proxy serve `client/dist`, or should Express serve it?
+- [ ] How many API replicas? More than one forbids any in-memory session store and
+      requires the process-local SSE event bus to be addressed first.
 
 ---
 
