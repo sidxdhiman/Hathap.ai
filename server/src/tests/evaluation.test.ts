@@ -21,6 +21,7 @@ import ReconciliationResult from '../models/ReconciliationResult';
 import Claim from '../models/Claim';
 import ExecutionEvent from '../models/ExecutionEvent';
 import DecisionMemory from '../models/DecisionMemory';
+import User from '../models/User';
 import evaluationsRouter from '../routes/evaluations';
 import { benchmarkService } from '../evaluation/benchmarkService';
 import { rubricService } from '../evaluation/rubricService';
@@ -33,6 +34,18 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 function tokenFor(id: string): string {
   return jwt.sign({ id }, JWT_SECRET);
+}
+
+/**
+ * `requireAuth` now resolves the user named by a credential and refuses tokens
+ * for accounts that do not exist, so fixtures must be real persisted users
+ * rather than bare ObjectIds. The token itself stays a pre-`av` one on purpose:
+ * this file doubles as backward-compatibility coverage for credentials issued
+ * before the version claim existed.
+ */
+async function createUser(email: string): Promise<string> {
+  const user = await User.create({ email, name: email, passwordHash: 'test-only-hash' });
+  return String(user._id);
 }
 
 async function makeServer(): Promise<{
@@ -87,6 +100,7 @@ async function nullify(): Promise<void> {
     Task.deleteMany({}),
     Execution.deleteMany({}),
     Decision.deleteMany({}),
+    User.deleteMany({}),
   ]);
 }
 
@@ -124,8 +138,8 @@ before(async () => {
     await mongoose.connect(TEST_URI);
   }
   await nullify();
-  userA = new mongoose.Types.ObjectId().toString();
-  userB = new mongoose.Types.ObjectId().toString();
+  userA = await createUser('evaluation-user-a@test.local');
+  userB = await createUser('evaluation-user-b@test.local');
   server = await makeServer();
 });
 

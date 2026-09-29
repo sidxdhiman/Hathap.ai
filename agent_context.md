@@ -15,13 +15,18 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > enforcement of a strong `JWT_SECRET`. Contradictions in sections below are
 > stale; check the README and `docs/` before relying on them.
 >
-> **Authentication note (Phase 16, 2026):** auth is still a stateless JWT in an
-> `Authorization: Bearer` header, persisted by the client in `localStorage`, with
-> no server-side logout or revocation. The move to `HttpOnly` session cookies is
-> designed but deliberately **not** implemented, because the production deployment
-> topology (same-origin vs cross-origin, HTTPS) is undefined in this repository.
-> See `docs/AUTHENTICATION_ARCHITECTURE.md` before trusting sections 3, 7, 10, or
-> 16 below.
+> **Authentication note (updated Phase 17):** auth is still a stateless JWT in an
+> `Authorization: Bearer` header, persisted by the client in `localStorage`.
+> **Server-side credential invalidation now exists**: a per-user `User.authVersion`
+> counter is embedded in each credential as the `av` claim and checked on every
+> request, so logout, password change and account deletion end outstanding
+> credentials, and A2A honours the same check. The token itself is still
+> script-readable, and invalidation is per-user rather than per-token. The move to
+> `HttpOnly` session cookies is still deliberately **not** implemented, because
+> the production deployment topology (same-origin vs cross-origin, HTTPS) is
+> undefined in this repository.
+> See `docs/AUTHENTICATION_ARCHITECTURE.md` §2.4 before trusting sections 3, 7, 10,
+> or 16 below.
 
 ---
 
@@ -270,6 +275,9 @@ External Integrations:
 
 - **Strategy**: JWT (JSON Web Tokens)
 - **Token Storage**: LocalStorage/SessionStorage on client
+- **Token Revocation**: per-user `User.authVersion` counter, embedded as the `av`
+  claim and verified on every request (Phase 17); `POST /api/auth/logout` ends
+  sessions server-side
 - **Password Security**: bcrypt hashing with salt rounds
 - **API Key Encryption**: AES-256-GCM for stored LLM API keys
 - **Encryption Library**: Node.js built-in crypto module
@@ -1605,18 +1613,32 @@ Not currently implemented. When adding tests:
 
 ## Authentication
 
-**JWT-Based:**
-- Tokens signed with `JWT_SECRET`
-- Token includes user ID and email
-- Expiration: 7 days (configurable)
-- Tokens stored in frontend (localStorage or memory)
+**JWT-Based (updated in Phase 17):**
+- Tokens signed with `JWT_SECRET`, HS256, 7-day expiry
+- Claims are `{ id, av }` — the user id and the account's `authVersion` at issue time
+- Stored in frontend `localStorage` (unchanged; still script-readable)
 - No refresh token mechanism (yet)
+- **Server-side invalidation implemented.** `server/src/utils/authToken.ts`
+  centralizes issuance/verification; `requireAuth` and the A2A `hathapUserBuilder`
+  both route through `verifyAuthToken`, which additionally resolves the account
+  and compares the `av` claim against `User.authVersion`. `POST /api/auth/logout`
+  increments the counter; password change increments it and re-issues a
+  replacement credential; account deletion invalidates by removing the user
+  document. Tokens issued before the `av` claim existed are treated as version 0,
+  so no migration is needed. See
+  [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md) §2.4.
+
+**Open:**
+- Token is still in `localStorage` and readable by any script on the origin
+- Invalidation is **per-user, not per-token** — signing out ends every session for
+  that account. Per-device revocation would require a server-side session store
+- Cookie migration, CSRF token and shortened TTL are **not implemented**; they are
+  blocked on the deployment decision record (architecture doc §4.4)
 
 **Recommendations:**
-- Implement refresh tokens for better security
-- Use httpOnly cookies instead of localStorage
-- Shorter access token lifetime (15-30 minutes)
-- Implement logout token blacklist
+- Use httpOnly cookies instead of localStorage (blocked on the §4.4 record)
+- Shorter access token lifetime (15-30 minutes) — requires re-issue support first
+- Per-device revocation, if it becomes a product requirement
 
 ## Authorization
 
@@ -1672,8 +1694,12 @@ Not currently implemented. When adding tests:
 **JWT Tokens:**
 - ✅ Signed, not encrypted
 - ✅ Don't include sensitive data in payload
-- ⚠️ Vulnerable if stolen (no revocation mechanism)
-- ⚠️ Consider: Refresh tokens, token blacklist
+- ⚠️ Still readable by page scripts (stored in `localStorage`)
+- ✅ Revocation exists: a per-user `authVersion` counter is checked on every
+  request, so logout / password change / account deletion end outstanding
+  credentials (Phase 17). It bounds a stolen token's usefulness; it does not stop
+  the theft, and it is per-user rather than per-token.
+- ⚠️ Consider: refresh tokens, per-device revocation
 
 **Environment Variables:**
 - ✅ Stored in .env files (git-ignored)
@@ -2326,8 +2352,11 @@ However, separate repos considered for:
 - Simpler infrastructure (no Redis for sessions yet)
 
 Trade-offs:
-- Can't revoke tokens easily (no blacklist yet)
-- Tokens stored client-side (XSS risk if not careful)
+- Revocation is **per-user, not per-token**: a per-user `authVersion` counter is
+  embedded as the `av` claim and checked on every request (Phase 17), so logout /
+  password change / account deletion end outstanding credentials — but it signs the
+  account out everywhere, and per-device revocation would need a session store
+- Tokens stored client-side (XSS risk if not careful) — still the case
 - Larger request size (token in every request)
 
 ### Q: Why not use a BaaS like Firebase or Supabase?

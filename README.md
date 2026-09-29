@@ -5,7 +5,7 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 ## 🎯 Features
 
 ### Core Functionality
-- **Authentication**: JWT-based signup/login with per-user data scoping, password change, data export, and account deletion
+- **Authentication**: JWT-based signup/login with per-user data scoping, server-side credential invalidation (logout, password change, account deletion), password change, data export, and account deletion
 - **Dashboard**: Overview with statistics and recent courtrooms
 - **Models Management**: Connect and manage AI models from multiple providers
 - **Agent Templates**: Create reusable AI agent personas with custom prompts
@@ -244,16 +244,36 @@ npm run build        # build client/dist
 
 ### Authentication and sessions
 
-Authentication is a stateless HS256 JWT (`{ id }`, 7-day expiry) sent by the
-browser as `Authorization: Bearer <token>` and read from `localStorage`. There is
-no server-side session store and no logout endpoint, so a token remains valid
-until it expires (including after a password change or account deletion).
+Authentication is a stateless HS256 JWT (claims `{ id, av }`, 7-day expiry) sent by
+the browser as `Authorization: Bearer <token>` and read from `localStorage`.
+
+**Server-side credential invalidation is implemented (Phase 17).** A signature-valid
+JWT is not sufficient to authenticate: every request additionally resolves the
+account and checks the credential's `av` claim against a per-user `User.authVersion`
+counter. Consequences:
+
+- `POST /api/auth/logout` exists and increments that counter, so signing out ends
+  the session server-side.
+- Changing a password invalidates every outstanding credential for the account and
+  re-issues one to the device that made the change.
+- Deleting an account invalidates its credentials by removing the user document.
+- A2A bearer credentials go through the same verification, so invalidation cannot
+  be bypassed on that surface.
+- A token naming an account that no longer exists, or an identity that is not a
+  valid ObjectId, is rejected with `401` rather than a server error.
+
+Known limits, stated plainly: invalidation is **per-user, not per-token**, so
+signing out ends every session for that account including other devices; there is
+still no server-side session store; and the token is still held in `localStorage`,
+so any script on the origin can read it. Server-side invalidation bounds how long a
+stolen credential is useful — it does not prevent the theft.
 
 Moving to `HttpOnly` session cookies is designed but **not implemented**: cookie
 `SameSite`/`Secure`/`Domain` depend on the production topology (same-origin vs
 cross-origin, HTTPS termination), which this repository does not define. The
-current-state inventory, the target session/CSRF/CORS design, the exact code and
-test plan, and the deployment decision record that must be completed first are in
+current-state inventory, the implemented invalidation design, the target
+session/CSRF/CORS design, the exact code and test plan, and the deployment decision
+record that must be completed first are in
 [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md).
 
 ## 🔑 Key Pages

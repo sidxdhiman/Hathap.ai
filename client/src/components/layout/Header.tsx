@@ -34,8 +34,10 @@ export const Header: React.FC = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Local sign-out already happened by the time this resolves; awaiting keeps
+    // the navigation from racing the server invalidation call.
+    await logout();
     navigate('/login');
   };
 

@@ -1,13 +1,30 @@
 # Authentication & Session Architecture
 
-Status: **proposed, not implemented** (Phase 16, architecture-first outcome)
-Baseline: `3c4cf44` (`feat: phase 15 enable client typescript strict mode`)
-Scope: how Hathap.ai authenticates browsers today, what the repository actually
-guarantees about deployment, and the exact design + code/test plan required to
-move from "JWT in `localStorage`" to secure session cookies.
+Status: **partially implemented.** Phase 17 built and tested the revocable
+session model — server-side credential invalidation, a real logout endpoint and
+live user resolution on every authenticated request. The cookie transport that
+Phase 16 proposed is **still not implemented** and remains blocked on the §4.4
+deployment decision record.
+Evidence baseline for §2/§4: `3c4cf44` (`feat: phase 15 enable client typescript strict mode`)
+Scope: how Hathap.ai authenticates, what the repository actually guarantees about
+deployment, and the design + code/test plan to move from "JWT in `localStorage`"
+to secure session cookies.
 
-Nothing in this document is implemented. No security property described here has
-been built or tested yet. It is a specification for a future phase.
+**Read this first.** Two different things are tracked here and they must not be
+confused:
+
+| Capability | State |
+|---|---|
+| Server-side credential invalidation (`av` claim + `User.authVersion`) | **Implemented and tested** (Phase 17, §2.4) |
+| Account-existence check on every authenticated request | **Implemented and tested** (Phase 17, §2.4) |
+| `POST /api/auth/logout` ending sessions server-side | **Implemented and tested** (Phase 17, §2.4) |
+| A2A honouring credential invalidation | **Implemented and tested** (Phase 17, §2.4) |
+| Token still readable by page scripts (`localStorage`) | **Unchanged — still an open limitation** (§2.4) |
+| `HttpOnly` cookie transport | **Not implemented** — blocked on §4.4 |
+| CSRF token / Origin enforcement | **Not implemented** — contingent on cookies (§6.3) |
+
+Nothing about cookies may be described as done. JWT in `localStorage` is still
+the shipped transport, so the XSS token-theft exposure in §2.3.1 remains open.
 
 ---
 
@@ -29,12 +46,18 @@ supply (§4.3, §10.1):
 
 The one decision that is safe to make now, and is recorded here, is the
 **session model**: keep the existing stateless HS256 JWT and move it into an
-`HttpOnly` cookie, plus add a revocable `tokenVersion` so logout / password
+`HttpOnly` cookie, plus add a revocable version counter so logout / password
 change / account deletion actually invalidate credentials. That requires **no new
 infrastructure** and no in-memory session store. See §5.
 
+**Phase 17 shipped the revocable half of that decision** — the version counter,
+live account resolution, a real logout endpoint and A2A parity — over the
+existing bearer transport (§2.4). The cookie half remains blocked.
+
 Blocking prerequisite (§4.4): the operator must fill in the deployment decision
-record before implementation starts.
+record before the cookie implementation starts. That block applies to cookies
+only; it did not apply to the invalidation work in Phase 17, which needed no
+deployment decision.
 
 ---
 
@@ -93,6 +116,120 @@ Every line reference below was read directly from the tree at the baseline commi
    header* model, not of the token itself: a cross-site attacker cannot make the
    browser attach a header the attacker's page cannot set. Any move to cookie
    transport must re-establish an equivalent control (§6.3).
+
+Items 1, 2 and 3 describe the Phase 16 baseline. §2.4 records what Phase 17
+changed; item 1 (XSS token theft) is **still open**.
+
+---
+
+## 2.4 What Phase 17 implemented (verified)
+
+§2 and §2.3 above describe the tree at `3c4cf44` and are kept as the historical
+baseline. This section describes the design that actually shipped, so the two are
+not confused. Every claim below is covered by an executed test (§10.2).
+
+### 2.4.1 The revocation mechanism
+
+A signature-valid JWT is **not** treated as authentication. Verification now also
+establishes that the account still exists and that the credential is still the
+account's current one.
+
+- `User.authVersion` (`Number`, default `0`) is a monotonic per-user counter.
+- Each credential carries the counter it was issued under as the **`av`** claim.
+- Invalidation is a single atomic `$inc` on the user document. It needs no
+  session store, no new collection and no new dependency, and it stays correct
+  across multiple API instances because the only shared state is MongoDB, which
+  the application already requires.
+- Verification compares the presented `av` against the stored counter. A mismatch
+  is a rejection.
+- A credential that predates the `av` claim carries none and is treated as
+  version `0` — the version it was issued under. Documents written before
+  `authVersion` existed read back as `0` via `readAuthVersion`. **No backfill
+  migration is required and no user is forced to sign in again on deploy.**
+
+### 2.4.2 Where it lives
+
+| Concern | Location |
+|---|---|
+| Issuance, verification, counter read/bump, header parsing | `server/src/utils/authToken.ts` (new): `signToken`, `verifyAuthToken`, `extractBearerToken`, `readAuthVersion`, `bumpAuthVersion` |
+| Express middleware | `server/src/middleware/authMiddleware.ts` — `requireAuth` is now `async` and routes every credential through `verifyAuthToken` |
+| A2A authentication | `server/src/a2a/userBuilder.ts` — bearer credentials now go through the same `verifyAuthToken` path |
+| Counter storage | `server/src/models/User.ts` — `authVersion: { type: Number, default: 0 }` |
+| Routes | `server/src/routes/auth.ts` — `POST /logout` added; `change-password` bumps and re-issues |
+| Client | `client/src/context/AuthContext.tsx`, `client/src/components/layout/Header.tsx`, `client/src/pages/ProfilePage.tsx` |
+
+Every code path that accepts a bearer token goes through `verifyAuthToken`. A
+second, weaker verification path is exactly the bug the A2A regression test
+(§2.4.5) exists to prevent.
+
+### 2.4.3 Invalidation semantics, stated honestly
+
+- **Invalidation is per-user, not per-token.** Signing out, changing a password
+  or deleting an account ends *every* session for that account, including other
+  devices. Per-device revocation would need a server-side record of every issued
+  token — a session store — which this phase deliberately does not introduce.
+- `POST /api/auth/logout` bumps the counter, so it signs the account out
+  everywhere. It does **not** revoke only the credential that made the request.
+- `POST /api/auth/change-password` bumps the counter and then re-issues a fresh
+  credential to the caller, because that caller just proved knowledge of both the
+  current and the new password. Every *other* session is invalidated.
+- `DELETE /api/auth/account` needs no bump: removing the `User` document *is* the
+  invalidation, because every credential now resolves against a live account.
+  This also removes the "ghost owner" problem described in §2.1 — a token for a
+  deleted user no longer authenticates and other routes can no longer write rows
+  for a non-existent owner.
+- A missing token, a bad signature, an expired token, a malformed identity, a
+  missing account and a stale `av` are **all** reported identically
+  (`401 Unauthorized`), so the response cannot be used to probe which check
+  failed.
+- A **database fault** is deliberately *not* reported as `401`. It returns `500`,
+  so a transient outage is never mistaken by a client or an operator for "your
+  session ended".
+- A malformed identity claim (for example `id: "not-an-object-id"`) is refused
+  before any database work, using `mongoose.isObjectIdOrHexString`. Without this
+  guard the value reached `User.findById`, where Mongoose raised a `CastError`
+  that surfaced as `500` — telling the caller "retry later" for a credential that
+  can never become valid. It is now an ordinary `401`.
+
+### 2.4.4 Client behaviour
+
+- `logout()` clears local state **first and unconditionally**, then calls
+  `POST /api/auth/logout` best-effort. Local sign-out never depends on the
+  network call succeeding. If that call fails, the server may still honour the
+  credential until it expires — stated as a known limit, not papered over.
+- `changePassword()` adopts the replacement token from the response, so the device
+  that changed the password stays signed in instead of being dropped at login.
+- `deleteAccount()` clears local state only; there is no session left to
+  invalidate server-side.
+- `Header.handleLogout` awaits `logout()` so navigation does not race the server
+  invalidation call.
+
+### 2.4.5 What is still open
+
+- The token is still in `localStorage` and therefore still readable by any script
+  on the origin. §2.3.1 remains an open exposure. Invalidating a stolen token
+  helps only after the legitimate owner signs out or changes a password; it does
+  not stop the theft.
+- No session `status` machine, no central `api/client.ts`, and no shared `401`
+  handler. `ProtectedRoute` still gates on token *presence* (§2.2), so a stale
+  token still renders the app shell and fails per call.
+- TTL is still **7 days**. §5.2's proposed 15-minute access token, `iat`-based
+  absolute session cap and sliding re-issue are cookie-model work and were not
+  part of this phase.
+- No cookies, no CSRF token, no Origin enforcement, no split rate limiter.
+- §4.4 is still unanswered, so §5 and §6 remain a design rather than a plan of
+  record.
+
+### 2.4.6 Deviations from the Phase 16 design in §5.2
+
+| Phase 16 design | Shipped in Phase 17 | Why |
+|---|---|---|
+| claim `ver` | claim **`av`** | Same design, different name; `av` is the actual field. Documentation must use the shipped name. |
+| `User.tokenVersion` | **`User.authVersion`** | Same design, different name. |
+| TTL 15 min + sliding re-issue + 8 h absolute cap | **unchanged 7-day TTL** | Those are tied to cookie transport and a session bootstrap that do not exist yet. Shortening the TTL without re-issue would log users out every 15 minutes. |
+| logout "cookie-clear plus client state reset" | logout **bumps the counter** | With no cookie there is nothing to clear server-side; the counter is what makes logout real. The consequence — logout is account-wide — is stated in §2.4.3. |
+| `server/src/a2a/userBuilder.ts` "unchanged behavior" | **changed to use `verifyAuthToken`** | Leaving signature-only verification on the A2A path would have left revocation bypassable, which would have made the whole mechanism cosmetic. |
+| account deletion bumps `tokenVersion` | **no bump; user document removal is the invalidation** | There is no account left to bump. |
 
 ---
 
@@ -227,6 +364,12 @@ It also matches the app's current single-process assumptions.
 
 ## 5. Target session model (conditional on §4.4)
 
+**Status: not implemented.** §5 describes the cookie-based target that Phase 16
+designed and Phase 17 did **not** build. It remains conditional on §4.4. The
+revocable-counter mechanism Phase 17 shipped is described in §2.4; it works over
+the current bearer transport and is a prerequisite for, not a substitute for,
+this section.
+
 ### 5.1 Transport
 
 The `SameSite` value is a direct function of the §4.4 answer, so it must be
@@ -253,6 +396,10 @@ HTTPS:
   That trade-off must be written down, not assumed.
 
 ### 5.2 Payload and lifetime
+
+> The counter itself **is** implemented, under the shipped names `av` /
+> `authVersion` rather than `ver` / `tokenVersion` (§2.4.6). The TTL, `iat` cap and
+> sliding re-issue below are **not** implemented and remain cookie-model work.
 
 - Keep the HS256 JWT; payload becomes `{ id, ver, iat, exp }` where `ver` is
   `User.tokenVersion` (default `0`).
@@ -392,20 +539,26 @@ multi-replica deployments.
 
 ## 7. Exact code areas that change
 
+**Status: mostly not implemented.** §7 is the cookie-phase change list. Phase 17
+touched only the three rows marked below; everything else here is still pending.
+Rows marked *shipped (Phase 17)* describe work that is done, and are listed for
+traceability, not as a plan.
+
 ### 7.1 Server
 
-| File | Change |
-|---|---|
-| `server/src/config/cookies.ts` **(new)** | Single source of cookie names/attributes/TTL, S1 vs S2 profile, dev `Secure` handling. No `cookie-parser` dependency: parse `req.headers.cookie` for the single name needed. |
-| `server/src/config/security.ts` | Reuse `isAllowedCorsOrigin`; add a request-origin helper for the CSRF check; add `getTrustProxyHops()`. Keep the JWT rules unchanged. |
-| `server/src/models/User.ts` | Add `tokenVersion: Number, default 0`. |
-| `server/src/middleware/authMiddleware.ts` | Read the session cookie, fall back to `Authorization: Bearer` (A2A/CLI/tests). Verify with `algorithms: ['HS256']`; load the user; compare `ver`; 401 on mismatch. Require an explicit `Bearer ` prefix for the header path. |
-| `server/src/middleware/csrf.ts` **(new)** | Double-submit + Origin/Referer enforcement for unsafe methods on `/api`. |
-| `server/src/routes/auth.ts` | Set the session cookie on signup/login; add `POST /logout`; bump `tokenVersion` on change-password and account deletion; clear the cookie on account deletion. |
-| `server/src/index.ts` | Origin-function CORS with `credentials: true` + `Vary: Origin`; mount `csrfProtection`; `app.set('trust proxy', <configured hops>)`; split the `/api/auth` limiter; (S1 only) static mount for `client/dist` + SPA fallback that never shadows `/api`. |
-| `server/src/a2a/userBuilder.ts` | Unchanged behavior: header + API key only. Explicitly do not accept cookies here. |
-| `server/.env.example` | `NODE_ENV=production`, `TRUST_PROXY_HOPS`, `SESSION_TTL_MINUTES`, `CSRF_COOKIE_NAME`, `CORS_ORIGINS` guidance for S2. |
-| `server/package.json` | Add the new test files to the `test` script. |
+| File | Change | Status |
+|---|---|---|
+| `server/src/config/cookies.ts` **(new)** | Single source of cookie names/attributes/TTL, S1 vs S2 profile, dev `Secure` handling. No `cookie-parser` dependency: parse `req.headers.cookie` for the single name needed. | pending |
+| `server/src/config/security.ts` | Reuse `isAllowedCorsOrigin`; add a request-origin helper for the CSRF check; add `getTrustProxyHops()`. Keep the JWT rules unchanged. | pending |
+| `server/src/models/User.ts` | Add `tokenVersion: Number, default 0`. | **shipped (Phase 17)** as `authVersion` |
+| `server/src/middleware/authMiddleware.ts` | Read the session cookie, fall back to `Authorization: Bearer` (A2A/CLI/tests). Verify with `algorithms: ['HS256']`; load the user; compare `ver`; 401 on mismatch. Require an explicit `Bearer ` prefix for the header path. | **partly shipped (Phase 17)**: algorithm pinning, user load, version comparison and the explicit `Bearer ` prefix all landed. Cookie read not implemented. |
+| `server/src/middleware/csrf.ts` **(new)** | Double-submit + Origin/Referer enforcement for unsafe methods on `/api`. | pending |
+| `server/src/routes/auth.ts` | Set the session cookie on signup/login; add `POST /logout`; bump `tokenVersion` on change-password and account deletion; clear the cookie on account deletion. | **partly shipped (Phase 17)**: `POST /logout` and the change-password bump landed. Cookies not implemented; account deletion invalidates by removing the user document instead of a bump. |
+| `server/src/index.ts` | Origin-function CORS with `credentials: true` + `Vary: Origin`; mount `csrfProtection`; `app.set('trust proxy', <configured hops>)`; split the `/api/auth` limiter; (S1 only) static mount for `client/dist` + SPA fallback that never shadows `/api`. | pending |
+| `server/src/a2a/userBuilder.ts` | Unchanged behavior: header + API key only. Explicitly do not accept cookies here. | **superseded (Phase 17)**: bearer credentials now go through `verifyAuthToken` so invalidation cannot be bypassed. Still no cookie acceptance. |
+| `server/src/utils/authToken.ts` **(new)** | Central issuance/verification/counter helper shared by `requireAuth` and A2A. | **shipped (Phase 17)** |
+| `server/.env.example` | `NODE_ENV=production`, `TRUST_PROXY_HOPS`, `SESSION_TTL_MINUTES`, `CSRF_COOKIE_NAME`, `CORS_ORIGINS` guidance for S2. | pending |
+| `server/package.json` | Add the new test files to the `test` script. | **shipped (Phase 17)** |
 
 ### 7.2 Client
 
@@ -424,6 +577,9 @@ multi-replica deployments.
 ---
 
 ## 8. Test plan for the implementation phase
+
+**Status: cookie-phase plan, not implemented.** The tests Phase 17 actually
+added for the invalidation mechanism are listed in §10.2 instead.
 
 Server (node:test, existing `src/tests/` harness, no new runner):
 
@@ -472,7 +628,7 @@ and `localStorage` handling in the same phase — no half-migrated state may shi
 Rollback: revert the client bundle and server build; `JWT_SECRET` rotation
 invalidates all tokens either way.
 
-Acceptance criteria for the implementation phase (all must hold):
+Acceptance criteria for the **cookie implementation phase** (all must hold):
 
 - [ ] §4.4 decision record completed and committed.
 - [ ] Session cookie attributes match §5.1 exactly, asserted in a server test.
@@ -482,15 +638,25 @@ Acceptance criteria for the implementation phase (all must hold):
 - [ ] Client tests: every case in §8 client list passes; suite ≥ 60 tests stays green.
 - [ ] CSRF verified for both layers, with a real-browser check recorded.
 - [ ] CORS allow-list unchanged in production; `credentials` only where cookies are used.
-- [ ] `POST /api/auth/logout` invalidates the session it was called with.
-- [ ] Password change and account deletion invalidate all outstanding tokens.
-- [ ] `npm audit` unchanged (server 0; client 12 documented) or updated in
-      `docs/SECURITY_AUDIT_REPORT.md` with justification.
 - [ ] README, `.env.example`, and the deployment checklist describe the cookie
       model accurately; no stale `localStorage` claims remain.
 - [ ] Full gates green: server `tsc --noEmit` / `npm test` / `npm run build`;
       client `npm run lint` / `npm test` / `tsc --noEmit` /
       `npm run typecheck:config` / `npm run build`.
+
+Acceptance criteria **satisfied by Phase 17** (invalidation only, no cookies):
+
+- [x] `POST /api/auth/logout` invalidates the session it was called with.
+- [x] Password change and account deletion invalidate all outstanding tokens.
+- [x] `npm audit` unchanged (server 0; client 12 documented) or updated in
+      `docs/SECURITY_AUDIT_REPORT.md` with justification.
+- [x] A regression test proves A2A honours invalidation rather than only the
+      signature (§2.4.2, §10.2).
+- [x] Full gates green, as recorded in §10.2.
+
+Still open, and explicitly **not** claimed by Phase 17: the cookie transport,
+CSRF enforcement, the client session `status` machine and central API client, the
+split rate limiter, and the shortened token TTL.
 
 ## 10. Evidence appendix
 
@@ -545,3 +711,43 @@ Both are one-line operator answers (§4.4). Neither can be inferred from the cod
 without guessing, and guessing wrong means either a production sign-in outage or a
 silently weakened CSRF posture. The §4.4 decision record is therefore retained as
 the gate for the implementation phase.
+
+### 10.2 Phase 17 implementation evidence
+
+Phase 17 implemented §2.4 and left the cookie design in §4–§7 unimplemented.
+
+**Gates, all re-run against the Phase 17 tree:**
+
+| Gate | Command | Result |
+|---|---|---|
+| Server tests | `npm test` | **341 / 341 passed**, 0 failed, 0 cancelled |
+| Server typecheck | `npx tsc --noEmit` | clean |
+| Server build | `npm run build` | clean |
+| Server audit | `npm audit --omit=dev` | **0 vulnerabilities** |
+| Client tests | `npm test` | **66 / 66 passed** (13 files) |
+| Client lint | `npm run lint` | clean (`--max-warnings 0`) |
+| Client typecheck | `npx tsc --noEmit` | clean |
+| Client config typecheck | `npm run typecheck:config` | clean |
+| Client build | `npm run build` | clean |
+| Client audit | `npm audit` | **12 findings** (5 moderate, 7 high) — the documented Phase 12.6 baseline in `docs/SECURITY_AUDIT_REPORT.md`, unchanged; all resolve only via a react-router semver-major |
+
+**Test count:** the Phase 17 baseline was 295 server tests. Phase 17 added 46
+(34 unit tests for `utils/authToken.ts`, 11 A2A invalidation tests, 1 endpoint
+test for the malformed-identity rejection), giving 341.
+
+**Coverage added for the claims in §2.4:**
+
+| Claim | Test |
+|---|---|
+| Counter issuance, verification, expiry, signature, `alg:none`, legacy no-`av` credentials | `server/src/tests/authToken.test.ts` |
+| Malformed / non-ObjectId identity ⇒ `401`, never a `CastError` | `server/src/tests/authToken.test.ts` and `authEndpoints.test.ts` (`GET /api/auth/me`) |
+| Logout, password change and account deletion invalidate credentials, across sessions and routes | `server/src/tests/authEndpoints.test.ts` |
+| A2A honours invalidation, using the real `bumpAuthVersion` write (nothing mocked) | `server/src/tests/a2aAuth.test.ts` |
+| Client logout calls the endpoint, clears locally even when it fails, adopts the replacement password-change token | `client/src/context/AuthContext.test.tsx` |
+
+**A note on how the malformed-identity bug was confirmed**, so the claim is not
+taken on trust: the `mongoose.isObjectIdOrHexString` guard in
+`verifyAuthToken` was temporarily disabled and the suite re-run. It failed with
+`CastError: Cast to ObjectId failed for value "not-an-object-id" (type string) at
+path "_id" for model "User"`, confirming both the bug and that the regression
+test detects it. The guard was then restored.

@@ -13,6 +13,7 @@ import Evidence from '../models/Evidence';
 import VerificationResult from '../models/VerificationResult';
 import RedTeamFinding from '../models/RedTeamFinding';
 import ReconciliationResult from '../models/ReconciliationResult';
+import User from '../models/User';
 import EvidenceRelationship from '../models/EvidenceRelationship';
 import ExecutionEvent from '../models/ExecutionEvent';
 import decisionsRouter from '../routes/decisions';
@@ -25,6 +26,18 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 function tokenFor(id: string): string {
   return jwt.sign({ id }, JWT_SECRET);
+}
+
+/**
+ * `requireAuth` resolves the user named by a credential and refuses tokens for
+ * accounts that do not exist, so fixtures must be real persisted users rather
+ * than bare ObjectIds. The token stays a pre-`av` one on purpose: this file
+ * doubles as backward-compatibility coverage for credentials issued before the
+ * version claim existed.
+ */
+async function createUser(email: string): Promise<string> {
+  const user = await User.create({ email, name: email, passwordHash: 'test-only-hash' });
+  return String(user._id);
 }
 
 async function makeServer(): Promise<{
@@ -179,8 +192,9 @@ async function readStreamUntil(
 before(async () => {
   await mongoose.connect(TEST_URI);
   server = await makeServer();
-  userA = new mongoose.Types.ObjectId().toString();
-  userB = new mongoose.Types.ObjectId().toString();
+  await User.deleteMany({});
+  userA = await createUser('phase10-user-a@test.local');
+  userB = await createUser('phase10-user-b@test.local');
 });
 
 afterEach(async () => {
@@ -188,7 +202,8 @@ afterEach(async () => {
 });
 
 after(async () => {
-  await server.server.close();
+  await server?.server.close();
+  await User.deleteMany({});
   await mongoose.connection.close();
 });
 

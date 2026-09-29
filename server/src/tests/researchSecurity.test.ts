@@ -11,6 +11,7 @@ import Task from '../models/Task';
 import Claim from '../models/Claim';
 import Evidence from '../models/Evidence';
 import ExecutionEvent from '../models/ExecutionEvent';
+import User from '../models/User';
 import decisionsRouter from '../routes/decisions';
 import { researchService } from '../research/researchService';
 import { resetResearchSource } from '../research/researchSourceFactory';
@@ -26,6 +27,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 function tokenFor(id: string): string {
   return jwt.sign({ id }, JWT_SECRET);
+}
+/**
+ * requireAuth resolves the user named by a credential and refuses tokens for
+ * accounts that do not exist, so fixtures must be real persisted users rather
+ * than bare ObjectIds. The token stays a pre-auth-version one on purpose, so
+ * this file also covers credentials issued before the version claim existed.
+ */
+async function createUser(email: string): Promise<string> {
+  const user = await User.create({ email, name: email, passwordHash: 'test-only-hash' });
+  return String(user._id);
 }
 
 // Minimal request helper over a real HTTP server (no supertest dependency).
@@ -117,14 +128,16 @@ before(async () => {
     await mongoose.connect(TEST_URI);
   }
   await clean();
-  userA = new mongoose.Types.ObjectId().toString();
-  userB = new mongoose.Types.ObjectId().toString();
+  await User.deleteMany({});
+  userA = await createUser('researchsec-user-a@test.local');
+  userB = await createUser('researchsec-user-b@test.local');
   server = await makeServer();
 });
 
 after(async () => {
-  server.server.close();
+  server?.server.close();
   await clean();
+  await User.deleteMany({});
   await mongoose.connection.close();
 });
 

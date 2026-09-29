@@ -1,6 +1,5 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Agent from '../models/Agent';
 import Model from '../models/Model';
@@ -31,7 +30,7 @@ import Baseline from '../models/Baseline';
 import EvaluationComparison from '../models/EvaluationComparison';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { defaultAgents } from '../utils/defaultAgents';
-import { getJwtSecret } from '../config/security';
+import { bumpAuthVersion, readAuthVersion, signToken } from '../utils/authToken';
 
 const router = express.Router();
 
@@ -56,7 +55,7 @@ router.post('/signup', async (req, res) => {
       console.error('Failed to create default agents on signup:', err);
     }
 
-    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: '7d' });
+    const token = signToken(user);
     res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
   } catch (e) {
     res.status(500).json({ error: 'Server error' });
@@ -71,10 +70,30 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: '7d' });
+    const token = signToken(user);
     res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
   } catch (e) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** POST /api/auth/logout — ends the caller's session server-side.
+ *
+ *  This increments the user's auth counter, which invalidates **every**
+ *  credential ever issued to that account, not just the one presented. That is
+ *  the honest ceiling of the current architecture: a stateless token has no
+ *  server-side record, so it cannot be revoked individually. Signing out on one
+ *  device therefore signs the account out everywhere.
+ *
+ *  Callers must still clear their own stored credential — the response does not
+ *  revoke the token that made the request, it invalidates the account's
+ *  credential generation. */
+router.post('/logout', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    await bumpAuthVersion(req.userId!);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -90,7 +109,17 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /** POST /api/auth/change-password — verify the current password, hash the new
- *  one, and persist it. Only ever touches the authenticated user's account. */
+ *  one, and persist it. Only ever touches the authenticated user's account.
+ *
+ *  Changing a password invalidates every credential previously issued to the
+ *  account, which is the behaviour a password change is usually a response to
+ *  (a suspected compromise) and is what stops a stolen token from outliving the
+ *  credentials it was stolen alongside. A password change therefore signs the
+ *  account out everywhere.
+ *
+ *  Because the caller has just proven knowledge of both the current and the new
+ *  password, it is immediately re-issued a fresh credential rather than being
+ *  dropped at the login screen. Every *other* session is invalidated. */
 router.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) {
@@ -109,8 +138,11 @@ router.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
     if (!ok) return res.status(400).json({ error: 'Current password is incorrect.' });
     const hash = await bcrypt.hash(newPassword, 10);
     user.passwordHash = hash;
+    // Bump first, then mint from the updated document, so the credential handed
+    // back is the new generation and the superseded one is already dead.
+    user.authVersion = readAuthVersion(user) + 1;
     await user.save();
-    res.json({ success: true });
+    res.json({ success: true, token: signToken(user) });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -204,7 +236,13 @@ router.post('/export-data', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /** DELETE /api/auth/account — deletes the authenticated user's account and ALL
- *  of their own data, deepest children first, ending with the User document. */
+ *  of their own data, deepest children first, ending with the User document.
+ *
+ *  Removing the User document is itself the invalidation: `requireAuth`
+ *  resolves every credential against a live account, so a token minted before
+ *  the deletion stops authenticating instead of leaving behind a ghost owner
+ *  that the other routers would keep writing rows for. No counter bump is
+ *  needed, because there is no account left to bump. */
 router.delete('/account', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;

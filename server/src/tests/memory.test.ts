@@ -14,6 +14,7 @@ import DecisionMemory from '../models/DecisionMemory';
 import Outcome from '../models/Outcome';
 import DecisionFeedback from '../models/DecisionFeedback';
 import DecisionLesson from '../models/DecisionLesson';
+import User from '../models/User';
 import decisionsRouter from '../routes/decisions';
 import { decisionMemoryService } from '../memory/decisionMemoryService';
 import { decisionRetrievalService } from '../memory/decisionRetrievalService';
@@ -27,6 +28,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 function tokenFor(id: string): string {
   return jwt.sign({ id }, JWT_SECRET);
+}
+/**
+ * requireAuth resolves the user named by a credential and refuses tokens for
+ * accounts that do not exist, so fixtures must be real persisted users rather
+ * than bare ObjectIds. The token stays a pre-auth-version one on purpose, so
+ * this file also covers credentials issued before the version claim existed.
+ */
+async function createUser(email: string): Promise<string> {
+  const user = await User.create({ email, name: email, passwordHash: 'test-only-hash' });
+  return String(user._id);
 }
 
 async function makeServer(): Promise<{
@@ -86,6 +97,7 @@ async function nullify(): Promise<void> {
     Claim.deleteMany({}),
     Evidence.deleteMany({}),
     Decision.deleteMany({}),
+    User.deleteMany({}),
   ]);
 }
 
@@ -114,8 +126,8 @@ before(async () => {
     await mongoose.connect(TEST_URI);
   }
   await nullify();
-  userA = new mongoose.Types.ObjectId().toString();
-  userB = new mongoose.Types.ObjectId().toString();
+  userA = await createUser('memory-user-a@test.local');
+  userB = await createUser('memory-user-b@test.local');
 
   const currentA = await Decision.create({
     userId: userA,

@@ -9,6 +9,7 @@ import Decision from '../models/Decision';
 import Execution from '../models/Execution';
 import Task from '../models/Task';
 import ExecutionEvent from '../models/ExecutionEvent';
+import User from '../models/User';
 import decisionsRouter from '../routes/decisions';
 import { executionEventBus } from '../decision/eventBus';
 
@@ -19,6 +20,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
 function tokenFor(id: string): string {
   return jwt.sign({ id }, JWT_SECRET);
+}
+/**
+ * requireAuth resolves the user named by a credential and refuses tokens for
+ * accounts that do not exist, so fixtures must be real persisted users rather
+ * than bare ObjectIds. The token stays a pre-auth-version one on purpose, so
+ * this file also covers credentials issued before the version claim existed.
+ */
+async function createUser(email: string): Promise<string> {
+  const user = await User.create({ email, name: email, passwordHash: 'test-only-hash' });
+  return String(user._id);
 }
 
 async function makeServer(): Promise<{
@@ -81,9 +92,10 @@ before(async () => {
     Task.deleteMany({}),
     Execution.deleteMany({}),
     Decision.deleteMany({}),
+    User.deleteMany({}),
   ]);
-  userA = new mongoose.Types.ObjectId().toString();
-  userB = new mongoose.Types.ObjectId().toString();
+  userA = await createUser('intel-user-a@test.local');
+  userB = await createUser('intel-user-b@test.local');
 
   const ownedDecision = await Decision.create({
     userId: userA,
@@ -115,12 +127,13 @@ before(async () => {
 });
 
 after(async () => {
-  server.server.close();
+  server?.server.close();
   await Promise.all([
     ExecutionEvent.deleteMany({}),
     Task.deleteMany({}),
     Execution.deleteMany({}),
     Decision.deleteMany({}),
+    User.deleteMany({}),
   ]);
   await mongoose.connection.close();
 });

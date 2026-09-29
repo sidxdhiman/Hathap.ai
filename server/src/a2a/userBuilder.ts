@@ -1,16 +1,20 @@
 import { Request } from 'express';
-import jwt from 'jsonwebtoken';
 import { UnauthenticatedUser, type User } from '@a2a-js/sdk/server';
 import { HathapUser } from './types';
-import { getJwtSecret } from '../config/security';
+import { extractBearerToken, verifyAuthToken } from '../utils/authToken';
 
 export async function hathapUserBuilder(req: Request): Promise<User> {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) {
+  // Bearer credentials are verified through the same path as `requireAuth`, so
+  // a credential invalidated by sign-out, password change or account deletion
+  // cannot be used to reach the A2A surface. Verifying the signature alone here
+  // would let revocation be bypassed entirely.
+  const token = extractBearerToken(req.headers.authorization);
+  if (token) {
     try {
-      const token = auth.split(' ')[1];
-      const data = jwt.verify(token, getJwtSecret()) as { id: string; email?: string };
-      return new HathapUser(data.id, data.email || data.id);
+      const verified = await verifyAuthToken(token);
+      if (verified) {
+        return new HathapUser(verified.userId, verified.userId);
+      }
     } catch {
       // Fall through to other auth methods
     }

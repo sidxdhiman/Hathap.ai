@@ -9,6 +9,7 @@ import { BraveResearchSource } from '../research/braveResearchSource';
 import { resolveResearchProvider, describeResearchStatus, researchSetupInstructions } from '../research/researchConfig';
 import { ResearchError } from '../research/researchError';
 import { RESEARCH_LIMITS } from '../research/limits';
+import User from '../models/User';
 
 /**
  * Provider + configuration tests for the Brave web-search integration.
@@ -202,11 +203,33 @@ let uid: string;
 
 before(async () => {
   server = await makeResearchServer();
-  uid = new (await import('mongoose')).Types.ObjectId().toString();
+  // This file previously needed no database, but `requireAuth` now resolves the
+  // user named by a credential, so the authenticated fixtures below require a
+  // real persisted account.
+  const mongoose = (await import('mongoose')).default;
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(TEST_URI);
+  }
+  // `requireAuth` resolves the user named by a credential and refuses tokens for
+  // accounts that do not exist, so the fixture must be a real persisted user
+  // rather than a bare ObjectId. The token stays a pre-`av` one on purpose, so
+  // this file also covers credentials issued before the version claim existed.
+  await User.deleteMany({ email: 'research-provider@test.local' });
+  const user = await User.create({
+    email: 'research-provider@test.local',
+    name: 'Research Provider',
+    passwordHash: 'test-only-hash',
+  });
+  uid = String(user._id);
 });
 
 after(async () => {
-  server.server.close();
+  server?.server.close();
+  const mongoose = (await import('mongoose')).default;
+  if (mongoose.connection.readyState !== 0) {
+    await User.deleteMany({ email: 'research-provider@test.local' });
+    await mongoose.connection.close();
+  }
 });
 
 test('GET /api/research/status requires auth and does not require a live key', async () => {

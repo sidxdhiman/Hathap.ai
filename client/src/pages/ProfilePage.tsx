@@ -16,7 +16,7 @@ type FormState = 'idle' | 'loading' | 'error' | 'success';
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { user, changePassword, exportData, deleteAccount, logout } = useAuth();
+  const { user, changePassword, exportData, deleteAccount } = useAuth();
   const { models, agentTemplates, courtrooms, decisions } = useApp();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -94,7 +94,6 @@ export const ProfilePage: React.FC = () => {
     try {
       await deleteAccount();
       setDeleteConfirmOpen(false);
-      logout();
       navigate('/');
     } catch (e: any) {
       setDeleteError(e.message || 'Account deletion failed.');

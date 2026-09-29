@@ -186,14 +186,25 @@ Expected: All features work identically
 - [ ] API keys not exposed in error messages
 - [ ] No sensitive data logged
 - [ ] Error messages don't leak information
-- [ ] Tokens not visible in localStorage — **open item**; the cookie-session
-      migration is specified but unimplemented, see
+- [ ] Tokens not visible in localStorage — **open item**. Server-side credential
+      invalidation is implemented (Phase 17): logout, password change and account
+      deletion all end outstanding credentials. That bounds how long a stolen token
+      is useful; it does not stop page scripts from reading it. Moving the token
+      into an `HttpOnly` cookie is specified but unimplemented — see
       [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md)
 - [ ] HTTPS ready (for production)
 
 ---
 
 ## Authentication & Session Prerequisites (Phase 16)
+
+> **Phase 17 status.** The revocable-credential half is **done and does not need
+> any of these answers**: `POST /api/auth/logout`, password-change invalidation,
+> account-deletion invalidation and A2A parity are implemented and tested over the
+> existing bearer token. The questions below gate only the **cookie migration**,
+> which remains unimplemented. They also gate the shortened TTL, the CSRF token
+> and the split rate limiter described in §5–§6 of
+> [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md).
 
 Session cookies (`HttpOnly`, `Secure`, `SameSite`) cannot be configured until the
 production topology is pinned down. The repository documents two mutually
