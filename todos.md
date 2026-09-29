@@ -18,7 +18,7 @@ Last updated: Phase 17.
       rather than a mock.
 - [x] Unit tests for `server/src/utils/authToken.ts`.
 - [x] Re-run the full quality gates and audits; update the documentation.
-- [ ] Commit and push Phase 17 to `main` (this working tree).
+- [x] Commit and push Phase 17 to `main` (`6d6c466`).
 
 ## Phase 17 outcome
 
@@ -71,11 +71,11 @@ deployment decision record. JWT-in-`localStorage` is still the shipped transport
 
 ## Where we are
 
-Phases 1-16 are committed and pushed to `main`. Phase 17 is implemented and fully
-validated in the working tree, and is pending commit. Quality gates at the Phase 17
-baseline: server `tsc --noEmit` clean, **341/341 tests**, build green; client
-`tsc --noEmit` clean, lint clean, **66/66 tests**, `typecheck:config` clean, build
-green. Server audit **0**; client audit 12 (documented, unchanged).
+Phases 1-17 are committed and pushed to `main` (Phase 17: `6d6c466`). Quality
+gates at the Phase 17 baseline: server `tsc --noEmit` clean, **341/341 tests**,
+build green; client `tsc --noEmit` clean, lint clean, **66/66 tests**,
+`typecheck:config` clean, build green. Server audit **0**; client audit 12
+(documented, unchanged).
 
 The server count moved from the Phase 16 baseline of 295 to 341: Phase 17 added 46
 tests (34 unit tests for `utils/authToken.ts`, 11 A2A invalidation tests, 1
