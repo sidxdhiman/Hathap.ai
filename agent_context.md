@@ -15,7 +15,7 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > enforcement of a strong `JWT_SECRET`. Contradictions in sections below are
 > stale; check the README and `docs/` before relying on them.
 >
-> **Authentication note (updated Phase 17):** auth is still a stateless JWT in an
+> **Authentication note (updated Phase 18):** auth is still a stateless JWT in an
 > `Authorization: Bearer` header, persisted by the client in `localStorage`.
 > **Server-side credential invalidation now exists**: a per-user `User.authVersion`
 > counter is embedded in each credential as the `av` claim and checked on every
@@ -27,6 +27,15 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > undefined in this repository.
 > See `docs/AUTHENTICATION_ARCHITECTURE.md` §2.4 before trusting sections 3, 7, 10,
 > or 16 below.
+>
+> **Client note (updated Phase 18):** the client no longer hand-rolls requests.
+> `client/src/api/authTransport.ts` is the only module that touches
+> `localStorage`, and `client/src/api/client.ts` is the only module that calls
+> `fetch`; every call site goes through `apiFetch` / `apiJson` / `apiText`. A `401`
+> on a request that carried a credential clears the session once and the route
+> guards redirect; a failed login and a `5xx` do not. The layer never retries and
+> never navigates. The stored session is read synchronously at mount, and the token
+> is still **not** validated on load. See `docs/AUTHENTICATION_ARCHITECTURE.md` §2.5.
 
 ---
 
@@ -274,10 +283,14 @@ External Integrations:
 ## Authentication
 
 - **Strategy**: JWT (JSON Web Tokens)
-- **Token Storage**: LocalStorage/SessionStorage on client
+- **Token Storage**: `localStorage` on the client, owned solely by
+  `client/src/api/authTransport.ts`
 - **Token Revocation**: per-user `User.authVersion` counter, embedded as the `av`
   claim and verified on every request (Phase 17); `POST /api/auth/logout` ends
   sessions server-side
+- **Client Request Layer**: `client/src/api/client.ts` is the only caller of
+  `fetch`; it attaches the credential, normalizes errors, and turns a credentialed
+  `401` into a single session sign-out with no retry and no redirect (Phase 18)
 - **Password Security**: bcrypt hashing with salt rounds
 - **API Key Encryption**: AES-256-GCM for stored LLM API keys
 - **Encryption Library**: Node.js built-in crypto module
@@ -1634,6 +1647,21 @@ Not currently implemented. When adding tests:
   that account. Per-device revocation would require a server-side session store
 - Cookie migration, CSRF token and shortened TTL are **not implemented**; they are
   blocked on the deployment decision record (architecture doc §4.4)
+- Token is **not validated on page load** (no `/api/auth/me` bootstrap); a stale
+  credential renders the app shell until its first API call rejects it
+
+**Client transport (updated in Phase 18):**
+- `client/src/api/authTransport.ts` is the only module that reads or writes
+  `hathap_token` / `hathap_user`, and it owns the session-invalidation signal
+- `client/src/api/client.ts` is the only module that calls `fetch`; it attaches the
+  bearer credential, sets a JSON content type only when there is a JSON body, and
+  normalizes failures into one `ApiError` that preserves the server's own message
+- A `401` **with** a credential clears the session exactly once; a `401` without
+  one (a failed login) and any `5xx` do not. No retry and no navigation, so a dead
+  session cannot loop
+- The stored session is resolved synchronously in the `useState` initializer, so a
+  page refresh on a protected route does not bounce through the login page
+- See [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md) §2.5
 
 **Recommendations:**
 - Use httpOnly cookies instead of localStorage (blocked on the §4.4 record)

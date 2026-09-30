@@ -5,7 +5,7 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 ## 🎯 Features
 
 ### Core Functionality
-- **Authentication**: JWT-based signup/login with per-user data scoping, server-side credential invalidation (logout, password change, account deletion), password change, data export, and account deletion
+- **Authentication**: JWT-based signup/login with per-user data scoping, server-side credential invalidation (logout, password change, account deletion), a single client request/credential layer with centralized 401 sign-out, password change, data export, and account deletion
 - **Dashboard**: Overview with statistics and recent courtrooms
 - **Models Management**: Connect and manage AI models from multiple providers
 - **Agent Templates**: Create reusable AI agent personas with custom prompts
@@ -267,6 +267,25 @@ signing out ends every session for that account including other devices; there i
 still no server-side session store; and the token is still held in `localStorage`,
 so any script on the origin can read it. Server-side invalidation bounds how long a
 stolen credential is useful — it does not prevent the theft.
+
+**The client has a single request/credential layer (Phase 18).** No module reads
+the stored token or builds an `Authorization` header itself:
+
+- `client/src/api/authTransport.ts` is the only module that touches
+  `localStorage` (`hathap_token` / `hathap_user`), so replacing the storage
+  mechanism is a change to one file.
+- `client/src/api/client.ts` is the only module that makes requests. It attaches
+  the credential, sets `Content-Type: application/json` only when there is a JSON
+  body, and turns failures into a single error type that keeps the server's own
+  error message.
+- A `401` on a request that carried a credential retires the session exactly once,
+  clearing state and storage; route guards then redirect. A `401` without a
+  credential (a failed login) and a `5xx` (a server fault) do **not** sign the
+  user out. The layer never retries and never navigates, so a dead session cannot
+  produce a redirect loop.
+
+The token is still **not** validated on page load: a stale token renders the app
+and is discovered dead by the first API call, which then signs the user out.
 
 Moving to `HttpOnly` session cookies is designed but **not implemented**: cookie
 `SameSite`/`Secure`/`Domain` depend on the production topology (same-origin vs

@@ -19,7 +19,9 @@ confused:
 | Account-existence check on every authenticated request | **Implemented and tested** (Phase 17, §2.4) |
 | `POST /api/auth/logout` ending sessions server-side | **Implemented and tested** (Phase 17, §2.4) |
 | A2A honouring credential invalidation | **Implemented and tested** (Phase 17, §2.4) |
-| Token still readable by page scripts (`localStorage`) | **Unchanged — still an open limitation** (§2.4) |
+| Single client request/credential layer; one 401 → sign-out path | **Implemented and tested** (Phase 18, §2.5) |
+| Token still readable by page scripts (`localStorage`) | **Unchanged — still an open limitation** (§2.4, §2.5.4) |
+| Token validated on load (`/api/auth/me` bootstrap) | **Not implemented** — a stale token is still found dead by the first API call (§2.5.4) |
 | `HttpOnly` cookie transport | **Not implemented** — blocked on §4.4 |
 | CSRF token / Origin enforcement | **Not implemented** — contingent on cookies (§6.3) |
 
@@ -90,16 +92,16 @@ Every line reference below was read directly from the tree at the baseline commi
 
 | Concern | Reality | Evidence |
 |---|---|---|
-| Token persistence | `localStorage` keys `hathap_token` and `hathap_user`, written back by effects on every state change | `client/src/context/AuthContext.tsx:23-44` |
-| Token retrieval | `localStorage.getItem('hathap_token')` read directly in 5 modules, outside any shared HTTP layer | `AuthContext.tsx:23`, `AppContext.tsx:87`, `EvaluationContext.tsx:73`, `pages/CourtroomDetailPage.tsx:37` and `:112`, `hooks/useDecisionEventStream.ts:164` |
-| API calls | 70 authenticated `fetch` call sites build `Authorization: Bearer` by hand (72 total, minus the 2 public `login`/`signup` calls). There is **no** shared API client | `AppContext.tsx` (39), `EvaluationContext.tsx` (24), `AuthContext.tsx` (3 of 5), `CourtroomDetailPage.tsx` (3), `useDecisionEventStream.ts` (1) |
-| API base URL | `import.meta.env.VITE_API_URL` if set, otherwise relative `/api` (dev proxy) | `client/src/context/AuthContext.tsx:46-51` and the same pattern in the other four modules |
-| Protected routing | `ProtectedRoute` checks token *presence* only; there is no server validation on load, so a stale/expired token renders the whole app shell and fails per call | `client/src/App.tsx:25-31` |
-| Auth restoration | Lazy `useState` init from `localStorage`; no `/api/auth/me` bootstrap call | `client/src/context/AuthContext.tsx:23-31` |
-| 401 handling | None. Bootstrap failures degrade to empty arrays (`r.ok ? r.json() : []`), so an expired session looks like "no data" | `client/src/context/AppContext.tsx:105-121`, `EvaluationContext.tsx:82-112` |
-| Logout | Clears React state and `localStorage` only; no network call | `client/src/context/AuthContext.tsx:75-78` |
-| Password change / export / delete | All send `Authorization: Bearer` from React state; delete then calls local logout | `client/src/context/AuthContext.tsx:80-114` |
-| Existing tests | Restoration, login success/failure, signup success/failure, logout, protected-route navigation, SSE auth header | `client/src/context/AuthContext.test.tsx`, `context/AppContext.test.tsx`, `context/EvaluationContext.test.tsx`, `pages/AppRoutes.integration.test.tsx`, `hooks/useDecisionEventStream.test.ts` |
+| Token persistence | `localStorage` keys `hathap_token` and `hathap_user`, owned by a single transport module; storage is written synchronously next to the React state, never from an effect | `client/src/api/authTransport.ts`, `client/src/context/AuthContext.tsx` |
+| Token retrieval | `readStoredToken()` inside the shared request layer; **no** module outside `authTransport.ts` reads the key | `client/src/api/client.ts:132` |
+| API calls | **No direct `fetch` remains.** Every call goes through `apiFetch` / `apiJson` / `apiText`, which attach the credential and normalize errors | `client/src/api/client.ts`, all callers |
+| API base URL | `import.meta.env.VITE_API_URL` if set, otherwise relative `/api` (dev proxy), resolved once in the request layer | `client/src/api/client.ts:22` |
+| Protected routing | `ProtectedRoute` gates on `isAuthenticated`, i.e. the presence of a stored credential; there is still no server validation on load | `client/src/App.tsx:25-31` |
+| Auth restoration | Lazy `useState` init from storage, so the session is known on the **first render**; no `/api/auth/me` bootstrap call | `client/src/context/AuthContext.tsx` |
+| 401 handling | Centralized. A 401 on a request that carried a credential reports session invalidation once; `AuthContext` clears state and storage, and route guards redirect | `client/src/api/client.ts:147-151`, `client/src/context/AuthContext.tsx` |
+| Logout | Clears React state and `localStorage` first and unconditionally, then calls `POST /api/auth/logout` best-effort with the retired token | `client/src/context/AuthContext.tsx` |
+| Password change / export / delete | All go through the shared layer; delete clears local state without calling logout | `client/src/context/AuthContext.tsx` |
+| Existing tests | Request layer (23), restoration, login success/failure, signup success/failure, logout, dead-session sign-out, protected-route navigation, deep-link without bounce, 401 sign-out, SSE 401 handling | `client/src/api/client.test.ts`, `context/AuthContext.test.tsx`, `context/AppContext.test.tsx`, `context/EvaluationContext.test.tsx`, `pages/AppRoutes.integration.test.tsx`, `hooks/useDecisionEventStream.test.ts` |
 
 ### 2.3 Verified security consequences of the current design
 
@@ -118,7 +120,9 @@ Every line reference below was read directly from the tree at the baseline commi
    transport must re-establish an equivalent control (§6.3).
 
 Items 1, 2 and 3 describe the Phase 16 baseline. §2.4 records what Phase 17
-changed; item 1 (XSS token theft) is **still open**.
+changed; item 1 (XSS token theft) is **still open**. Item 3 (invisible
+expiry) is addressed by Phase 18 — see §2.5 — which closes the *visibility*
+half of it; the credential is still not proactively checked on load.
 
 ---
 
@@ -210,15 +214,16 @@ second, weaker verification path is exactly the bug the A2A regression test
   on the origin. §2.3.1 remains an open exposure. Invalidating a stolen token
   helps only after the legitimate owner signs out or changes a password; it does
   not stop the theft.
-- No session `status` machine, no central `api/client.ts`, and no shared `401`
-  handler. `ProtectedRoute` still gates on token *presence* (§2.2), so a stale
-  token still renders the app shell and fails per call.
 - TTL is still **7 days**. §5.2's proposed 15-minute access token, `iat`-based
   absolute session cap and sliding re-issue are cookie-model work and were not
   part of this phase.
 - No cookies, no CSRF token, no Origin enforcement, no split rate limiter.
 - §4.4 is still unanswered, so §5 and §6 remain a design rather than a plan of
   record.
+
+> The two client gaps named above — no central `api/client.ts` and no shared
+> `401` handler — were closed by Phase 18. See §2.5. The remaining open items in
+> this list are unchanged.
 
 ### 2.4.6 Deviations from the Phase 16 design in §5.2
 
@@ -230,6 +235,76 @@ second, weaker verification path is exactly the bug the A2A regression test
 | logout "cookie-clear plus client state reset" | logout **bumps the counter** | With no cookie there is nothing to clear server-side; the counter is what makes logout real. The consequence — logout is account-wide — is stated in §2.4.3. |
 | `server/src/a2a/userBuilder.ts` "unchanged behavior" | **changed to use `verifyAuthToken`** | Leaving signature-only verification on the A2A path would have left revocation bypassable, which would have made the whole mechanism cosmetic. |
 | account deletion bumps `tokenVersion` | **no bump; user document removal is the invalidation** | There is no account left to bump. |
+
+---
+
+## 2.5 What Phase 18 implemented (verified)
+
+Phase 18 is a **client refactor**. It changed no server endpoint, no token
+format, and no auth semantics — it gave the client one place that knows how to
+make an authenticated request and one place that decides a session is dead.
+
+### 2.5.1 Two new modules
+
+| Module | Responsibility | Deliberately *not* responsible for |
+|---|---|---|
+| `client/src/api/authTransport.ts` | The only module that touches `localStorage`; holds `hathap_token` / `hathap_user` and the session-invalidation listener registry | Any HTTP, any React |
+| `client/src/api/client.ts` | API base URL, credential attachment, error normalization, 401 detection, `apiFetch` / `apiJson` / `apiText` / `readJson` / `toApiError` | Navigation, retries, caching, storage layout |
+
+Because the storage keys appear in exactly one file, the eventual cookie
+migration (§4.4, §5) becomes an edit to `authTransport.ts` plus the wiring in
+`client.ts`, rather than a change across five modules.
+
+### 2.5.2 The rules the request layer enforces
+
+1. **One credential source.** A request reads the token from the transport.
+   No caller builds an `Authorization` header.
+2. **No navigation, no retry, ever.** On a dead session the layer reports
+   invalidation and returns. Route guards react to state. This is what makes a
+   redirect loop structurally impossible rather than merely unlikely.
+3. **Invalidation requires a credential on the request.** A 401 is treated as a
+   dead session only when the request actually carried a token. A failed login is
+   a normal 401 and must not sign out anything; neither must a 401 from an
+   endpoint called with `auth: false`.
+4. **A 5xx is not a dead session.** Only HTTP 401 retires the session, so a
+   server or database fault never logs the user out.
+5. **Never resend.** The layer does not retry, including after invalidation —
+   the same token would only be rejected again.
+6. **JSON content type only where there is a JSON body.** A body-less POST (the
+   Phase 17 logout endpoint, among others) carries no `Content-Type`. The server
+   routes it targets do not read `req.body`, so this is verified safe rather than
+   assumed.
+
+### 2.5.3 Session state and sign-out
+
+`AuthContext` mirrors the transport: storage is written synchronously alongside
+React state, never from an effect, so a request issued immediately after login
+already carries the new credential.
+
+The stored session is read in the `useState` initializer, so it is resolved on
+the **first render**. This is load-bearing: an implementation that reads storage
+in a mount effect presents the app as signed out for one render, the guard
+redirects to `/login`, and the arrival of the token then bounces the user to
+`/dashboard` — so a page refresh on any protected route lands them somewhere
+other than where they were. `AppRoutes.integration.test.tsx` guards this.
+
+`logout()` clears local state first and unconditionally, then calls
+`POST /api/auth/logout` best-effort with the **retired** token passed explicitly
+(the stored one is already gone by then). Local sign-out never depends on the
+network call.
+
+### 2.5.4 What Phase 18 does not do
+
+- It does **not** move the credential out of `localStorage`. §2.3.1 stays open.
+- It does **not** validate the token on load. `ProtectedRoute` still gates on
+  credential *presence*; a stale token renders the app shell and is discovered
+  dead by the first API call, which then signs the user out. A `/api/auth/me`
+  bootstrap would change that, and is not part of this phase.
+- It does **not** shorten the 7-day TTL.
+- It does **not** add retries, caching, request cancellation, or a query-string
+  credential. SSE keeps its `Authorization` header rather than moving the token
+  into a URL, where it would land in logs.
+- It does **not** implement cookies, CSRF, CORS credentials, or server sessions.
 
 ---
 
@@ -562,6 +637,14 @@ traceability, not as a plan.
 
 ### 7.2 Client
 
+> Partially pre-built by Phase 18: `client.ts` exists and owns base URL,
+> credential attachment and the single 401 → sign-out path, `AppContext` /
+> `EvaluationContext` / `CourtroomDetailPage` / `useDecisionEventStream` already
+> route through it, and `AuthContext` already delegates storage to
+> `authTransport.ts`. The cookie-specific parts below — `credentials: 'include'`,
+> `X-CSRF-Token`, `/me` bootstrap, dropping the bearer header — remain pending
+> on §4.4.
+
 | File | Change |
 |---|---|
 | `client/src/api/client.ts` **(new)** | Base URL resolution, `credentials: 'include'`, `X-CSRF-Token` injection, single `401` → session-clear + redirect, and a small typed `apiFetch`. |
@@ -654,9 +737,22 @@ Acceptance criteria **satisfied by Phase 17** (invalidation only, no cookies):
       signature (§2.4.2, §10.2).
 - [x] Full gates green, as recorded in §10.2.
 
+Acceptance criteria **satisfied by Phase 18** (client transport only, no cookies):
+
+- [x] No direct `fetch` remains in `client/src` outside `api/client.ts`.
+- [x] `hathap_token` / `hathap_user` appear only in `api/authTransport.ts`.
+- [x] A 401 on a credentialed request signs the device out through one path;
+      a 401 without a credential, and a 5xx, do not (§2.5.2).
+- [x] No retry and no navigation in the request layer, so no redirect loop.
+- [x] Full gates green, as recorded in §10.2.
+
 Still open, and explicitly **not** claimed by Phase 17: the cookie transport,
-CSRF enforcement, the client session `status` machine and central API client, the
-split rate limiter, and the shortened token TTL.
+CSRF enforcement, the split rate limiter, and the shortened token TTL.
+
+Still open, and explicitly **not** claimed by Phase 18: the cookie transport and
+CSRF (as above), plus a `/api/auth/me` bootstrap that validates the token on
+load (§2.5.4). The `status` state machine and central API client are no longer
+in this list — they shipped in Phase 18.
 
 ## 10. Evidence appendix
 
@@ -751,3 +847,58 @@ taken on trust: the `mongoose.isObjectIdOrHexString` guard in
 `CastError: Cast to ObjectId failed for value "not-an-object-id" (type string) at
 path "_id" for model "User"`, confirming both the bug and that the regression
 test detects it. The guard was then restored.
+
+### 10.3 Phase 18 implementation evidence
+
+Baseline `f1ffb0a`, working tree clean, branch `main`. Phase 18 changed **no
+server file**; the server gates were re-run to confirm that.
+
+**Gates, all re-run against the Phase 18 tree:**
+
+| Gate | Command | Result |
+|---|---|---|
+| Server tests | `npm test` | **341 / 341 passed**, 0 failed, 0 cancelled |
+| Server typecheck | `npx tsc --noEmit` | clean |
+| Server build | `npm run build` | clean |
+| Client tests | `npm test` | **98 / 98 passed** (14 files) |
+| Client lint | `npm run lint` | clean (`--max-warnings 0`) |
+| Client typecheck | `npm run build` (`tsc` stage) | clean |
+| Client config typecheck | `npm run typecheck:config` | clean |
+| Client build | `npm run build` | clean |
+| Client audit | `npm audit` | **12 findings** (5 moderate, 7 high) — the documented Phase 12.6 baseline in `docs/SECURITY_AUDIT_REPORT.md`, unchanged |
+
+**Test count:** the Phase 17 baseline was 66 client tests. Phase 18 added 32
+(23 in the new `client/src/api/client.test.ts`, 6 in `AuthContext.test.tsx`,
+1 in `useDecisionEventStream.test.ts`, 2 in `AppRoutes.integration.test.tsx`),
+giving 98.
+
+**Structural checks** (repository-wide search over `client/src`):
+
+| Check | Result |
+|---|---|
+| Direct `fetch(` outside `api/client.ts` | **none** — 73 call sites migrated |
+| `hathap_token` / `hathap_user` outside `api/authTransport.ts` | **none** outside tests that assert on storage |
+| `VITE_API_URL` outside `api/client.ts` | **none** |
+
+**Coverage added for the claims in §2.5:**
+
+| Claim | Test |
+|---|---|
+| Credential is attached; not attached for `auth: false` or when no session; an explicit token wins | `client/src/api/client.test.ts` |
+| JSON content type only with a JSON body; body-less POST carries none | `client/src/api/client.test.ts` |
+| Server `error` preserved; fallback messages; `unauthorized` / `http` / `network` classification; never retried | `client/src/api/client.test.ts` |
+| 401 invalidates only when a credential was sent — public login 401 and 5xx do not | `client/src/api/client.test.ts`, `AuthContext.test.tsx` |
+| An authenticated 401 clears state *and* storage, and the credential is not resent | `AuthContext.test.tsx`, `AppRoutes.integration.test.tsx` |
+| Session is resolved on the first render, so a deep link does not bounce through `/login` | `AppRoutes.integration.test.tsx` |
+| A rejected stream stops without reconnecting or polling | `client/src/hooks/useDecisionEventStream.test.ts` |
+
+**A regression found and fixed during this phase, recorded because it would
+otherwise recur:** the first implementation read the stored session in a mount
+effect, so the app presented itself as signed out for one render. A guard
+redirected to `/login`, and the arrival of the token then redirected to
+`/dashboard` — so a page refresh on any protected route landed the user on the
+dashboard instead of the route they requested. Two pre-existing
+`AppRoutes.integration.test.tsx` cases failed as a result. The fix is to resolve
+storage in the `useState` initializer (§2.5.3); the regression is now asserted
+directly by "deep-links into a decision detail route without bouncing through
+the login page".

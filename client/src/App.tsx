@@ -23,17 +23,17 @@ import { ToastContainer } from './components/ui/Toast';
 import './index.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const auth = useAuth();
+  const { isAuthenticated } = useAuth();
 
-  if (!auth?.token) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 };
 
 const LoggedInRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const auth = useAuth();
+  const { isAuthenticated } = useAuth();
 
-  if (auth?.token) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return <>{children}</>;
 };

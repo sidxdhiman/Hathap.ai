@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReactNode } from 'react';
@@ -27,14 +27,14 @@ const mockResearchStatus = () =>
 
 // Mirrors the guard wiring in App.tsx.
 const ProtectedRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const auth = useAuth();
-  if (!auth?.token) return <Navigate to="/login" replace />;
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
 const LoggedInRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const auth = useAuth();
-  if (auth?.token) return <Navigate to="/dashboard" replace />;
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
 
@@ -145,6 +145,47 @@ describe('App page-flow integration', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('deep-links into a decision detail route without bouncing through the login page', async () => {
+    localStorage.setItem('hathap_token', 'jwt-123');
+    localStorage.setItem('hathap_user', JSON.stringify({ id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' }));
+    mockDecisionDetail('dec-3', { ...completedDecision, _id: 'dec-3' }, jsonResponse(completedSnapshot));
+    renderApp('/decisions/dec-3');
+
+    // A stored session must be known on the first render. If the app briefly
+    // looked signed out, the guard would redirect to /login and then, once the
+    // token appeared, bounce to /dashboard instead of the deep link.
+    expect(await screen.findByRole('heading', { name: 'Hire a Senior Engineer' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
+  });
+
+  it('signs the device out and returns to login when an authenticated request is rejected', async () => {
+    localStorage.setItem('hathap_token', 'stale-token');
+    localStorage.setItem('hathap_user', JSON.stringify({ id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' }));
+    fetchMock.mockImplementation((input: any) => {
+      const url = String(input);
+      if (url.endsWith('/api/models')) {
+        return Promise.resolve(jsonResponse({ error: 'Unauthorized.' }, false, 401));
+      }
+      if (url.endsWith('/api/decisions')) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/research/status')) return Promise.resolve(mockResearchStatus());
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderApp('/dashboard');
+
+    expect(await screen.findByPlaceholderText('you@example.com')).toBeInTheDocument();
+    expect(localStorage.getItem('hathap_token')).toBeNull();
+    expect(localStorage.getItem('hathap_user')).toBeNull();
+
+    // No redirect loop: the rejected credential is not resent, so the app
+    // settles on the login page instead of cycling between routes.
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/models')).length
+      ).toBe(1)
+    );
+    expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
   });
 
   it('sends an unauthenticated user visiting a protected route to the login page', async () => {

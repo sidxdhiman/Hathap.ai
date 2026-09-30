@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DecisionStreamMessage, StreamMode, StreamStatus } from '../types';
+import { apiFetch } from '../api/client';
 
 export type { StreamMode, StreamStatus };
 
@@ -160,21 +161,30 @@ export function useDecisionEventStream({
     const connect = async () => {
       if (!activeEffect || degradedRef.current) return;
       setStatus('connecting');
-      const API = (import.meta.env.VITE_API_URL as string) || '';
-      const token = localStorage.getItem('hathap_token');
       const headers: Record<string, string> = { Accept: 'text/event-stream' };
-      if (token) headers.Authorization = `Bearer ${token}`;
       if (lastEventIdRef.current) headers['Last-Event-ID'] = lastEventIdRef.current;
 
       let res: Response;
       try {
-        res = await fetch(`${API}/api/decisions/${id}/events/stream`, {
+        // The shared client attaches the credential from the auth transport.
+        res = await apiFetch(`/api/decisions/${id}/events/stream`, {
           headers,
           signal: controller.signal,
         });
       } catch (err) {
         if (controller.signal.aborted || !activeEffect) return;
         scheduleReconnect();
+        return;
+      }
+      if (res.status === 401) {
+        // The credential was rejected and the shared client has already retired
+        // the session. Retrying or polling would only resend a dead token and
+        // race the route guard, so stop the stream for good.
+        activeEffect = false;
+        degradedRef.current = false;
+        stopPolling();
+        setMode('sse');
+        setStatus('stopped');
         return;
       }
       if (!res.ok || !res.body) {

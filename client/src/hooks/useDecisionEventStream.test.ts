@@ -135,6 +135,42 @@ describe('useDecisionEventStream', () => {
     }
   });
 
+  it('stops for good when the credential is rejected, without retrying or polling', async () => {
+    vi.useFakeTimers();
+    try {
+      const onUpdate = vi.fn();
+      localStorage.setItem('hathap_token', 'dead-token');
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Unauthorized.' }),
+      } as Response);
+      const { result } = renderHook(() =>
+        useDecisionEventStream({ id: 'd1', active: true, onUpdate, pollIntervalMs: 3000 })
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('stopped');
+      expect(result.current.attempts).toBe(0);
+
+      // A dead credential must not be resent: no reconnect, and no polling
+      // fallback that would keep hammering the API with it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120000);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(result.current.mode).toBe('sse');
+      expect(result.current.status).toBe('stopped');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('falls back to polling when no bytes arrive within the silence window', async () => {
     vi.useFakeTimers();
     try {

@@ -192,18 +192,24 @@ Expected: All features work identically
       is useful; it does not stop page scripts from reading it. Moving the token
       into an `HttpOnly` cookie is specified but unimplemented — see
       [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md)
+- [ ] Expired or revoked credentials end the session promptly in the UI — **done**
+      (Phase 18). Every client request goes through one layer; a `401` on a
+      credentialed request clears the session once and the route guard redirects.
+      Note this is reactive: the token is still not validated on page load, so an
+      already-dead token renders the app shell until its first API call
 - [ ] HTTPS ready (for production)
 
 ---
 
 ## Authentication & Session Prerequisites (Phase 16)
 
-> **Phase 17 status.** The revocable-credential half is **done and does not need
-> any of these answers**: `POST /api/auth/logout`, password-change invalidation,
-> account-deletion invalidation and A2A parity are implemented and tested over the
-> existing bearer token. The questions below gate only the **cookie migration**,
-> which remains unimplemented. They also gate the shortened TTL, the CSRF token
-> and the split rate limiter described in §5–§6 of
+> **Phase 17 + 18 status.** The revocable-credential half is **done and does not
+> need any of these answers**: `POST /api/auth/logout`, password-change
+> invalidation, account-deletion invalidation and A2A parity are implemented and
+> tested over the existing bearer token, and the client now has a single
+> credential/request layer with one 401 → sign-out path. The questions below gate
+> only the **cookie migration**, which remains unimplemented. They also gate the
+> shortened TTL, the CSRF token and the split rate limiter described in §5–§6 of
 > [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md).
 
 Session cookies (`HttpOnly`, `Secure`, `SameSite`) cannot be configured until the

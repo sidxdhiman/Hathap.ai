@@ -1,8 +1,81 @@
-# Hathap.ai — Phase 17 todos (server authentication invalidation)
+# Hathap.ai — Phase 18 todos (client auth transport)
 
-Last updated: Phase 17.
+Last updated: Phase 18.
 
-## Phase 17 scope
+## Phase 18 scope
+
+- [x] Add `client/src/api/authTransport.ts` as the only module that knows how the
+      credential is stored, plus the session-invalidation listener registry.
+- [x] Add `client/src/api/client.ts`: API base URL, credential attachment, error
+      normalization, 401 detection, and `apiFetch` / `apiJson` / `apiText`.
+- [x] Rewrite `AuthContext` on top of the shared layer, clearing local state before
+      the best-effort logout call.
+- [x] Migrate all 73 call sites (AppContext 39, EvaluationContext 24,
+      CourtroomDetailPage 3, AuthContext 6, SSE 1) off direct `fetch`.
+- [x] Route guards and `Header` consume `isAuthenticated` rather than a raw token.
+- [x] Tests for credential attachment, error normalization, 401 sign-out (and the
+      cases that must **not** sign out), SSE 401 handling, and deep-link behaviour.
+- [x] Re-run the full quality gates and audits; update the documentation.
+- [ ] Commit and push Phase 18 to `main`.
+
+## Phase 18 outcome
+
+The client now has one credential source and one request layer. No module reads
+`hathap_token` or builds an `Authorization` header itself, and no direct `fetch`
+remains outside `client/src/api/client.ts`.
+
+- `authTransport.ts` owns `hathap_token` / `hathap_user` and the invalidation
+  signal, so the eventual cookie migration is a change to one file.
+- `client.ts` attaches the credential, sets `Content-Type: application/json` only
+  when there is a JSON body, and preserves the server's own error message in a
+  single `ApiError` type (`unauthorized` / `http` / `network`).
+- A `401` on a request that carried a credential retires the session exactly once;
+  a `401` without one (a failed login) and a `5xx` do not. The layer never retries
+  and never navigates, so a dead session cannot cause a redirect loop.
+- SSE stops on a `401` instead of reconnecting or falling back to polling with a
+  dead credential.
+- The stored session is resolved synchronously in the `useState` initializer, so a
+  page refresh on a protected route no longer bounces through `/login`.
+
+Phase 18 changed **no server file** and no auth semantics. Stated limits: the token
+is still in `localStorage` and still readable by page scripts; it is still **not**
+validated on page load, so a stale token renders the app shell until its first API
+call; TTL is still 7 days; and the cookie migration, CSRF and split rate limiter
+remain unimplemented and blocked on the Phase 16 deployment decision record.
+
+## Phase 18 findings (evidence recorded)
+
+- **Reading the session in a mount effect was a real bug, caught by the existing
+  integration suite.** The first implementation resolved the stored session in a
+  `useEffect`, so the app presented itself as signed out for exactly one render.
+  `ProtectedRoute` redirected to `/login`; `LoggedInRoute` then saw the token
+  arrive and redirected to `/dashboard`. The visible effect was that a page refresh
+  on *any* protected route landed the user on the dashboard instead of the route
+  they asked for — and on deep links the app went on to `/onboarding` via the
+  dashboard's no-models redirect. Two pre-existing `AppRoutes.integration.test.tsx`
+  cases failed, which is how it was found. Fixed by resolving storage in the
+  `useState` initializer, and now asserted directly by a dedicated test.
+- **Bodyless POSTs no longer send a JSON content type.** The old code set
+  `Content-Type: application/json` on every request. The Phase 17 logout endpoint
+  and other bodyless POSTs are not `req.body`-dependent (verified by searching the
+  server routes), so dropping the header is safe and makes the request layer's
+  header set depend only on the request that is actually sent.
+
+## Where we are
+
+Phases 1-17 are committed and pushed to `main` (Phase 17: `6d6c466`); Phase 18 is
+implemented, validated and awaiting its commit. Quality gates at the Phase 18
+baseline: server `tsc --noEmit` clean, **341/341 tests**, build green; client lint
+clean, **98/98 tests**, `typecheck:config` clean, build green. Server audit **0**;
+client audit 12 (documented, unchanged).
+
+The client count moved from the Phase 17 baseline of 66 to 98: Phase 18 added 32
+(23 for the request layer, 6 in `AuthContext.test.tsx`, 1 in
+`useDecisionEventStream.test.ts`, 2 in `AppRoutes.integration.test.tsx`).
+
+## Phase 17 (complete)
+
+### Phase 17 scope
 
 - [x] Add server-side credential invalidation: a per-user `User.authVersion`
       counter carried in each credential as the `av` claim.
@@ -21,7 +94,6 @@ Last updated: Phase 17.
 - [x] Commit and push Phase 17 to `main` (`6d6c466`).
 
 ## Phase 17 outcome
-
 Server-side credential invalidation is **implemented and tested**. A
 signature-valid JWT is no longer sufficient to authenticate: every bearer
 credential additionally resolves the account and is compared against that
@@ -135,20 +207,19 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   invalidate credentials. No new dependency, no new collection, no in-memory
   session store (an in-memory store would make multi-instance deployment unsafe,
   and the app is already single-process for the worker and the SSE event bus).
-- **Verified current weaknesses** (unchanged by this phase): 7-day tokens with
-  only an `id` claim; no server-side logout endpoint; `requireAuth` never checks
-  that the user still exists; the `/api/auth` rate limiter covers `/me`,
-  `export-data` and account deletion as well as login; CORS emits no
-  `Access-Control-Allow-Credentials`; the client has no shared HTTP layer and
-  swallows 401s into empty lists.
-- **Change surface is large but bounded**: ~76 authenticated `fetch` call sites
-  across 5 client modules. A shared `client/src/api/client.ts` is a hard
-  prerequisite — adding `credentials` and a CSRF header to 76 hand-rolled
-  fetches is not reviewable.
+- **Verified current weaknesses** (as of Phase 16): 7-day tokens with only an `id`
+  claim; no server-side logout endpoint; `requireAuth` never checks that the user
+  still exists; the `/api/auth` rate limiter covers `/me`, `export-data` and
+  account deletion as well as login; CORS emits no
+  `Access-Control-Allow-Credentials`. The Phase 16 note that "the client has no
+  shared HTTP layer and swallows 401s into empty lists" was addressed in Phase 18;
+  the token-not-validated-on-load weakness is still open.
+- **Change surface was large but bounded**: ~76 authenticated `fetch` call sites
+  across 5 client modules, all of which Phase 18 migrated.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-17 recap)
+## Done (Phases 11-18 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -170,6 +241,11 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   `User.authVersion` + `av` claim, `server/src/utils/authToken.ts`,
   `POST /api/auth/logout`, invalidation on password change and account deletion,
   and A2A parity. Cookie migration still deferred on the same decision record.
+- Phase 18: Client auth transport centralized and tested — `api/authTransport.ts`
+  (sole storage owner + invalidation signal), `api/client.ts` (sole request layer,
+  one 401 → sign-out path, no retry, no navigation), all 73 call sites migrated,
+  and synchronous session restoration so a page refresh no longer bounces through
+  `/login`. The token is still in `localStorage` and still not validated on load.
 
 ## Remaining (ship blockers / known debt)
 
@@ -185,13 +261,15 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   ends every session for the account, including other devices. Per-device
   revocation would need a server-side session store, which this phase deliberately
   did not introduce.
-- **No centralized client 401 handling** — an expired session currently looks
-  like empty data instead of a re-login.
+- **The token is not validated on page load.** There is no `/api/auth/me`
+  bootstrap, so a stale credential renders the app shell and is discovered dead by
+  the first API call. Phase 18 made that failure *visible and signed out* rather
+  than silent, but the call itself is still missing.
 - Client `npm audit` residual findings (12) are documented in
   `docs/SECURITY_AUDIT_REPORT.md`; revisit together with a Vite →
   `@typescript-eslint` major upgrade in a dedicated phase.
 - Login rate limiting covers the whole `/api/auth` router (30 / 15 min), which
-  will need splitting when `/me` runs on every page load.
+  will need splitting if `/me` is ever added to run on every page load.
 - Non-auth authentication-adjacent findings recorded during the Phase 16
   investigation (SSRF via user-supplied model `baseUrl`, mass assignment on
   `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing parent-ownership

@@ -9,7 +9,7 @@ export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   
   // Hide navbar items during onboarding
   const isOnboarding = location.pathname === '/onboarding';
@@ -27,7 +27,7 @@ export const Header: React.FC = () => {
 
   const handleLogoClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (token) {
+    if (isAuthenticated) {
       navigate('/dashboard');
     } else {
       navigate('/');

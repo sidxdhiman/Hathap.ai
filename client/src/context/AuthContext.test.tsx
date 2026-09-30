@@ -8,6 +8,10 @@ function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body };
 }
 
+function httpResponse(body: unknown, status: number) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
+
 describe('AuthProvider', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -26,8 +30,27 @@ describe('AuthProvider', () => {
       JSON.stringify({ id: 'u1', email: 'ada@example.com', name: 'Ada' })
     );
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    // Synchronous on the first render: a guard must never see a signed-in
+    // device as signed out, which would redirect it to the login page.
     expect(result.current.token).toBe('jwt-token');
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.isAuthenticated).toBe(true);
     expect(result.current.user).toEqual({ id: 'u1', email: 'ada@example.com', name: 'Ada' });
+  });
+
+  it('reports an anonymous session with no stored credential', () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    expect(result.current.status).toBe('anonymous');
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.token).toBeNull();
+    expect(result.current.user).toBeNull();
+  });
+
+  it('ignores a cached profile that has no credential behind it', () => {
+    localStorage.setItem('hathap_user', JSON.stringify({ id: 'u1', email: 'a@b.com', name: 'Ada' }));
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.user).toBeNull();
   });
 
   it('logs in by posting credentials and stores the returned session', async () => {
@@ -210,5 +233,68 @@ describe('AuthProvider', () => {
     // invalidate server-side.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/account');
+  });
+
+  describe('dead-session handling', () => {
+    it('signs the device out when an authenticated request is rejected with 401', async () => {
+      localStorage.setItem('hathap_token', 'stale-token');
+      localStorage.setItem('hathap_user', '{"id":"u1","email":"a@b.com","name":"Ada"}');
+      fetchMock.mockResolvedValue(httpResponse({ error: 'Unauthorized.' }, 401));
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+
+      const { apiJson } = await import('../api/client');
+      await act(async () => {
+        await apiJson('/api/models').catch(() => undefined);
+      });
+
+      expect(result.current.token).toBeNull();
+      expect(result.current.user).toBeNull();
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(localStorage.getItem('hathap_token')).toBeNull();
+      expect(localStorage.getItem('hathap_user')).toBeNull();
+    });
+
+    it('does not sign out when the rejection came with no credential', async () => {
+      localStorage.setItem('hathap_token', 'live-token');
+      fetchMock.mockResolvedValue(httpResponse({ error: 'Unauthorized.' }, 401));
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+
+      const { apiJson } = await import('../api/client');
+      await act(async () => {
+        await apiJson('/api/auth/login', { method: 'POST', json: {}, auth: false }).catch(() => undefined);
+      });
+
+      expect(result.current.token).toBe('live-token');
+      expect(result.current.isAuthenticated).toBe(true);
+    });
+
+    it('keeps the session on a server fault, which is not a rejected credential', async () => {
+      localStorage.setItem('hathap_token', 'live-token');
+      localStorage.setItem('hathap_user', '{"id":"u1","email":"a@b.com","name":"Ada"}');
+      fetchMock.mockResolvedValue(httpResponse({ error: 'database unavailable' }, 500));
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+
+      const { apiJson } = await import('../api/client');
+      await act(async () => {
+        await apiJson('/api/models').catch(() => undefined);
+      });
+
+      expect(result.current.token).toBe('live-token');
+      expect(result.current.isAuthenticated).toBe(true);
+    });
+
+    it('keeps a failed login from signing out an existing session', async () => {
+      localStorage.setItem('hathap_token', 'live-token');
+      localStorage.setItem('hathap_user', '{"id":"u1","email":"a@b.com","name":"Ada"}');
+      fetchMock.mockResolvedValue(httpResponse({ error: 'bad credentials' }, 401));
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+
+      await act(async () => {
+        await result.current.login('a@b.com', 'wrong').catch(() => undefined);
+      });
+
+      expect(result.current.token).toBe('live-token');
+      expect(result.current.isAuthenticated).toBe(true);
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   Comparison,
   AggregateRunScore,
 } from '../types';
+import { apiFetch, apiJson, readJson, toApiError } from '../api/client';
 
 type BenchmarkWithCount = Benchmark & { caseCount?: number };
 
@@ -68,35 +69,26 @@ export const EvaluationProvider: React.FC<{ children: ReactNode }> = ({ children
   const [comparisons, setComparisons] = useState<Comparison[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const getHeaders = () => {
-    const API = (import.meta.env.VITE_API_URL as string) || '';
-    const token = localStorage.getItem('hathap_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return { API, headers };
-  };
-
   const isActiveRun = (r: EvaluationRun) =>
     r.status === 'running' || r.status === 'queued';
 
   const refreshEvaluation = useCallback(async () => {
-    const { API, headers } = getHeaders();
     try {
       const [bRes, rRes, ruRes, baRes, cRes] = await Promise.all([
-        fetch(`${API}/api/evaluations/benchmarks`, { headers }).then((r) =>
-          r.ok ? r.json().then((list: any[]) => list.map(mapBenchmark)) : []
+        apiJson<any[]>('/api/evaluations/benchmarks', { fallback: [] }).then((list) =>
+          Array.isArray(list) ? list.map(mapBenchmark) : []
         ),
-        fetch(`${API}/api/evaluations/rubrics`, { headers }).then((r) =>
-          r.ok ? r.json().then((list: any[]) => list.map(mapRubric)) : []
+        apiJson<any[]>('/api/evaluations/rubrics', { fallback: [] }).then((list) =>
+          Array.isArray(list) ? list.map(mapRubric) : []
         ),
-        fetch(`${API}/api/evaluations/runs`, { headers }).then((r) =>
-          r.ok ? r.json().then((list: any[]) => list.map(mapRun)) : []
+        apiJson<any[]>('/api/evaluations/runs', { fallback: [] }).then((list) =>
+          Array.isArray(list) ? list.map(mapRun) : []
         ),
-        fetch(`${API}/api/evaluations/baselines`, { headers }).then((r) =>
-          r.ok ? r.json().then((list: any[]) => list.map(mapBaseline)) : []
+        apiJson<any[]>('/api/evaluations/baselines', { fallback: [] }).then((list) =>
+          Array.isArray(list) ? list.map(mapBaseline) : []
         ),
-        fetch(`${API}/api/evaluations/comparisons`, { headers }).then((r) =>
-          r.ok ? r.json().then((list: any[]) => list.map(mapComparison)) : []
+        apiJson<any[]>('/api/evaluations/comparisons', { fallback: [] }).then((list) =>
+          Array.isArray(list) ? list.map(mapComparison) : []
         ),
       ]);
       setBenchmarks(bRes);
@@ -116,43 +108,40 @@ export const EvaluationProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [refreshEvaluation]);
 
   const seedBenchmarks = async () => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/seed`, { method: 'POST', headers });
-    const data = await res.json();
-    if (!res.ok && !data.created) throw new Error(data.error || 'Failed to seed benchmarks');
+    // A successful "already seeded" response carries `created: 0`, which is not
+    // a failure — only a non-ok response without `created` is.
+    const res = await apiFetch('/api/evaluations/seed', { method: 'POST' });
+    const data = await readJson<any>(res, {});
+    if (!res.ok && !data?.created) {
+      throw toApiError(res, data, 'Failed to seed benchmarks');
+    }
     await refreshEvaluation();
     return data;
   };
 
   const createBenchmark = async (input: { name: string; description?: string; tags?: string[] }) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/benchmarks`, {
+    const data = await apiJson<Benchmark>('/api/evaluations/benchmarks', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(input),
+      json: input,
+      errorMessage: 'Failed to create benchmark',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create benchmark');
     const saved = mapBenchmark(data);
     setBenchmarks((prev) => [...prev, saved]);
     return saved;
   };
 
   const deleteBenchmark = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/benchmarks/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to delete benchmark');
-    }
+    await apiJson(`/api/evaluations/benchmarks/${id}`, {
+      method: 'DELETE',
+      errorMessage: 'Failed to delete benchmark',
+    });
     setBenchmarks((prev) => prev.filter((b) => b.id !== id));
   };
 
   const getBenchmarkCases = async (benchmarkId: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/benchmarks/${benchmarkId}/cases`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load cases');
+    const data = await apiJson<BenchmarkCase[]>(`/api/evaluations/benchmarks/${benchmarkId}/cases`, {
+      errorMessage: 'Failed to load cases',
+    });
     return Array.isArray(data) ? data.map(mapCase) : [];
   };
 
@@ -160,36 +149,28 @@ export const EvaluationProvider: React.FC<{ children: ReactNode }> = ({ children
     benchmarkId: string,
     input: { title: string; prompt: string; context?: string; category?: string; difficulty?: 'easy' | 'medium' | 'hard'; tags?: string[] }
   ) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/benchmarks/${benchmarkId}/cases`, {
+    const data = await apiJson<BenchmarkCase>(`/api/evaluations/benchmarks/${benchmarkId}/cases`, {
       method: 'POST',
-      headers,
-      body: JSON.stringify(input),
+      json: input,
+      errorMessage: 'Failed to add case',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to add case');
     return mapCase(data);
   };
 
   const updateCase = async (caseId: string, patch: Partial<BenchmarkCase>) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/cases/${caseId}`, {
+    const data = await apiJson<BenchmarkCase>(`/api/evaluations/cases/${caseId}`, {
       method: 'PATCH',
-      headers,
-      body: JSON.stringify(patch),
+      json: patch,
+      errorMessage: 'Failed to update case',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update case');
     return mapCase(data);
   };
 
   const deleteCase = async (caseId: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/cases/${caseId}`, { method: 'DELETE', headers });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to delete case');
-    }
+    await apiJson(`/api/evaluations/cases/${caseId}`, {
+      method: 'DELETE',
+      errorMessage: 'Failed to delete case',
+    });
   };
 
   const createRun = async (input: {
@@ -200,130 +181,110 @@ export const EvaluationProvider: React.FC<{ children: ReactNode }> = ({ children
     kind?: string;
     selectedCaseIds?: string[];
   }) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs`, {
+    const data = await apiJson<EvaluationRun>('/api/evaluations/runs', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(input),
+      json: input,
+      errorMessage: 'Failed to create run',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create run');
     const saved = mapRun(data);
     setRuns((prev) => [...prev, saved]);
     return saved;
   };
 
   const getRun = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load run');
+    const data = await apiJson<EvaluationRun>(`/api/evaluations/runs/${id}`, {
+      errorMessage: 'Failed to load run',
+    });
     return mapRun(data);
   };
 
   const getRunResults = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}/results`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load results');
+    const data = await apiJson<EvaluationCaseResult[]>(`/api/evaluations/runs/${id}/results`, {
+      errorMessage: 'Failed to load results',
+    });
     return Array.isArray(data) ? data.map((c: any) => ({ ...c, id: c._id || c.id })) : [];
   };
 
   const startRun = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}/start`, { method: 'POST', headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to start run');
+    const data = await apiJson<EvaluationRun>(`/api/evaluations/runs/${id}/start`, {
+      method: 'POST',
+      errorMessage: 'Failed to start run',
+    });
     const saved = mapRun(data);
     setRuns((prev) => prev.map((r) => (r.id === id ? saved : r)));
     return saved;
   };
 
   const executeRun = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}/execute`, { method: 'POST', headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to execute run');
+    const data = await apiJson<EvaluationRun>(`/api/evaluations/runs/${id}/execute`, {
+      method: 'POST',
+      errorMessage: 'Failed to execute run',
+    });
     const saved = mapRun(data);
     setRuns((prev) => prev.map((r) => (r.id === id ? saved : r)));
     return saved;
   };
 
   const cancelRun = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}/cancel`, { method: 'POST', headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to cancel run');
+    const data = await apiJson<EvaluationRun>(`/api/evaluations/runs/${id}/cancel`, {
+      method: 'POST',
+      errorMessage: 'Failed to cancel run',
+    });
     const saved = mapRun(data);
     setRuns((prev) => prev.map((r) => (r.id === id ? saved : r)));
     return saved;
   };
 
   const deleteRun = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to delete run');
-    }
+    await apiJson(`/api/evaluations/runs/${id}`, {
+      method: 'DELETE',
+      errorMessage: 'Failed to delete run',
+    });
     setRuns((prev) => prev.filter((r) => r.id !== id));
   };
 
   const getRunAggregate = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/runs/${id}/aggregate`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load aggregate');
-    return data;
+    return apiJson<AggregateRunScore>(`/api/evaluations/runs/${id}/aggregate`, {
+      errorMessage: 'Failed to load aggregate',
+    });
   };
 
   const createBaseline = async (input: { name: string; description?: string; runId?: string; strategy?: string; thresholds?: Record<string, unknown> }) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/baselines`, {
+    const data = await apiJson<Baseline>('/api/evaluations/baselines', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(input),
+      json: input,
+      errorMessage: 'Failed to create baseline',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create baseline');
     const saved = mapBaseline(data);
     setBaselines((prev) => [...prev, saved]);
     return saved;
   };
 
   const deleteBaseline = async (id: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/baselines/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to delete baseline');
-    }
+    await apiJson(`/api/evaluations/baselines/${id}`, {
+      method: 'DELETE',
+      errorMessage: 'Failed to delete baseline',
+    });
     setBaselines((prev) => prev.filter((b) => b.id !== id));
   };
 
   const compareRuns = async (runAId: string, runBId: string, name?: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/compare-runs`, {
+    const data = await apiJson<Comparison>('/api/evaluations/compare-runs', {
       method: 'POST',
-      headers,
-      body: JSON.stringify({ runAId, runBId, name, persist: true }),
+      json: { runAId, runBId, name, persist: true },
+      errorMessage: 'Failed to compare runs',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to compare runs');
     const saved = mapComparison(data);
     setComparisons((prev) => [saved, ...prev]);
     return saved;
   };
 
   const compareBaseline = async (runId: string, baselineId: string, name?: string) => {
-    const { API, headers } = getHeaders();
-    const res = await fetch(`${API}/api/evaluations/compare-baseline`, {
+    const data = await apiJson<Comparison>('/api/evaluations/compare-baseline', {
       method: 'POST',
-      headers,
-      body: JSON.stringify({ runId, baselineId, name }),
+      json: { runId, baselineId, name },
+      errorMessage: 'Failed to compare against baseline',
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to compare against baseline');
     const saved = mapComparison(data);
     setComparisons((prev) => [saved, ...prev]);
     return saved;

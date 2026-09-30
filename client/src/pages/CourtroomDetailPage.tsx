@@ -16,6 +16,7 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Alert } from '../components/ui/Alert';
 import { useApp } from '../context/AppContext';
+import { apiFetch, apiJson, readJson, toApiError } from '../api/client';
 import { formatTime } from '../utils/helpers';
 
 export const CourtroomDetailPage: React.FC = () => {
@@ -33,14 +34,9 @@ export const CourtroomDetailPage: React.FC = () => {
 
   const fetchDebateData = useCallback(async () => {
     try {
-      const API = (import.meta.env.VITE_API_URL as string) || '';
-      const token = localStorage.getItem('hathap_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       const [msgRes, verdictRes] = await Promise.all([
-        fetch(`${API}/api/courtrooms/${id}/messages`, { headers }).then((r) => r.ok ? r.json() : []),
-        fetch(`${API}/api/courtrooms/${id}/verdict`, { headers }).then((r) => r.ok ? r.json() : null),
+        apiJson<any[]>(`/api/courtrooms/${id}/messages`, { fallback: [] }),
+        apiJson<any>(`/api/courtrooms/${id}/verdict`, { fallback: null }),
       ]);
 
       setMessages(msgRes);
@@ -108,19 +104,15 @@ export const CourtroomDetailPage: React.FC = () => {
     setError(null);
     setErrorSuggestions([]);
     try {
-      const API = (import.meta.env.VITE_API_URL as string) || '';
-      const token = localStorage.getItem('hathap_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${API}/api/courtrooms/${id}/start`, {
+      const res = await apiFetch(`/api/courtrooms/${id}/start`, {
         method: 'POST',
-        headers,
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        const message = data.errors?.length ? data.errors.join(' ') : data.error || 'Failed to run debate engine';
+        const data = await readJson<any>(res, {});
+        const message = data?.errors?.length
+          ? data.errors.join(' ')
+          : toApiError(res, data, 'Failed to run debate engine').message;
         
         // Parse error message and provide suggestions
         const suggestions: string[] = [];
