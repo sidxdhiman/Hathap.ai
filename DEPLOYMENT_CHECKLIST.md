@@ -211,10 +211,20 @@ Expected: All features work identically
 > only the **cookie migration**, which remains unimplemented. They also gate the
 > shortened TTL, the CSRF token and the split rate limiter described in §5–§6 of
 > [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md).
+>
+> **Phase 19 status: still open, now formally recorded.** Phase 19 inventoried
+> every tracked file and confirmed the production topology is **absent from the
+> repository** — there is no Dockerfile, compose file, Kubernetes manifest,
+> proxy config, PaaS descriptor, deploy workflow, production env file, or
+> production hostname anywhere. CI only typechecks, tests and builds. So these
+> questions cannot be answered from the code; they need a human decision. The
+> authoritative, expanded decision record is **§4.4** of
+> [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md) —
+> fill it in there rather than here, so there is one source of truth.
 
 Session cookies (`HttpOnly`, `Secure`, `SameSite`) cannot be configured until the
-production topology is pinned down. The repository documents two mutually
-exclusive shapes and currently commits to neither. Record the answers here before
+production topology is pinned down. The repository supports two mutually exclusive
+shapes and currently commits to neither. Record the answers in §4.4 before
 starting the migration:
 
 - [ ] **Topology** — same-origin (SPA + API behind one origin) or cross-origin?
@@ -231,8 +241,22 @@ starting the migration:
       (`trust proxy` is currently never configured.)
 - [ ] Exact origins to place in `CORS_ORIGINS` (only if cross-origin).
 - [ ] Does a reverse proxy serve `client/dist`, or should Express serve it?
+      (Express currently serves no static files and has no SPA fallback.)
 - [ ] How many API replicas? More than one forbids any in-memory session store and
       requires the process-local SSE event bus to be addressed first.
+
+### What to set before any production deploy (independent of the cookie decision)
+
+These are safe to action now and do **not** depend on the topology answers above:
+
+- [ ] Set `NODE_ENV=production`. It is read by the server but was previously
+      undocumented; unset, the process behaves as development, which silently
+      permits the fallback JWT secret and the permissive CORS fallback.
+- [ ] Set `JWT_SECRET` to a strong random value (>= 16 chars).
+- [ ] Set `API_KEY_ENCRYPTION_SECRET` to a random value (>= 32 chars).
+- [ ] Optionally set `APP_URL` to the public origin — it is sent to
+      OpenAI-compatible providers as `HTTP-Referer` and was previously
+      undocumented.
 
 ---
 
@@ -253,6 +277,7 @@ export MONGODB_URI=<production-uri>
 export JWT_SECRET=<production-secret>
 export API_KEY_ENCRYPTION_SECRET=<production-secret>
 export NODE_ENV=production
+export APP_URL=<public-frontend-origin>   # optional; HTTP-Referer for LLM providers
 
 # Build
 cd server
@@ -263,6 +288,13 @@ npm run build
 
 # Restart server
 ```
+
+> There is no deployment configuration in this repository — no Dockerfile, no
+> compose file, no PaaS descriptor, no deploy workflow, and no reverse-proxy
+> config. The commands above therefore describe *what to set*, not a procedure
+> that exists. Hosting, TLS termination and the SPA/API topology are decisions
+> you have to make and encode; see the decision record in
+> [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md) §4.4.
 
 #### Step 2: Frontend Deployment
 ```bash

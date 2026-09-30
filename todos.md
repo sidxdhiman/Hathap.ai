@@ -1,6 +1,106 @@
-# Hathap.ai — Phase 18 todos (client auth transport)
+# Hathap.ai — Phase 19 todos (deployment/auth decision)
 
-Last updated: Phase 18.
+Last updated: Phase 19.
+
+## Phase 19 scope
+
+- [x] Inventory deployment topology evidence across **every tracked file** (not a
+      sample): containers, compose, Kubernetes, proxies, PaaS descriptors,
+      IaC, hosting and CI/CD deploy workflows, env files, production URLs,
+      `trust proxy`, reverse-proxy rules, and package production scripts.
+- [x] Re-verify the Phase 18 foundation is intact: one `fetch` call site, one
+      `localStorage` credential owner, centralized credentialed-401 handling, SSE
+      that stops on 401 and never reconnects, synchronous session restoration.
+- [x] Scoped security review: token leakage in errors/logs/URLs, `Authorization`
+      logging, credentials in URLs, CORS behavior, secret handling, debug
+      output, and unsafe deployment guidance.
+- [x] Classify the topology — or, if it cannot be established from evidence, say
+      so explicitly and record what is required from the operator.
+- [x] Formalize the operator decision record
+      (`docs/AUTHENTICATION_ARCHITECTURE.md` §4.4) so every unresolved field is
+      explicit rather than implied.
+- [x] Fix topology-independent defects found (undocumented-but-live env vars,
+      stale documentation citations).
+- [x] Reconcile `DEPLOYMENT_CHECKLIST.md`, `todos.md`, `server/.env.example`.
+- [x] Validate, review the full diff, commit, push.
+
+## Phase 19 outcome
+
+**The topology could not be determined, and that is now the documented finding
+rather than an open question.** No deployment artifact, deploy workflow,
+production environment file, or production hostname exists anywhere in the
+tracked tree. The repository is not "missing an answer we could infer" — it
+contains no deployment configuration at all, so §4.4 is operator-held work.
+
+**No application code changed, deliberately.** The Phase 18 architecture was
+re-verified intact and left alone. Cookies, `credentials: 'include'`, CSRF and
+cookie-based CORS remain unimplemented and must stay that way until §4.4 rows
+1–3 are answered: guessing wrong either breaks production sign-in or silently
+removes the primary CSRF defence.
+
+Two concrete, topology-independent defects were fixed:
+
+- `NODE_ENV` and `APP_URL` are both read by the server but were absent from
+  `server/.env.example`. `NODE_ENV` gates the production JWT rules — unset, the
+  process behaves as development and permits the fallback signing secret. Both
+  are now documented with their failure modes.
+- Two stale documentation citations left by the Phase 18 refactor: the
+  `VITE_API_URL` reference still pointed at the pre-refactor
+  `AuthContext.tsx`, and §7.2 referenced 5 client test files where §2.2 lists 6.
+
+## Phase 19 findings (evidence recorded)
+
+- **No deployment configuration exists.** No Dockerfile, compose, Kubernetes,
+  Helm, Terraform/Pulumi/CDK, nginx/Caddy/Apache/Traefik config, `Procfile`,
+  `heroku.yml`, `vercel.json`, `netlify.toml`, `render.yaml`, `railway.json`,
+  `fly.toml`, `app.yaml`, `serverless.yml`, or CDN/storage config for
+  `client/dist`. `.github/workflows/ci.yml` is the only workflow and its two jobs
+  only typecheck, test and build — there is no deploy job and no environment.
+- **No production origins.** A URL sweep over all tracked files found the only
+  deployment-related URLs are the placeholders `https://your-domain.com` and
+  `https://your-domain.com/api`. Every other `https?://` match is an LLM provider
+  endpoint, a spec reference, or a documentation link.
+- **The absence is real, not an ignore artifact.** `.gitignore` excludes `.env`,
+  `.env.local`, `.env.*.local` and `server/.env` — but not
+  `client/.env.production`, and no such file is tracked. `client/.env.development`
+  is the only client env file.
+- **Development is not evidence about production.** The default dev topology is
+  same-origin through the Vite proxy, yet `client/.env.development` sets an
+  absolute cross-origin `VITE_API_URL`. Both are same-*site* on localhost, so
+  `SameSite=Lax` works either way; neither constrains the production choice.
+- **CI never exercises production defaults** — `NODE_ENV` is unset in the server
+  job, so the production JWT and CORS rules are untested in automation.
+- **Cookie transport would not work today even if implemented:** the CORS
+  middleware passes only `{ origin }`, so `Access-Control-Allow-Credentials` is
+  never emitted, and `client.ts` sets no `credentials` option. Both are already
+  recorded in §6.4 and §7.
+- **Security review found no token leakage.** `jwt.verify` errors are swallowed
+  into `null` (no token in logs), the LLM client logs provider/model/URL but never
+  the provider API key, and SSE uses fetch-based streaming so the JWT travels in
+  the `Authorization` header and never in a URL or query string. `requireAuth`
+  logs only database-fault errors, and reports 500 rather than 401 for them so a
+  transient outage is not mistaken for a dead session.
+- **A pre-existing proxy-dependency worth knowing:** the same-origin CORS
+  convenience check compares `Origin` against `http(s)://${Host}`, so it trusts the
+  `Host` header. That is only safe behind a proxy that validates/normalizes
+  `Host`, which is another reason §4.4 row 7 must be answered before S1 is
+  declared production-ready. Recorded in §4.4 and §6.4.
+
+
+
+## Where we are
+
+Phases 1-18 are committed and pushed to `main`; Phase 19 changes documentation
+and `server/.env.example` only. Quality gates are unchanged from the Phase 18
+baseline — server `tsc --noEmit` clean, **341/341 tests**, build clean; client
+lint clean, **98/98 tests**, `tsc --noEmit` and config typecheck clean, build
+clean. Test counts did not move: Phase 19 added no code and therefore no tests.
+
+The honest headline: the app is no closer to a cookie session than it was in
+Phase 18, and it is not meant to be. What changed is that the blocker is now a
+written, itemized, 12-row decision record instead of a loose assumption, and the
+deployment gap is on the record as known debt rather than an unstated
+expectation.
 
 ## Phase 18 scope
 
@@ -218,7 +318,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-18 recap)
+## Done (Phases 11-19 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -245,6 +345,13 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   one 401 → sign-out path, no retry, no navigation), all 73 call sites migrated,
   and synchronous session restoration so a page refresh no longer bounces through
   `/login`. The token is still in `localStorage` and still not validated on load.
+- Phase 19: Deployment/auth decision formalized. An exhaustive inventory of every
+  tracked file confirmed the production topology is **absent from the repository**,
+  so the decision record in `docs/AUTHENTICATION_ARCHITECTURE.md` §4.4 was
+  expanded to 12 explicit rows, each marked `UNKNOWN — OPERATOR DECISION REQUIRED`.
+  **No cookie/CSRF code was written and none should be until those rows are
+  filled.** Two undocumented-but-live server env vars were documented
+  (`NODE_ENV`, `APP_URL`); no application behavior changed.
 
 ## Remaining (ship blockers / known debt)
 
@@ -252,7 +359,16 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   the deployment decision record in
   `docs/AUTHENTICATION_ARCHITECTURE.md` §4.4 (topology, HTTPS, proxy hops,
   origins, replica count). The same block also gates the shortened token TTL, the
-  CSRF token and the split rate limiter.
+  CSRF token and the split rate limiter. **Phase 19 closed out the search for an
+  in-repo answer**: there is no Dockerfile, compose file, Kubernetes manifest,
+  proxy config, PaaS descriptor, deploy workflow, production env file, or
+  production hostname in the tree, and CI only typechecks/tests/builds. The
+  blocking minimum is rows 1–3 of §4.4 — S1 or S2, same-site or cross-site, and
+  HTTPS. These require a human decision and cannot be derived from the code.
+- **There is no deployment configuration in this repository at all.** Not a
+  security bug, but it means hosting, TLS termination and the SPA/API topology
+  are unowned work rather than something already solved. `trust proxy` is never
+  set, and the server mounts no static handler and no SPA fallback.
 - **Token still in `localStorage`** — readable by any script on the origin.
   Server-side invalidation bounds how long a stolen credential is useful; it does
   not prevent the theft. Fixing it requires the cookie migration above.

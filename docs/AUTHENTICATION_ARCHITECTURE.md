@@ -334,20 +334,25 @@ which is the same order of work the routes already do.
 | Statement | Evidence |
 |---|---|
 | Development is **same-origin by default**: Vite proxies `/api` to `http://localhost:4000` | `client/vite.config.ts:9-16` |
-| `VITE_API_URL` can switch the client to a cross-origin API, and the code supports it (relative or absolute base) | `client/src/context/AuthContext.tsx:46-51` |
+| `VITE_API_URL` can switch the client to a cross-origin API, and the code supports it (relative or absolute base) | `client/src/api/client.ts:22-28` |
 | The server never serves the SPA. There is no static mount and no SPA fallback in the production app | `server/src/index.ts:38-104` (verified: no `express.static`, no `sendFile`) |
-| Production CORS is deny-by-default; cross-origin production requires an explicit `CORS_ORIGINS` allow-list | `server/src/config/security.ts:87-95`, `server/.env.example:15-20` |
+| Production CORS is deny-by-default; cross-origin production requires an explicit `CORS_ORIGINS` allow-list | `server/src/config/security.ts:87-95`, `server/.env.example:27-36` |
 | Same-origin production "works" only because of the `Origin === http(s)://${Host}` comparison, which assumes the proxy preserves `Host` | `server/src/index.ts:45-49` |
 | No TLS/proxy assumption is *configured* anywhere; `trust proxy` is never configured | verified: no `trust proxy` / `X-Forwarded` / `req.secure` in `server/src` |
 | HTTPS is only an **assumption in prose**, never a configuration | `agent_context.md` "**HTTPS in Production**: Assumes production deployment uses HTTPS"; `DEPLOYMENT_CHECKLIST.md` → "Navigate to `https://your-domain.com`". No `Secure`-related setting or deploy artifact corroborates it |
 | **No deployment artifacts exist in the repository.** No Dockerfile, compose file, nginx/Caddy config, Procfile, `vercel.json`, `netlify.toml`, or infrastructure-as-code | verified: `git ls-files` matches only `.github/workflows/ci.yml` |
 | The only documented production guidance is a host *suggestion list*, and the suggested pairings are **different registrable domains** | `DEPLOYMENT_CHECKLIST.md` → "Step 1: Backend Deployment" / "Step 2: Frontend Deployment"; `agent_context.md` §3 "Deployment" |
 | CI does not set `NODE_ENV`, so production defaults are never exercised anywhere | `.github/workflows/ci.yml:31-37` |
+| **There is no deployment pipeline either.** The only workflow runs typecheck, tests and build; there is no deploy job, no environment, and no hosting target | verified: `.github/workflows/ci.yml:16-86` (jobs `server`, `client` — neither deploys) |
+| The absence of production environment configuration is a **real absence, not an ignore artifact**: `.gitignore` excludes `.env`, `.env.local`, `.env.*.local` and `server/.env`, but *not* `client/.env.production`, and no such file is tracked | `.gitignore:6-9`; `git ls-files` shows `client/.env.development` as the only client env file |
+| **A full-tree URL sweep finds no production origin.** The only deployment-related URLs in the entire repository are the placeholders `https://your-domain.com` and `https://your-domain.com/api`; every other `https?://` match is an LLM provider endpoint, a specification reference, or a documentation link | verified: URL sweep over all tracked files |
+| The dev env file sets an **absolute cross-origin** API base, so cross-origin is the exercised path in development — but that is a local choice, not production evidence | `client/.env.development:1` |
+| No `Access-Control-Allow-Credentials` is ever emitted: the CORS middleware passes only `{ origin }` and the client never sets `credentials`, so a cookie transport would not work today | `server/src/index.ts:50`, `client/src/api/client.ts:137-142` |
 
 ### 4.2 Finding: production topology is undefined
 
-The repository supports *two* mutually exclusive production shapes and commits to
-neither:
+**Phase 19 result: still unclassified.** The repository supports *two* mutually
+exclusive production shapes and commits to neither:
 
 - **S1 — same-origin**: SPA and API behind one origin (reverse proxy, or the
   server gains a static mount).
@@ -357,6 +362,27 @@ neither:
 The documented hosting suggestions point at S2 with *unrelated* domains
 (`*.vercel.app` + `*.herokuapp.com` are different registrable domains, so they
 are also cross-**site**). No proxy, origin, or domain is pinned anywhere.
+
+Phase 19 re-ran the inventory exhaustively against every tracked file (not a
+sample) specifically to try to close this. It **could not**, and the negative
+result is now itself the evidence:
+
+| Searched for | Result |
+|---|---|
+| Dockerfiles, compose, Kubernetes, Helm, Terraform/Pulumi/CDK | none tracked |
+| Reverse proxies (nginx, Caddy, Apache, Traefik) | none tracked |
+| PaaS/hosting descriptors (`Procfile`, `heroku.yml`, `vercel.json`, `netlify.toml`, `render.yaml`, `railway.json`, `fly.toml`, `app.yaml`, `serverless.yml`) | none tracked |
+| Cloud storage/CDN config for `client/dist` | none tracked |
+| GitHub Actions deploy workflows, release workflows, environments | none — `ci.yml` is the only workflow |
+| Production env files | none tracked, and not gitignored (see §4.1) |
+| Hostnames, domains, custom origins, `*.example.com`-style production hosts | only the `your-domain.com` placeholders |
+| Ingress rules, load-balancer config, `trust proxy` / `X-Forwarded-*` handling | none |
+
+**Conclusion.** The deployment topology is not "unknown but inferable" — it is
+**absent from the repository**, and it is information that only an operator
+holds. There is no configuration to infer it from, and no amount of further
+static analysis will produce it. That is why §4.4 is a decision record rather
+than a recommendation, and why the cookie migration stays blocked.
 
 ### 4.3 Why this blocks a cookie implementation
 
@@ -420,20 +446,45 @@ than not shipping.
 
 ### 4.4 Deployment decision record (must be completed before implementation)
 
-| Question | Answer (operator) |
-|---|---|
-| Production topology: S1 same-origin or S2 cross-origin? | _required_ |
-| If S2: is the API on the **same registrable domain** as the SPA? | _required_ |
-| Is the public origin HTTPS on both SPA and API? | _required_ |
-| Where does TLS terminate, and how many proxy hops in front of Express? | _required (needed for `trust proxy` and for the `Secure` decision)_ |
-| Exact public origins to put in `CORS_ORIGINS` | _required if S2_ |
-| Should Express serve `client/dist` (making S1 self-contained), or does a proxy do it? | _required for S1_ |
-| Deployment target: single API process or more than one replica? | _required (multi-replica forbids any in-memory store and needs the process-local SSE/event bus addressed first)_ |
+> **Phase 19 status: OPEN — no field below can be answered from the repository.**
+> Phase 19 inventoried every tracked file to attempt to close this record (§4.2)
+> and found no deployment artifact, workflow, production environment file, or
+> production hostname of any kind. These values are therefore genuinely
+> operator-held, and none of them has been guessed or defaulted. Filling in this
+> table is the only thing that unblocks the cookie migration.
+
+**How to read this table.** Every row is `UNKNOWN — OPERATOR DECISION REQUIRED`
+because no evidence exists in-repo. Where the *shape* of the answer already
+constrains the follow-on work, the consequence column says what your answer
+selects — that is the actionable part, not a default recommendation. Rows marked
+*derived* are not independent choices: they are consequences of the rows above
+them, and become determinable automatically once the rows above are answered.
+
+| # | Question | Answer (operator) | What your answer selects |
+|---|---|---|---|
+| 1 | Production topology: **S1 same-origin** or **S2 cross-origin**? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Selects the whole design. S1 unlocks `SameSite=Strict` + `__Host-` and makes CORS irrelevant to the browser. S2 forces a CORS allow-list and a deliberate `SameSite` choice. |
+| 2 | If S2: is the API on the **same registrable domain** as the SPA? (e.g. `app.example.com` + `api.example.com` = same site) | `UNKNOWN — OPERATOR DECISION REQUIRED` | Same-site → `SameSite=Lax` works and keeps most CSRF protection. Cross-site (unrelated domains, e.g. `*.vercel.app` + `*.herokuapp.com`) → `SameSite=None; Secure` is **forced**, `SameSite` protection is gone entirely, and the CSRF token (§6.3) becomes the *only* defence. |
+| 3 | Is the public origin **HTTPS** on both SPA and API? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Required for any `Secure` cookie outside `localhost`, and mandatory for `SameSite=None` (row 2). A plaintext public origin makes a cookie transport non-viable without TLS first. |
+| 4 | Exact **frontend production origin** (scheme + host + port) | `UNKNOWN — OPERATOR DECISION REQUIRED` | Must be the literal `CORS_ORIGINS` entry in S2 (rows 5–6), and is what a cross-site CSRF `Origin` check compares against. |
+| 5 | Exact **API production origin** (scheme + host + port) | `UNKNOWN — OPERATOR DECISION REQUIRED` | The value of `VITE_API_URL` at client build time; decides whether the client issues relative `/api` paths or absolute cross-origin URLs. |
+| 6 | Exact value(s) for the server's **`CORS_ORIGINS`** allow-list | `UNKNOWN — OPERATOR DECISION REQUIRED` — *derived from rows 4–5* | Empty/unset in production means every cross-origin browser request is rejected today (`config/security.ts:87-95`). Must be exact origins, never `*`. |
+| 7 | Does a **reverse proxy** sit in front of Express? If so, how many hops, and does it preserve the `Host` header? | `UNKNOWN — OPERATOR DECISION REQUIRED` | `trust proxy` is never configured, so `req.ip`/`req.protocol` are wrong behind a proxy (affects the auth rate limiter and any future `Secure`/`req.secure` logic). Also gates whether the `Origin === http(s)://${Host}` same-origin convenience check (§6.4) is trustworthy. |
+| 8 | Where does **TLS terminate**, and does the edge set `X-Forwarded-Proto`? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Determines whether Express can learn the public scheme at all; with no `trust proxy` it cannot. |
+| 9 | Should **Express serve `client/dist`** (making S1 self-contained), or does a proxy/CDN serve it? | `UNKNOWN — OPERATOR DECISION REQUIRED` — *required for S1* | Server currently mounts **no static handler and no SPA fallback**, so S1 is not achievable today without this change. |
+| 10 | Does the browser reach the API **directly**, or only through a proxy? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Decides whether the browser ever sees the API origin (rows 4–6) and therefore whether CORS is involved at all. |
+| 11 | **API replica count** — single process or more than one? | `UNKNOWN — OPERATOR DECISION REQUIRED` | More than one forbids any in-memory session store and requires the **process-local SSE event bus** (`server/src/decision/eventBus.ts`) to be made cross-instance first. Also multiplies `MONGODB_URI`/worker concerns. |
+| 12 | Any other cookie-affecting constraint — subdomain policy, third-party cookie blocking, embedded/webview use? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Modern third-party-cookie blocking can neuter `SameSite=None` outright even in S2 cross-site, which would force a same-site topology or a different transport. |
+
+**Minimal unblocking set.** Rows **1, 2, 3** are the blocking minimum: they
+determine whether cookie transport is even the right target. Rows 4–6 follow
+mechanically from them. Row 9 is required to *implement* S1. Rows 7, 8, 11 are
+required to implement correctly but do not change the cookie design choice.
 
 **Recommended default if the operator has no preference: S1 (same-origin).** It is
 the only shape in which `SameSite=Strict` + a `__Host-` cookie is available, CORS
 becomes irrelevant for the browser, and CSRF exposure is minimal by construction.
-It also matches the app's current single-process assumptions.
+It also matches the app's current single-process assumptions. **This is a
+recommendation only — it has not been applied**, and rows 1–12 remain unanswered.
 
 ---
 
@@ -632,7 +683,7 @@ traceability, not as a plan.
 | `server/src/index.ts` | Origin-function CORS with `credentials: true` + `Vary: Origin`; mount `csrfProtection`; `app.set('trust proxy', <configured hops>)`; split the `/api/auth` limiter; (S1 only) static mount for `client/dist` + SPA fallback that never shadows `/api`. | pending |
 | `server/src/a2a/userBuilder.ts` | Unchanged behavior: header + API key only. Explicitly do not accept cookies here. | **superseded (Phase 17)**: bearer credentials now go through `verifyAuthToken` so invalidation cannot be bypassed. Still no cookie acceptance. |
 | `server/src/utils/authToken.ts` **(new)** | Central issuance/verification/counter helper shared by `requireAuth` and A2A. | **shipped (Phase 17)** |
-| `server/.env.example` | `NODE_ENV=production`, `TRUST_PROXY_HOPS`, `SESSION_TTL_MINUTES`, `CSRF_COOKIE_NAME`, `CORS_ORIGINS` guidance for S2. | pending |
+| `server/.env.example` | `TRUST_PROXY_HOPS`, `SESSION_TTL_MINUTES`, `CSRF_COOKIE_NAME`, and S2 `CORS_ORIGINS` guidance. | **partly done (Phase 19)**: `NODE_ENV` (which gates the production JWT rules) and the already-read-but-undocumented `APP_URL` are now documented. The three cookie-phase variables stay pending on §4.4 — their values *are* the decisions. |
 | `server/package.json` | Add the new test files to the `test` script. | **shipped (Phase 17)** |
 
 ### 7.2 Client
@@ -655,7 +706,7 @@ traceability, not as a plan.
 | `client/src/hooks/useDecisionEventStream.ts` | `credentials: 'include'`; drop the header/localStorage read. |
 | `client/src/App.tsx` | Gate routes on `status`; render a loading state; redirect on `anonymous`. |
 | `client/src/pages/LoginPage.tsx`, `SignupPage.tsx`, `ProfilePage.tsx` | Consume the new `status`/error surface; logout becomes async. |
-| Tests (5 files listed in §2.2) | Rewrite the storage assertions into cookie/status/401 assertions. |
+| Tests (6 files listed in §2.2) | Rewrite the storage assertions into cookie/status/401 assertions. |
 
 ---
 
