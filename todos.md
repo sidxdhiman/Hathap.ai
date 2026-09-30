@@ -16,7 +16,7 @@ Last updated: Phase 18.
 - [x] Tests for credential attachment, error normalization, 401 sign-out (and the
       cases that must **not** sign out), SSE 401 handling, and deep-link behaviour.
 - [x] Re-run the full quality gates and audits; update the documentation.
-- [ ] Commit and push Phase 18 to `main`.
+- [x] Commit and push Phase 18 to `main` (`81b757f`).
 
 ## Phase 18 outcome
 
@@ -63,11 +63,10 @@ remain unimplemented and blocked on the Phase 16 deployment decision record.
 
 ## Where we are
 
-Phases 1-17 are committed and pushed to `main` (Phase 17: `6d6c466`); Phase 18 is
-implemented, validated and awaiting its commit. Quality gates at the Phase 18
-baseline: server `tsc --noEmit` clean, **341/341 tests**, build green; client lint
-clean, **98/98 tests**, `typecheck:config` clean, build green. Server audit **0**;
-client audit 12 (documented, unchanged).
+Phases 1-18 are committed and pushed to `main` (Phase 18: `81b757f`). Quality
+gates at the Phase 18 baseline: server `tsc --noEmit` clean, **341/341 tests**,
+build green; client lint clean, **98/98 tests**, `typecheck:config` clean, build
+green. Server audit **0**; client audit 12 (documented, unchanged).
 
 The client count moved from the Phase 17 baseline of 66 to 98: Phase 18 added 32
 (23 for the request layer, 6 in `AuthContext.test.tsx`, 1 in
