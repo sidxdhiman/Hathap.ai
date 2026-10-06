@@ -7,7 +7,7 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > **Status note (Phase 14, 2026):** This file is an early-phase design snapshot.
 > Where a section below describes *current state*, treat the following as the
 > authoritative, up-to-date facts: the repo has a full server test suite
-> (272 tests) and client vitest suite, a GitHub Actions CI workflow
+> (368 tests) and client vitest suite, a GitHub Actions CI workflow
 > (`.github/workflows/ci.yml`) running server + client gates on every push,
 > helmet security headers and an auth-endpoint rate limiter
 > (`server/src/index.ts`), a `CORS_ORIGINS` allow-list with production
@@ -29,6 +29,17 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > undefined in this repository.
 > See `docs/AUTHENTICATION_ARCHITECTURE.md` §2.4 before trusting sections 3, 7, 10,
 > or 16 below.
+>
+> **Authorization note (updated Phase 22):** every user-owned resource is enforced
+> by `userId`, including the previously-unchecked courtroom messages/verdict
+> (`GET /api/courtrooms/:id/messages`, `/verdict`) and the decision-delete cascade
+> (`DELETE /api/decisions/:id`, which now verifies ownership before removing any
+> child rows). The generic update endpoints (`PUT /api/decisions/:id`,
+> `PUT /api/models/:id`) use explicit field allow-lists, so `userId` and other
+> server-managed fields cannot be mass-assigned. `POST /api/auth/signup` and
+> `/login` validate credential types at runtime. Still out of scope: SSRF via
+> user-supplied model `baseUrl`, A2A task authorization, and multi-replica SSE
+> fan-out. See `docs/AUTHENTICATION_ARCHITECTURE.md` §6.5.
 >
 > **Client note (updated Phase 18):** the client no longer hand-rolls requests.
 > `client/src/api/authTransport.ts` is the only module that touches

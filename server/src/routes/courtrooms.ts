@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { serverErrorMessage } from '../utils/httpError';
 import Courtroom from '../models/Courtroom';
 import Message from '../models/Message';
@@ -91,9 +92,20 @@ router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Messages and verdicts are keyed only by `courtroomId`, so the courtroom is the
+ * ownership boundary that has to be checked first. The same 404 is returned for
+ * a well-formed id that belongs to someone else and for one that does not exist,
+ * so the response cannot be used to probe which courtroom ids are real.
+ */
 router.get('/:id/messages', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
   try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
+    const courtroom = await Courtroom.findOne({ _id: id, userId: req.userId });
+    if (!courtroom) return res.status(404).json({ error: 'Courtroom not found.' });
     const messages = await Message.find({ courtroomId: id }).sort({ createdAt: 1 });
     res.json(messages);
   } catch (error: any) {
@@ -104,6 +116,11 @@ router.get('/:id/messages', requireAuth, async (req: AuthRequest, res) => {
 router.get('/:id/verdict', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
   try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
+    const courtroom = await Courtroom.findOne({ _id: id, userId: req.userId });
+    if (!courtroom) return res.status(404).json({ error: 'Courtroom not found.' });
     const verdict = await Verdict.findOne({ courtroomId: id });
     res.json(verdict);
   } catch (error: any) {

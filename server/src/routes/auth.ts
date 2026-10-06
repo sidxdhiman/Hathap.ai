@@ -35,9 +35,25 @@ import { bumpAuthVersion, readAuthVersion, signToken } from '../utils/authToken'
 
 const router = express.Router();
 
+/**
+ * Runtime type guard for credentials. TypeScript types disappear at runtime, so
+ * a handler that trusts `req.body` can receive an object where it expects a
+ * string. That is not harmless: passing `{ email: { $gt: '' } }` to a Mongo
+ * query is operator injection, and passing a non-string to `bcrypt` throws,
+ * turning a malformed request into a 500.
+ */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 router.post('/signup', async (req, res) => {
-  const { email, password, name } = req.body;
-  if (!email || !password || !name) return res.status(400).json({ error: 'Missing fields' });
+  const { email, password, name } = req.body || {};
+  if (!isNonEmptyString(email) || !isNonEmptyString(password) || !isNonEmptyString(name)) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
   try {
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ error: 'User exists' });
@@ -64,8 +80,10 @@ router.post('/signup', async (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
+  const { email, password } = req.body || {};
+  if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });

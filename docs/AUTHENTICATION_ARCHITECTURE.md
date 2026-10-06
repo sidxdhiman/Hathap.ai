@@ -696,10 +696,18 @@ cookies mean a subdomain cannot overwrite the session cookie.
 ### 6.5 Non-goals
 
 This design does not address (tracked separately, out of scope here): SSRF via
-user-supplied model `baseUrl`, mass-assignment on `PUT /api/decisions/:id` and
-`PUT /api/models/:id`, missing parent-ownership checks on courtroom
-messages/verdict, A2A task authorization, and process-local SSE fan-out on
-multi-replica deployments.
+user-supplied model `baseUrl`, A2A task authorization, and process-local SSE
+fan-out on multi-replica deployments.
+
+Two items previously listed here were closed by Phase 22 (which kept the bearer
+transport and changed no auth semantics): the mass-assignment on
+`PUT /api/decisions/:id` and `PUT /api/models/:id` is now blocked by explicit
+field allow-lists, and the missing parent-ownership checks on courtroom
+messages/verdict now resolve the owning courtroom first and return `404`
+otherwise. Phase 22 also closed two adjacent authorization/validation holes it
+found while auditing: the decision-delete cascade now verifies ownership before
+touching child collections, and `signup`/`login` validate credential types at
+runtime (blocking Mongo operator injection and the non-string `bcrypt` `500`).
 
 ---
 

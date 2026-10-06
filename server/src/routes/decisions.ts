@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { serverErrorMessage } from '../utils/httpError';
 import Decision from '../models/Decision';
 import Execution from '../models/Execution';
@@ -81,9 +82,45 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Fields a client may change through the generic update endpoint. Lifecycle and
+ * identity fields (`userId`, `status`, `currentPhase`, `courtroomId`, timestamps,
+ * `createdAt`/`updatedAt`) are deliberately excluded: they are owned by the
+ * orchestrator, and spreading the raw body into the update let a caller rewrite
+ * them (mass assignment).
+ */
+const DECISION_UPDATABLE_FIELDS = [
+  'title',
+  'objective',
+  'context',
+  'configuration',
+  'participants',
+  'assumptions',
+  'metadata',
+] as const;
+
+function pickDecisionUpdates(body: any): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  for (const field of DECISION_UPDATABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
+  }
+  return updates;
+}
+
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { _id, id: bodyId, ...updates } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Decision not found.' });
+    }
+    const updates = pickDecisionUpdates(req.body || {});
+    for (const field of ['title', 'objective'] as const) {
+      if (field in updates) {
+        const value = updates[field];
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          return res.status(400).json({ error: `"${field}" must be a non-empty string.` });
+        }
+      }
+    }
     const updated = await Decision.findOneAndUpdate(
       { _id: req.params.id, userId: req.userId },
       updates,
@@ -98,22 +135,36 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
-    await Decision.deleteOne({ _id: req.params.id, userId: req.userId });
-    await Execution.deleteMany({ decisionId: req.params.id });
-    await Task.deleteMany({ executionId: { $in: (await Execution.find({ decisionId: req.params.id })).map((e) => e._id) } });
-    await Claim.deleteMany({ decisionId: req.params.id });
-    await Evidence.deleteMany({ decisionId: req.params.id });
-    await EvidenceRelationship.deleteMany({ decisionId: req.params.id });
-    await VerificationResult.deleteMany({ decisionId: req.params.id });
-    await RedTeamFinding.deleteMany({ decisionId: req.params.id });
-    await ReconciliationResult.deleteMany({ decisionId: req.params.id });
-    await DecisionPlan.deleteMany({ decisionId: req.params.id });
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Decision not found.' });
+    }
+    // Establish ownership before any cascade. Child collections are keyed only
+    // by `decisionId`, so running the cascade first would let any authenticated
+    // caller destroy another user's execution/evidence/memory rows by presenting
+    // a foreign decision id.
+    const decision = await Decision.findOne({ _id: id, userId: req.userId });
+    if (!decision) return res.status(404).json({ error: 'Decision not found.' });
+
+    await Decision.deleteOne({ _id: id, userId: req.userId });
+    // Capture the execution ids *before* deleting them; querying afterwards
+    // yields an empty set and silently orphans the tasks.
+    const executionIds = (await Execution.find({ decisionId: id })).map((e) => e._id);
+    await Execution.deleteMany({ decisionId: id });
+    await Task.deleteMany({ executionId: { $in: executionIds } });
+    await Claim.deleteMany({ decisionId: id });
+    await Evidence.deleteMany({ decisionId: id });
+    await EvidenceRelationship.deleteMany({ decisionId: id });
+    await VerificationResult.deleteMany({ decisionId: id });
+    await RedTeamFinding.deleteMany({ decisionId: id });
+    await ReconciliationResult.deleteMany({ decisionId: id });
+    await DecisionPlan.deleteMany({ decisionId: id });
     // Phase 8: memory/outcome records are derived user data; deleting the
     // decision must not leave inaccessible orphans behind.
-    await DecisionMemory.deleteMany({ decisionId: req.params.id });
-    await Outcome.deleteMany({ decisionId: req.params.id });
-    await DecisionFeedback.deleteMany({ decisionId: req.params.id });
-    await DecisionLesson.deleteMany({ decisionId: req.params.id });
+    await DecisionMemory.deleteMany({ decisionId: id });
+    await Outcome.deleteMany({ decisionId: id });
+    await DecisionFeedback.deleteMany({ decisionId: id });
+    await DecisionLesson.deleteMany({ decisionId: id });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ error: serverErrorMessage(error) });

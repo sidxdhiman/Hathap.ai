@@ -942,3 +942,50 @@ describe('Auth DELETE /api/auth/account', () => {
     await User.deleteOne({ _id: survivor._id });
   });
 });
+
+describe('Auth POST /api/auth/signup and /api/auth/login input validation', () => {
+  test('signup rejects a non-string password instead of throwing a 500', async () => {
+    const res = await server.request('/api/auth/signup', {
+      method: 'POST',
+      body: { email: 'nonstring@test.local', name: 'Non String', password: { $gt: '' } },
+    });
+    assert.equal(res.status, 400, 'a malformed credential is a client error, not a server fault');
+    assert.ok(!res.body.token, 'no credential is issued');
+    assert.equal(await User.countDocuments({ email: 'nonstring@test.local' }), 0);
+  });
+
+  test('signup rejects a password shorter than the change-password policy', async () => {
+    const res = await server.request('/api/auth/signup', {
+      method: 'POST',
+      body: { email: 'shortpw@test.local', name: 'Short', password: 'short' },
+    });
+    assert.equal(res.status, 400);
+    assert.ok(!res.body.token, 'no credential is issued');
+    assert.equal(await User.countDocuments({ email: 'shortpw@test.local' }), 0);
+  });
+
+  test('login rejects a non-string password instead of throwing a 500', async () => {
+    await createUser('numpw@test.local', 'NumPw', 'correct-horse-battery');
+    const res = await server.request('/api/auth/login', {
+      method: 'POST',
+      body: { email: 'numpw@test.local', password: 12345 },
+    });
+    assert.equal(res.status, 400);
+    assert.ok(!res.body.token, 'no credential is issued');
+    await User.deleteOne({ email: 'numpw@test.local' });
+  });
+
+  test('login cannot be turned into an operator-injection auth bypass', async () => {
+    await createUser('victim@test.local', 'Victim', 'correct-horse-battery');
+    const res = await server.request('/api/auth/login', {
+      method: 'POST',
+      // Without a runtime type check this object reaches `User.findOne` as
+      // `{ email: { $gt: '' } }`, which matches the first account in the
+      // collection and would authenticate with any password.
+      body: { email: { $gt: '' }, password: 'correct-horse-battery' },
+    });
+    assert.equal(res.status, 400, 'a non-string email is rejected, not matched');
+    assert.ok(!res.body.token, 'operator injection issues no credential');
+    await User.deleteOne({ email: 'victim@test.local' });
+  });
+});

@@ -234,7 +234,12 @@ npm run build        # build client/dist
 `npm audit` is not a CI gate by design. Baseline (Phase 12.6, see
 [`docs/SECURITY_AUDIT_REPORT.md`](docs/SECURITY_AUDIT_REPORT.md)):
 
-- **Server**: `npm audit` → **0 vulnerabilities**.
+- **Server**: `npm audit` → **1 critical transitive finding** (`proxy-addr`,
+  [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
+  IPv4-mapped IPv6 trust subnet) disclosed after the Phase 12.6 baseline. It is
+  reachable only behind a proxy with a configured trust boundary, and `trust
+  proxy` is unset here, so practical exposure is limited; track it for a
+  dedicated dependency-remediation pass. (The Phase 12.6 baseline was 0.)
 - **Client**: `npm audit` → **12 documented findings** that only resolve via semver-major
   upgrades (Vite → 8, `@typescript-eslint` → 8, React Router → 7, Vitest mocker → 4.1.11).
   A blocking audit gate would fail required CI against an intentional, documented

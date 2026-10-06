@@ -52,6 +52,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Fields a client may change through the generic update endpoint. `userId`
+ * (ownership) and `status` (set by the connection test) are server-managed and
+ * must not be writable through a raw body spread (mass assignment). The API key
+ * is applied separately so it is encrypted rather than stored verbatim.
+ */
+const MODEL_UPDATABLE_FIELDS = ['provider', 'displayName', 'modelName', 'baseUrl', 'enabled'] as const;
+
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -60,8 +68,12 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Model not found.' });
     }
 
-    const { apiKey, apiKeyHint, hasApiKey, _id, id: bodyId, ...updates } = req.body;
-    Object.assign(model, updates);
+    const { apiKey } = req.body || {};
+    for (const field of MODEL_UPDATABLE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        (model as any)[field] = req.body[field];
+      }
+    }
     applyApiKeyToModel(model, apiKey);
     await model.save();
 

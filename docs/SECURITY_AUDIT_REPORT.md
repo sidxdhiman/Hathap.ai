@@ -85,3 +85,20 @@ Vitest UI server RCE) is **resolved** by the `^3.2.6` pin — this repo only eve
 `vitest run` (CLI, no `--ui` server). No finding was suppressed (no audit ignore lists,
 no `npm audit fix`, no Vite upgrade); the entries are dev/test-time only and are revisited
 together with the Vite major-version upgrade tracked in §3.
+
+## 6. Audit re-run (Phase 22)
+
+Phase 22 hardened authorization and input boundaries and changed no dependency. `npm audit`
+re-run at that point:
+
+- Server: `npm audit` → **1 critical** transitive finding (`proxy-addr`,
+  GHSA-jqcg-44mw-7w3h, IPv4-mapped IPv6 trust subnet), newly disclosed since Phase 12.6 and
+  **not actioned here** (a dependency change is out of scope for an authorization phase).
+  It is only reachable behind a proxy with a configured trust boundary, and `trust proxy`
+  is not set here, so practical exposure is limited. Revisit as a dedicated
+  dependency-remediation task.
+- Client: `npm audit` → 2 moderate `react-router` findings (open redirect via backslash,
+  and an SSR-hydration constructor-injection advisory). The fix is the semver-major
+  `react-router-dom@7` upgrade already in the documented residual set above; the app is not
+  SSR, so the hydration advisory does not apply. No finding was suppressed and no
+  dependency was changed.

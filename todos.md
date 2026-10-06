@@ -1,6 +1,65 @@
-# Hathap.ai — Phase 21 todos (production configuration hardening)
+# Hathap.ai — Phase 22 todos (auth/authorization/abuse hardening)
 
-Last updated: Phase 21.
+Last updated: Phase 22.
+
+## Phase 22 scope
+
+- [x] Audit every authenticated route for ownership enforcement (BOLA/IDOR).
+- [x] Close the missing parent-ownership check on courtroom messages and verdict
+      (`GET /api/courtrooms/:id/messages`, `/verdict`): verify the courtroom
+      belongs to the caller, otherwise `404`.
+- [x] Fix the decision-delete cascade: `DELETE /api/decisions/:id` deleted child
+      rows by `decisionId` alone, so a foreign id destroyed another user's data.
+      Ownership is now verified before any cascade.
+- [x] Close mass assignment on `PUT /api/decisions/:id` and `PUT /api/models/:id`
+      with explicit field allow-lists (no more `userId`/lifecycle rewrites).
+- [x] Add runtime type validation to `POST /api/auth/signup` and `/login`
+      (blocks Mongo operator injection and non-string `bcrypt` `500`s); enforce
+      the existing 8-character minimum at signup.
+- [x] Treat malformed ObjectIds on the touched routes as a controlled `404`
+      instead of a `500`.
+- [x] Regression tests: new `phase22Authorization.test.ts` (9 cases) and 4 auth
+      input-validation cases in `authEndpoints.test.ts`.
+- [x] Re-run the full quality gates; update documentation.
+- [x] Commit and push Phase 22 to `main`.
+
+## Phase 22 outcome
+
+**Authorization and input boundaries hardened; auth semantics untouched.**
+`GET /api/courtrooms/:id/messages` and `/verdict` now resolve the courtroom
+against the caller's `userId` before reading the id-keyed child rows, returning
+the same `404` for a foreign and a nonexistent courtroom. `DELETE
+/api/decisions/:id` verifies ownership before its cascade, so a foreign decision
+id can no longer wipe another user's executions/tasks/evidence/memory rows; the
+cascade also now captures execution ids *before* deleting them, fixing an
+existing silent task-orphaning bug.
+
+**No field the server owns is writable through a generic update.** `PUT
+/api/decisions/:id` accepts only the seven content fields and rejects empty
+`title`/`objective`; `PUT /api/models/:id` accepts only the five descriptive
+fields and applies the API key separately. `userId`, `status`, `currentPhase`,
+timestamps and key hints can no longer be mass-assigned.
+
+**Credential handlers validate types at runtime.** `signup` and `login` require
+non-empty strings for every field, so `{ email: { $gt: '' } }` is rejected
+instead of reaching `User.findOne` (operator injection) and a non-string
+password is a `400` instead of a `bcrypt` `500`. Signup now also enforces the
+8-character minimum that `change-password` already required.
+
+**Stated limits.** SSRF via user-supplied model `baseUrl`, A2A task
+authorization, and process-local SSE fan-out remain out of scope and unchanged;
+the token stays in `localStorage` and the cookie migration is still blocked on
+the §4.4 deployment decision record.
+
+**Test counts:** server grew from **355** to **368** (9 in
+`phase22Authorization.test.ts`, 4 auth validation); client is unchanged at
+**114**. No client file changed.
+
+**Audit note:** the server audit now reports 1 **critical** transitive finding
+(`proxy-addr`, GHSA-jqcg-44mw-7w3h, IPv4-mapped IPv6 trust subnet), newly
+disclosed since Phase 12.6 and not actioned here (a dependency change is out of
+scope for this phase); see `docs/SECURITY_AUDIT_REPORT.md`. The client audit
+reports 2 moderate `react-router` findings (fix requires a breaking major).
 
 ## Phase 21 scope
 
@@ -430,7 +489,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-21 recap)
+## Done (Phases 11-22 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -479,6 +538,12 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   Regression tests pin Host-independence and the production/non-production message
   split. Cookie migration, CSRF and the split rate limiter remain unimplemented and
   blocked on §4.4.
+- Phase 22: Authorization and input boundaries hardened over the bearer transport.
+  Courtroom messages/verdict gained a parent-ownership check; the decision-delete
+  cascade verifies ownership before touching child rows (and no longer orphans
+  tasks); `PUT /api/decisions/:id` and `PUT /api/models/:id` use field allow-lists
+  instead of a raw body spread; and `signup`/`login` validate credential types at
+  runtime. No auth semantics, cookie, CSRF or client behavior changed.
 
 ## Remaining (ship blockers / known debt)
 
@@ -516,7 +581,16 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   full page load — tolerable now, but the router needs splitting if `/me` traffic
   or credential-endpoint traffic grows.
 - Non-auth authentication-adjacent findings recorded during the Phase 16
-  investigation (SSRF via user-supplied model `baseUrl`, mass assignment on
-  `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing parent-ownership
-  checks on courtroom messages/verdict, A2A task authorization) are tracked
-  separately and are out of scope for the session-migration phase.
+  investigation: SSRF via user-supplied model `baseUrl`, A2A task authorization,
+  and process-local SSE fan-out on multi-replica deployments remain tracked
+  separately and out of scope. **Phase 22 closed** the other three: mass
+  assignment on `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing
+  parent-ownership checks on courtroom messages/verdict, and (found while
+  auditing) the cross-tenant decision-delete cascade and missing signup/login
+  type validation.
+- **Server audit now carries 1 critical transitive finding** (`proxy-addr`,
+  GHSA-jqcg-44mw-7w3h), newly disclosed since Phase 12.6 and not actioned in
+  Phase 22. It is only reachable behind a proxy with a configured trust
+  boundary, and `trust proxy` is not set here, so practical exposure is limited;
+  revisit as a dedicated dependency-remediation task. Client audit carries 2
+  moderate `react-router` findings whose fix is a breaking major upgrade.
