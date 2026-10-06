@@ -379,7 +379,10 @@ The backend is a Node.js + Express + TypeScript server located in the `server/` 
 - `/api/courtrooms/*` - Courtroom and debate management
 
 The backend runs on port `4000` by default (configurable via PORT env variable).  
-CORS is enabled for development with the frontend.
+CORS is allow-list based: development allows the Vite dev origins, and production
+reflects only the origins listed in `CORS_ORIGINS`. The `Host` header is never
+trusted to infer same-origin, and no `Access-Control-Allow-Credentials` header is
+emitted.
 
 ## 🔄 State Management
 

@@ -11,9 +11,11 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > (`.github/workflows/ci.yml`) running server + client gates on every push,
 > helmet security headers and an auth-endpoint rate limiter
 > (`server/src/index.ts`), a `CORS_ORIGINS` allow-list with production
-> reject-by-default (`server/src/config/security.ts`), and production
-> enforcement of a strong `JWT_SECRET`. Contradictions in sections below are
-> stale; check the README and `docs/` before relying on them.
+> reject-by-default that never trusts the `Host` header
+> (`server/src/middleware/cors.ts`, `server/src/config/security.ts`), and
+> production enforcement of a strong `JWT_SECRET`. 5xx responses do not echo
+> internal error text in production. Contradictions in sections below are stale;
+> check the README and `docs/` before relying on them.
 >
 > **Authentication note (updated Phase 18):** auth is still a stateless JWT in an
 > `Authorization: Bearer` header, persisted by the client in `localStorage`.
@@ -1166,7 +1168,8 @@ Not currently implemented. Consider adding:
 1. **API_KEY_ENCRYPTION_SECRET**: MUST be consistent across deployments or stored keys become unreadable
 2. **JWT_SECRET**: Changing this invalidates all existing tokens
 3. **MONGODB_URI**: Use connection pooling for production (handled by Mongoose)
-4. **CORS Origins**: Update in `server/src/index.ts` for production domains
+4. **CORS Origins**: Set the `CORS_ORIGINS` environment variable for production
+   domains (never edit code; the allow-list is read by `server/src/middleware/cors.ts`)
 
 ---
 

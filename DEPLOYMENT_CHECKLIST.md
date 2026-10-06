@@ -253,7 +253,9 @@ These are safe to action now and do **not** depend on the topology answers above
 
 - [ ] Set `NODE_ENV=production`. It is read by the server but was previously
       undocumented; unset, the process behaves as development, which silently
-      permits the fallback JWT secret and the permissive CORS fallback.
+      permits the predictable fallback JWT secret. CORS is already deny-by-default
+      in production (only the `CORS_ORIGINS` allow-list is ever reflected, and the
+      `Host` header is never trusted), so this is chiefly a JWT-secret concern.
 - [ ] Set `JWT_SECRET` to a strong random value (>= 16 chars).
 - [ ] Set `API_KEY_ENCRYPTION_SECRET` to a random value (>= 32 chars).
 - [ ] Optionally set `APP_URL` to the public origin — it is sent to

@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { describeResearchStatus, researchSetupInstructions } from '../research/researchConfig';
 import { decisionOrchestrator } from '../decision/orchestrator';
@@ -37,7 +38,7 @@ router.get('/status', requireAuth, async (_req: AuthRequest, res) => {
     const status = describeResearchStatus();
     res.json(status);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 

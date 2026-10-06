@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import Model from '../models/Model';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { serializeModel, serializeModels } from '../utils/modelSerializer';
@@ -47,7 +48,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     });
   } catch (error: any) {
     console.error('[Models POST]', error);
-    res.status(500).json({ error: error.message || 'Failed to create model.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to create model.') });
   }
 });
 
@@ -67,7 +68,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.json(serializeModel(model));
   } catch (error: any) {
     console.error('[Models PUT]', error);
-    res.status(500).json({ error: error.message || 'Failed to update model.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to update model.') });
   }
 });
 

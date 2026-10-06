@@ -1,5 +1,5 @@
 import express from 'express';
-import cors from 'cors';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
@@ -13,7 +13,9 @@ import evaluationsRoutes from './routes/evaluations';
 import researchRoutes from './routes/research';
 import { setupA2A } from './a2a/setupA2A';
 import { worker } from './tasks/worker';
-import { isProductionEnvironment, getJwtSecret, isAllowedCorsOrigin } from './config/security';
+import { isProductionEnvironment, getJwtSecret } from './config/security';
+import { corsMiddleware } from './middleware/cors';
+import { serverErrorMessage } from './utils/httpError';
 
 dotenv.config();
 
@@ -37,19 +39,11 @@ if (isProductionEnvironment()) {
 
 const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-// Env-driven CORS: allow-list (CORS_ORIGINS), localhost dev origins, same-origin
-// requests, and non-browser (no-Origin) requests. Unknown cross-origin browser
-// requests are rejected instead of reflecting every origin.
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-  const allowed =
-    !origin ||
-    isAllowedCorsOrigin(origin) ||
-    (typeof host === 'string' && (origin === `http://${host}` || origin === `https://${host}`));
-  const corsMiddleware = cors({ origin: allowed ? true : false });
-  return corsMiddleware(req, res, next);
-});
+// Env-driven CORS: allow-list (CORS_ORIGINS), localhost dev origins, and
+// non-browser (no-Origin) requests. Unknown cross-origin browser requests are
+// rejected instead of reflecting every origin, and the request `Host` header is
+// never trusted as proof of same-origin. See ./middleware/cors.
+app.use(corsMiddleware);
 app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
@@ -83,6 +77,15 @@ async function start() {
   app.use('/api/research', researchRoutes);
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+  // Safety net for errors that reach Express as middleware errors (a thrown
+  // synchronous handler, or an explicit `next(err)`). The real error is logged
+  // here; in production the client only receives a generic 5xx message.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('[Unhandled error]', err);
+    const status = (err as { status?: number })?.status ?? 500;
+    res.status(status).json({ error: serverErrorMessage(err) });
+  });
 
   setupA2A(app);
 

@@ -1,6 +1,40 @@
-# Hathap.ai — Phase 20 todos (startup session validation)
+# Hathap.ai — Phase 21 todos (production configuration hardening)
 
-Last updated: Phase 20.
+Last updated: Phase 21.
+
+## Phase 21 scope
+
+- [x] Remove the production same-origin CORS check that trusted the client-sent
+      `Host` header (`origin === http(s)://${Host}`), which let a forged
+      `Origin`/`Host` pair widen the origin allow-list.
+- [x] Move the CORS policy into `server/src/middleware/cors.ts` and route every
+      decision through `isAllowedCorsOrigin` (no `Host` input).
+- [x] Stop leaking internal error text from 5xx responses in production via
+      `server/src/utils/httpError.ts`, and add a global Express error handler.
+- [x] Add regression tests: `corsMiddleware.test.ts` (including
+      Host-independence) and `httpError.test.ts`.
+- [x] Re-run the full quality gates and audits; update documentation.
+- [x] Commit and push Phase 21 to `main`.
+
+## Phase 21 outcome
+
+**Production configuration hardened; auth semantics untouched.** CORS is now
+allow-list only: `CORS_ORIGINS` in production, the Vite dev origins in
+development, and non-browser requests without an `Origin` header pass through.
+The request `Host` header is never consulted, so a caller can no longer forge
+`Origin` and `Host` together and have an arbitrary origin reflected.
+`Access-Control-Allow-Credentials` is still never emitted, and no cookie, CSRF or
+`credentials: true` behavior was introduced.
+
+**5xx responses no longer echo internal errors in production.** Every 5xx handler
+returns `serverErrorMessage(error)`; in production the client receives the
+route's generic fallback (or `Internal server error.`) while the real error is
+logged server-side. 4xx messages are unchanged. A global Express error handler
+covers middleware-level errors as a safety net.
+
+**Test counts:** server grew from **341** to **355** (8 CORS + 6 error-message
+cases); client is unchanged at **114**. No client file and no auth behavior
+changed.
 
 ## Phase 20 scope
 
@@ -143,8 +177,10 @@ Two concrete, topology-independent defects were fixed:
   same-origin through the Vite proxy, yet `client/.env.development` sets an
   absolute cross-origin `VITE_API_URL`. Both are same-*site* on localhost, so
   `SameSite=Lax` works either way; neither constrains the production choice.
-- **CI never exercises production defaults** — `NODE_ENV` is unset in the server
-  job, so the production JWT and CORS rules are untested in automation.
+- **CI's environment never sets `NODE_ENV=production`**, so the process-level
+  production guards (the fatal JWT startup abort) are not exercised in automation.
+  The production JWT and CORS *rules* are covered since Phase 21, because
+  `securityConfig.test.ts` and `corsMiddleware.test.ts` set `NODE_ENV` per case.
 - **Cookie transport would not work today even if implemented:** the CORS
   middleware passes only `{ origin }`, so `Access-Control-Allow-Credentials` is
   never emitted, and `client.ts` sets no `credentials` option. Both are already
@@ -155,27 +191,28 @@ Two concrete, topology-independent defects were fixed:
   the `Authorization` header and never in a URL or query string. `requireAuth`
   logs only database-fault errors, and reports 500 rather than 401 for them so a
   transient outage is not mistaken for a dead session.
-- **A pre-existing proxy-dependency worth knowing:** the same-origin CORS
-  convenience check compares `Origin` against `http(s)://${Host}`, so it trusts the
-  `Host` header. That is only safe behind a proxy that validates/normalizes
-  `Host`, which is another reason §4.4 row 7 must be answered before S1 is
-  declared production-ready. Recorded in §4.4 and §6.4.
+- **The proxy-dependent CORS convenience was removed in Phase 21.** The old
+  same-origin check compared `Origin` against `http(s)://${Host}`, i.e. it trusted
+  the client-sent `Host` header, so a forged `Origin`/`Host` pair widened the
+  allow-list. CORS now delegates entirely to the `CORS_ORIGINS`/development
+  allow-list and never reads `Host`; `corsMiddleware.test.ts` pins this. §4.4 row 7
+  is still open for `trust proxy`, but it no longer gates CORS. Recorded in §2.1,
+  §4.1 and §6.4.
 
 
 
 ## Where we are
 
-Phases 1-18 are committed and pushed to `main`; Phase 19 changes documentation
-and `server/.env.example` only. Quality gates are unchanged from the Phase 18
-baseline — server `tsc --noEmit` clean, **341/341 tests**, build clean; client
-lint clean, **98/98 tests**, `tsc --noEmit` and config typecheck clean, build
-clean. Test counts did not move: Phase 19 added no code and therefore no tests.
+Phases 1-20 are committed and pushed to `main`. Phase 21 hardens production
+configuration without touching auth semantics. Current quality gates — server
+`tsc --noEmit` clean, **355/355 tests**, build clean; client lint clean, **114/114
+tests**, `tsc --noEmit` and config typecheck clean, build clean.
 
 The honest headline: the app is no closer to a cookie session than it was in
-Phase 18, and it is not meant to be. What changed is that the blocker is now a
-written, itemized, 12-row decision record instead of a loose assumption, and the
-deployment gap is on the record as known debt rather than an unstated
-expectation.
+Phase 18, and it is not meant to be. What changed is that the blocker is a
+written, itemized, 12-row decision record instead of a loose assumption, the
+deployment gap is on the record as known debt, and the one production
+same-origin check that trusted a client-sent header has been removed.
 
 ## Phase 18 scope
 
@@ -393,7 +430,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-20 recap)
+## Done (Phases 11-21 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -435,6 +472,13 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   signs the device out; network failures and `5xx` keep the credential. No server
   file changed. Cookie migration, CSRF and the split rate limiter remain
   unimplemented and blocked on §4.4.
+- Phase 21: Production configuration hardened. The `Host`-trusting same-origin CORS
+  convenience was removed and the policy moved to `server/src/middleware/cors.ts`
+  (allow-list only, `Host` never read), and all 5xx error responses are sanitized in
+  production by `server/src/utils/httpError.ts` plus a global Express error handler.
+  Regression tests pin Host-independence and the production/non-production message
+  split. Cookie migration, CSRF and the split rate limiter remain unimplemented and
+  blocked on §4.4.
 
 ## Remaining (ship blockers / known debt)
 

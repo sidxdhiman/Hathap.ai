@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import Courtroom from '../models/Courtroom';
 import Message from '../models/Message';
 import Verdict from '../models/Verdict';
@@ -25,7 +26,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     res.json(item);
   } catch (error: any) {
     console.error('[Courtrooms POST]', error);
-    res.status(500).json({ error: error.message || 'Failed to create courtroom.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to create courtroom.') });
   }
 });
 
@@ -41,7 +42,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.json(updated);
   } catch (error: any) {
     console.error('[Courtrooms PUT]', error);
-    res.status(500).json({ error: error.message || 'Failed to update courtroom.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to update courtroom.') });
   }
 });
 
@@ -86,7 +87,7 @@ router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
     res.json({ success: true, result });
   } catch (error: any) {
     console.error(`[Start Debate API Error]`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -96,7 +97,7 @@ router.get('/:id/messages', requireAuth, async (req: AuthRequest, res) => {
     const messages = await Message.find({ courtroomId: id }).sort({ createdAt: 1 });
     res.json(messages);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -106,7 +107,7 @@ router.get('/:id/verdict', requireAuth, async (req: AuthRequest, res) => {
     const verdict = await Verdict.findOne({ courtroomId: id });
     res.json(verdict);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 

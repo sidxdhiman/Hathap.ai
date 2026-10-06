@@ -80,9 +80,13 @@ function configuredCorsOrigins(): string[] {
  *  - Requests without an `Origin` header (curl, server-to-server, workers) are
  *    not subject to browser CORS enforcement and are allowed.
  *  - `CORS_ORIGINS` (comma-separated) always wins when set.
- *  - Otherwise production rejects every browser origin (same-origin requests
- *    are handled separately by the caller), while development allows the Vite
- *    dev-server origins.
+ *  - Otherwise production rejects every browser origin, while development
+ *    allows the Vite dev-server origins.
+ *
+ * A same-origin browser request is NOT subject to CORS enforcement, so it needs
+ * no reflected header and is not special-cased here. The request `Host` header
+ * is never consulted: treating it as proof of same-origin would let a caller
+ * forge `Origin` and `Host` together and have an arbitrary origin reflected.
  */
 export function isAllowedCorsOrigin(origin: string | undefined): boolean {
   if (!origin) return true;

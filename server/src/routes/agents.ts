@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import Agent from '../models/Agent';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 
@@ -17,7 +18,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     res.json(item);
   } catch (error: any) {
     console.error('[Agents POST]', error);
-    res.status(500).json({ error: error.message || 'Failed to create agent.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to create agent.') });
   }
 });
 
@@ -33,7 +34,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.json(updated);
   } catch (error: any) {
     console.error('[Agents PUT]', error);
-    res.status(500).json({ error: error.message || 'Failed to update agent.' });
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to update agent.') });
   }
 });
 

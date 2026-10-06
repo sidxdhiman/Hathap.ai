@@ -78,9 +78,9 @@ Every line reference below was read directly from the tree at the baseline commi
 | Logout | **No server-side logout endpoint exists.** Logout is client-only state clearing | `server/src/routes/auth.ts` (routes: `POST /signup`, `POST /login`, `GET /me`, `POST /change-password`, `POST /export-data`, `DELETE /account`) |
 | Revocation | None. A 7-day token survives password change and account deletion | `server/src/routes/auth.ts:94-117`, `:208-283` |
 | Protected surface | Every protected route uses the same `requireAuth`; there is no per-route auth variation (SSE included) | e.g. `server/src/routes/decisions.ts:622`, `:662`, `:738` |
-| CORS | `cors({ origin: allowed ? true : false })`. `allowed` = no `Origin` header, OR in the `CORS_ORIGINS` allow-list, OR `origin === http(s)://${Host}`. Production with an empty allow-list rejects all browser origins | `server/src/index.ts:43-52`, `server/src/config/security.ts:87-95` |
-| CORS credentials | **Not enabled.** `credentials` is not set, so no `Access-Control-Allow-Credentials` header is emitted today | `server/src/index.ts:50` |
-| Reverse-proxy trust | `app.set('trust proxy', ...)` is never called. Same-origin detection trusts the raw `Host` header | `server/src/index.ts:43-52` (verified: no occurrence of `trust proxy` anywhere in `server/src`) |
+| CORS | Allow-list only: no `Origin` header, OR in the `CORS_ORIGINS` allow-list. The `Host` header is **never** consulted. Production with an empty allow-list rejects all cross-origin browser requests; same-origin requests are unaffected because browsers do not apply CORS to them | `server/src/middleware/cors.ts`, `server/src/config/security.ts:87-95`, `server/src/tests/corsMiddleware.test.ts` |
+| CORS credentials | **Not enabled.** `credentials` is not set, so no `Access-Control-Allow-Credentials` header is emitted today (asserted by `server/src/tests/corsMiddleware.test.ts`) | `server/src/middleware/cors.ts` |
+| Reverse-proxy trust | `app.set('trust proxy', ...)` is never called, so `req.ip`/`req.protocol` are wrong behind a proxy. CORS no longer depends on the `Host` header at all | `server/src/index.ts` (verified: no occurrence of `trust proxy` anywhere in `server/src`) |
 | Rate limiting | `30 / 15 min` mounted on the **whole** `/api/auth` router, so `/me`, `/change-password`, `/export-data` and `DELETE /account` share the same per-IP budget as login | `server/src/index.ts:61-67`, `:77` |
 | Cookies | No cookie is ever read, written, or signed. `cookie-parser` is not a dependency | `server/package.json:18-30` (verified: no `cookie` reference in `server/src`) |
 | SSE | Authenticated by `requireAuth` before the stream opens; client sends the JWT in a request header via fetch-based streaming | `server/src/routes/decisions.ts:662-663`; `client/src/hooks/useDecisionEventStream.ts:160-174` |
@@ -366,7 +366,7 @@ which is the same order of work the routes already do.
 | `VITE_API_URL` can switch the client to a cross-origin API, and the code supports it (relative or absolute base) | `client/src/api/client.ts:22-28` |
 | The server never serves the SPA. There is no static mount and no SPA fallback in the production app | `server/src/index.ts:38-104` (verified: no `express.static`, no `sendFile`) |
 | Production CORS is deny-by-default; cross-origin production requires an explicit `CORS_ORIGINS` allow-list | `server/src/config/security.ts:87-95`, `server/.env.example:27-36` |
-| Same-origin production "works" only because of the `Origin === http(s)://${Host}` comparison, which assumes the proxy preserves `Host` | `server/src/index.ts:45-49` |
+| Same-origin production works because browsers do not apply CORS to same-origin requests; the server never infers same-origin from `Host`, so a forged `Origin`/`Host` pair cannot widen the allow-list (Phase 21) | `server/src/middleware/cors.ts`, `server/src/tests/corsMiddleware.test.ts` |
 | No TLS/proxy assumption is *configured* anywhere; `trust proxy` is never configured | verified: no `trust proxy` / `X-Forwarded` / `req.secure` in `server/src` |
 | HTTPS is only an **assumption in prose**, never a configuration | `agent_context.md` "**HTTPS in Production**: Assumes production deployment uses HTTPS"; `DEPLOYMENT_CHECKLIST.md` → "Navigate to `https://your-domain.com`". No `Secure`-related setting or deploy artifact corroborates it |
 | **No deployment artifacts exist in the repository.** No Dockerfile, compose file, nginx/Caddy config, Procfile, `vercel.json`, `netlify.toml`, or infrastructure-as-code | verified: `git ls-files` matches only `.github/workflows/ci.yml` |
@@ -376,7 +376,7 @@ which is the same order of work the routes already do.
 | The absence of production environment configuration is a **real absence, not an ignore artifact**: `.gitignore` excludes `.env`, `.env.local`, `.env.*.local` and `server/.env`, but *not* `client/.env.production`, and no such file is tracked | `.gitignore:6-9`; `git ls-files` shows `client/.env.development` as the only client env file |
 | **A full-tree URL sweep finds no production origin.** The only deployment-related URLs in the entire repository are the placeholders `https://your-domain.com` and `https://your-domain.com/api`; every other `https?://` match is an LLM provider endpoint, a specification reference, or a documentation link | verified: URL sweep over all tracked files |
 | The dev env file sets an **absolute cross-origin** API base, so cross-origin is the exercised path in development — but that is a local choice, not production evidence | `client/.env.development:1` |
-| No `Access-Control-Allow-Credentials` is ever emitted: the CORS middleware passes only `{ origin }` and the client never sets `credentials`, so a cookie transport would not work today | `server/src/index.ts:50`, `client/src/api/client.ts:137-142` |
+| No `Access-Control-Allow-Credentials` is ever emitted: the CORS middleware passes only `{ origin }` and the client never sets `credentials`, so a cookie transport would not work today | `server/src/middleware/cors.ts`, `client/src/api/client.ts:137-142` |
 
 ### 4.2 Finding: production topology is undefined
 
@@ -497,7 +497,7 @@ them, and become determinable automatically once the rows above are answered.
 | 4 | Exact **frontend production origin** (scheme + host + port) | `UNKNOWN — OPERATOR DECISION REQUIRED` | Must be the literal `CORS_ORIGINS` entry in S2 (rows 5–6), and is what a cross-site CSRF `Origin` check compares against. |
 | 5 | Exact **API production origin** (scheme + host + port) | `UNKNOWN — OPERATOR DECISION REQUIRED` | The value of `VITE_API_URL` at client build time; decides whether the client issues relative `/api` paths or absolute cross-origin URLs. |
 | 6 | Exact value(s) for the server's **`CORS_ORIGINS`** allow-list | `UNKNOWN — OPERATOR DECISION REQUIRED` — *derived from rows 4–5* | Empty/unset in production means every cross-origin browser request is rejected today (`config/security.ts:87-95`). Must be exact origins, never `*`. |
-| 7 | Does a **reverse proxy** sit in front of Express? If so, how many hops, and does it preserve the `Host` header? | `UNKNOWN — OPERATOR DECISION REQUIRED` | `trust proxy` is never configured, so `req.ip`/`req.protocol` are wrong behind a proxy (affects the auth rate limiter and any future `Secure`/`req.secure` logic). Also gates whether the `Origin === http(s)://${Host}` same-origin convenience check (§6.4) is trustworthy. |
+| 7 | Does a **reverse proxy** sit in front of Express? If so, how many hops? | `UNKNOWN — OPERATOR DECISION REQUIRED` | `trust proxy` is never configured, so `req.ip`/`req.protocol` are wrong behind a proxy (affects the auth rate limiter and any future `Secure`/`req.secure` logic). CORS no longer depends on `Host`, so proxy `Host` handling is not a CORS concern (Phase 21 removed the `Origin === http(s)://${Host}` convenience). |
 | 8 | Where does **TLS terminate**, and does the edge set `X-Forwarded-Proto`? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Determines whether Express can learn the public scheme at all; with no `trust proxy` it cannot. |
 | 9 | Should **Express serve `client/dist`** (making S1 self-contained), or does a proxy/CDN serve it? | `UNKNOWN — OPERATOR DECISION REQUIRED` — *required for S1* | Server currently mounts **no static handler and no SPA fallback**, so S1 is not achievable today without this change. |
 | 10 | Does the browser reach the API **directly**, or only through a proxy? | `UNKNOWN — OPERATOR DECISION REQUIRED` | Decides whether the browser ever sees the API origin (rows 4–6) and therefore whether CORS is involved at all. |
@@ -679,15 +679,19 @@ cookies mean a subdomain cannot overwrite the session cookie.
 - `Vary: Origin` must be set, because the response differs per origin.
 - Preflight must allow the headers the client sends (`Content-Type`,
   `X-CSRF-Token`, `Last-Event-ID`, `Accept`) and the SSE request must also receive
-  the credential CORS headers. The current `cors({ origin: allowed ? true : false })`
-  shape has none of this and must be replaced with an origin-function form.
+  the credential CORS headers. The current allow-list origin-function form
+  (`server/src/middleware/cors.ts`) validates origins but emits no credentials;
+  a cookie transport must add `credentials: true` and the required request headers.
 - The existing production deny-by-default policy (`config/security.ts:87-95`) stays
   exactly as it is. Development keeps `http://localhost:5173` /
   `http://127.0.0.1:5173`. CORS must not be broadened to make a cookie migration
   "work" in an undeclared topology.
-- The `Origin === http(s)://${Host}` same-origin comparison stays as a convenience
-  only, and is documented as assuming the edge proxy preserves `Host`; once
-  `trust proxy` is configured, prefer `req.protocol`/`req.hostname`.
+- The server does **not** infer same-origin from `Host`. Phase 21 removed the
+  old `Origin === http(s)://${Host}` convenience because a caller could forge both
+  headers together and widen the allow-list. Same-origin requests need no CORS
+  handling at all: browsers do not apply CORS to them. If a future proxy build
+  wants a scheme-aware check, use `req.protocol`/`req.hostname` after configuring
+  `trust proxy`, never the raw `Host` header.
 
 ### 6.5 Non-goals
 

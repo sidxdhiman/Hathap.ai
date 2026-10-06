@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import bcrypt from 'bcryptjs';
 import User from '../models/User';
 import Agent from '../models/Agent';
@@ -93,7 +94,7 @@ router.post('/logout', requireAuth, async (req: AuthRequest, res) => {
     await bumpAuthVersion(req.userId!);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -104,7 +105,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
     if (!user) return res.status(404).json({ error: 'User not found.' });
     res.json({ id: user._id, email: user.email, name: user.name });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -144,7 +145,7 @@ router.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
     await user.save();
     res.json({ success: true, token: signToken(user) });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -231,7 +232,7 @@ router.post('/export-data', requireAuth, async (req: AuthRequest, res) => {
       comparisons,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -316,7 +317,7 @@ router.delete('/account', requireAuth, async (req: AuthRequest, res) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 

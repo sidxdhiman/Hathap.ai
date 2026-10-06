@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import Decision from '../models/Decision';
 import Execution from '../models/Execution';
 import Task from '../models/Task';
@@ -35,7 +36,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     const items = await Decision.find({ userId: req.userId }).sort({ createdAt: -1 });
     res.json(items);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -66,7 +67,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     res.status(201).json(decision);
   } catch (error: any) {
     console.error('[Decisions POST]', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -76,7 +77,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (!decision) return res.status(404).json({ error: 'Decision not found.' });
     res.json(decision);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -91,7 +92,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (!updated) return res.status(404).json({ error: 'Decision not found.' });
     res.json(updated);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -115,7 +116,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     await DecisionLesson.deleteMany({ decisionId: req.params.id });
     res.json({ ok: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -216,7 +217,7 @@ router.get('/:id/plans', requireAuth, async (req: AuthRequest, res) => {
     const plans = await DecisionPlan.find({ decisionId: decision._id }).sort({ createdAt: -1 });
     res.json(plans);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -232,7 +233,7 @@ router.get('/:id/plans/:planId', requireAuth, async (req: AuthRequest, res) => {
     if (!plan) return res.status(404).json({ error: 'Plan not found.' });
     res.json(plan);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -297,7 +298,7 @@ router.get('/:id/plans/:planId/routing-preview', requireAuth, async (req: AuthRe
       tasks: preview,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -335,7 +336,7 @@ router.get('/:id/executions', requireAuth, async (req: AuthRequest, res) => {
     const executions = await Execution.find({ decisionId: req.params.id }).sort({ createdAt: -1 });
     res.json(executions);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -350,7 +351,7 @@ router.get('/:id/executions/:executionId', requireAuth, async (req: AuthRequest,
     if (!execution) return res.status(404).json({ error: 'Execution not found.' });
     res.json(execution);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -363,7 +364,7 @@ router.get('/:id/tasks', requireAuth, async (req: AuthRequest, res) => {
     const tasks = await Task.find({ executionId: { $in: ids } }).sort({ priority: 1, createdAt: 1 });
     res.json(tasks);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -377,7 +378,7 @@ router.get('/:id/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found.' });
     res.json(task);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -388,7 +389,7 @@ router.get('/:id/claims', requireAuth, async (req: AuthRequest, res) => {
     const claims = await Claim.find({ decisionId: req.params.id });
     res.json(claims);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -399,7 +400,7 @@ router.get('/:id/evidence', requireAuth, async (req: AuthRequest, res) => {
     const evidence = await Evidence.find({ decisionId: req.params.id });
     res.json(evidence);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -445,7 +446,7 @@ router.get('/:id/research', requireAuth, async (req: AuthRequest, res) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -460,7 +461,7 @@ router.get('/:id/evidence/:evidenceId', requireAuth, async (req: AuthRequest, re
     if (!evidence) return res.status(404).json({ error: 'Evidence not found.' });
     res.json(evidence);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -501,7 +502,7 @@ router.get('/:id/claims/:claimId', requireAuth, async (req: AuthRequest, res) =>
       verification,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -512,7 +513,7 @@ router.get('/:id/snapshot', requireAuth, async (req: AuthRequest, res) => {
     const snapshot = await decisionOrchestrator.getSnapshot(req.params.id, req.userId!);
     res.json(snapshot);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -527,7 +528,7 @@ router.get('/:id/verifications', requireAuth, async (req: AuthRequest, res) => {
       .sort({ createdAt: 1 });
     res.json(verifications);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -542,7 +543,7 @@ router.get('/:id/verifications/:claimId', requireAuth, async (req: AuthRequest, 
     if (!verification) return res.status(404).json({ error: 'Verification not found.' });
     res.json(verification);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -555,7 +556,7 @@ router.get('/:id/red-team', requireAuth, async (req: AuthRequest, res) => {
       .sort({ createdAt: 1 });
     res.json(findings);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -568,7 +569,7 @@ router.get('/:id/reconciliation', requireAuth, async (req: AuthRequest, res) => 
     if (!reconciliation) return res.status(404).json({ error: 'Reconciliation not found.' });
     res.json(reconciliation);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -582,7 +583,7 @@ router.get('/:id/evidence-graph', requireAuth, async (req: AuthRequest, res) => 
     );
     res.json(relationships);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -612,7 +613,7 @@ router.get('/:id/claims/:claimId/evidence', requireAuth, async (req: AuthRequest
       related,
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -626,7 +627,7 @@ router.get('/:id/events', requireAuth, async (req: AuthRequest, res) => {
     const events = await executionEventBus.listByDecision(decision._id.toString());
     res.json(events);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -726,7 +727,7 @@ router.get('/:id/events/stream', requireAuth, async (req: AuthRequest, res) => {
     res.on('error', cleanup);
   } catch (error: any) {
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: serverErrorMessage(error) });
     } else {
       res.end();
     }
@@ -781,7 +782,7 @@ router.get('/:id/memory', requireAuth, async (req: AuthRequest, res) => {
     ]);
     res.json({ memory, outcomes, feedback, lessons, quality });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -806,7 +807,7 @@ router.get('/:id/related', requireAuth, async (req: AuthRequest, res) => {
     });
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -821,7 +822,7 @@ router.get('/:id/outcomes', requireAuth, async (req: AuthRequest, res) => {
     ]);
     res.json({ outcomes, expectedVsActual });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -838,7 +839,7 @@ router.post('/:id/outcomes', requireAuth, async (req: AuthRequest, res) => {
     if (error?.name === 'OutcomeValidationError') {
       return res.status(400).json({ error: error.message });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -860,7 +861,7 @@ router.patch('/:id/outcomes/:outcomeId', requireAuth, async (req: AuthRequest, r
     if (error?.name === 'OutcomeValidationError') {
       return res.status(400).json({ error: error.message });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -872,7 +873,7 @@ router.get('/:id/feedback', requireAuth, async (req: AuthRequest, res) => {
     const feedback = await feedbackService.get(req.userId!, decision._id.toString());
     res.json(feedback);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -888,7 +889,7 @@ router.post('/:id/feedback', requireAuth, async (req: AuthRequest, res) => {
     if (error?.name === 'FeedbackValidationError') {
       return res.status(400).json({ error: error.message });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -900,7 +901,7 @@ router.get('/:id/lessons', requireAuth, async (req: AuthRequest, res) => {
     const lessons = await lessonsService.list(req.userId!, decision._id.toString());
     res.json(lessons);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -917,7 +918,7 @@ router.post('/:id/lessons', requireAuth, async (req: AuthRequest, res) => {
     if (error?.name === 'LessonValidationError') {
       return res.status(400).json({ error: error.message });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -947,7 +948,7 @@ router.patch('/:id/lessons/:lessonId', requireAuth, async (req: AuthRequest, res
     if (!updated) return res.status(404).json({ error: 'Lesson not found.' });
     res.json(updated);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 

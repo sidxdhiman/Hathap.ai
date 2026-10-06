@@ -1,4 +1,5 @@
 import express from 'express';
+import { serverErrorMessage } from '../utils/httpError';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { benchmarkService, cleanBenchmarkInput, cleanCaseInput } from '../evaluation/benchmarkService';
 import { rubricService, cleanRubricInput } from '../evaluation/rubricService';
@@ -53,7 +54,7 @@ router.get('/benchmarks', requireAuth, async (req: AuthRequest, res) => {
     const items = await benchmarkService.listBenchmarks(req.userId);
     res.json(items);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -76,7 +77,7 @@ router.get('/benchmarks/:benchmarkId', requireAuth, async (req: AuthRequest, res
     const caseCount = await benchmarkService.activeCaseCount(req.params.benchmarkId);
     res.json({ ...benchmark.toObject(), caseCount });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -99,7 +100,7 @@ router.delete('/benchmarks/:benchmarkId', requireAuth, async (req: AuthRequest, 
     if (!deleted) return res.status(404).json({ error: 'Benchmark not found.' });
     res.json({ deleted: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -111,7 +112,7 @@ router.get('/benchmarks/:benchmarkId/cases', requireAuth, async (req: AuthReques
     const cases = await benchmarkService.listCases(req.userId, req.params.benchmarkId);
     res.json(cases);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -145,7 +146,7 @@ router.delete('/cases/:caseId', requireAuth, async (req: AuthRequest, res) => {
     if (!deleted) return res.status(404).json({ error: 'Case not found.' });
     res.json({ deleted: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -156,7 +157,7 @@ router.get('/rubrics', requireAuth, async (req: AuthRequest, res) => {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized.' });
     res.json(await rubricService.listRubrics(req.userId));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -177,7 +178,7 @@ router.get('/rubrics/:rubricId', requireAuth, async (req: AuthRequest, res) => {
     if (!rubric) return res.status(404).json({ error: 'Rubric not found.' });
     res.json(rubric);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -200,7 +201,7 @@ router.delete('/rubrics/:rubricId', requireAuth, async (req: AuthRequest, res) =
     if (!deleted) return res.status(404).json({ error: 'Rubric not found.' });
     res.json({ deleted: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -211,7 +212,7 @@ router.get('/baselines', requireAuth, async (req: AuthRequest, res) => {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized.' });
     res.json(await baselineService.listBaselines(req.userId));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -232,7 +233,7 @@ router.get('/baselines/:baselineId', requireAuth, async (req: AuthRequest, res) 
     if (!baseline) return res.status(404).json({ error: 'Baseline not found.' });
     res.json(baseline);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -243,7 +244,7 @@ router.delete('/baselines/:baselineId', requireAuth, async (req: AuthRequest, re
     if (!deleted) return res.status(404).json({ error: 'Baseline not found.' });
     res.json({ deleted: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -256,7 +257,7 @@ router.get('/runs/:runId/aggregate', requireAuth, async (req: AuthRequest, res) 
     if (!run) return res.status(404).json({ error: 'Evaluation run not found.' });
     res.json(await baselineService.aggregateRunScore(req.params.runId));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -296,7 +297,7 @@ router.get('/comparisons', requireAuth, async (req: AuthRequest, res) => {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized.' });
     res.json(await baselineService.listComparisons(req.userId));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -307,7 +308,7 @@ router.get('/comparisons/:comparisonId', requireAuth, async (req: AuthRequest, r
     if (!comparison) return res.status(404).json({ error: 'Comparison not found.' });
     res.json(comparison);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -359,7 +360,7 @@ router.get('/runs', requireAuth, async (req: AuthRequest, res) => {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized.' });
     res.json(await evaluationService.listRuns(req.userId));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -381,7 +382,7 @@ router.get('/runs/:runId', requireAuth, async (req: AuthRequest, res) => {
     if (!run) return res.status(404).json({ error: 'Evaluation run not found.' });
     res.json(run);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
@@ -434,7 +435,7 @@ router.delete('/runs/:runId', requireAuth, async (req: AuthRequest, res) => {
     if (!deleted) return res.status(404).json({ error: 'Evaluation run not found.' });
     res.json({ deleted: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: serverErrorMessage(error) });
   }
 });
 
