@@ -20,19 +20,46 @@ import { EvaluationPage } from './pages/EvaluationPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ToastContainer } from './components/ui/Toast';
+import { Loading } from './components/ui/Alert';
 import './index.css';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+/**
+ * Placeholder shown while a stored credential is being verified.
+ *
+ * Rendering this instead of redirecting is what keeps a page load from
+ * bouncing: a guard that redirects while the session is still resolving sends
+ * the user to `/login` for a split second and then back again.
+ */
+const SessionPending: React.FC = () => <Loading message="Checking your session..." />;
 
+/**
+ * Gates a route that requires a session.
+ *
+ * Three outcomes, and the pending one must not navigate:
+ *   pending  -> wait; the credential may yet prove valid
+ *   anonymous -> no usable credential, go to the login page
+ *   otherwise -> render the route
+ */
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, status } = useAuth();
+
+  if (status === 'loading') return <SessionPending />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 };
 
+/**
+ * Gates a route that only makes sense while signed out.
+ *
+ * Symmetrically, it must also wait rather than render the login form for a
+ * credential that is still being verified — otherwise a valid session would be
+ * shown the login page and then redirected, i.e. the same flicker in reverse.
+ */
 const LoggedInRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, status } = useAuth();
 
+  if (status === 'loading') return <SessionPending />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return <>{children}</>;

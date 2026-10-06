@@ -47,6 +47,10 @@ export const MemoryPanel: React.FC<MemoryPanelProps> = ({
 }) => {
   const [refreshing, setRefreshing] = useState(false);
 
+  // The retrieval result is a network payload: a truncated or malformed body
+  // must degrade to the empty state rather than crash the whole detail page.
+  const relatedMemories = Array.isArray(related?.memories) ? related.memories : [];
+
   const handleRefresh = async () => {
     if (!onRefreshRelated) return;
     setRefreshing(true);
@@ -200,13 +204,13 @@ export const MemoryPanel: React.FC<MemoryPanelProps> = ({
 
           {relatedLoading && !related ? (
             <p className="text-xs text-theme-text-secondary py-3 text-center">Loading related decisions…</p>
-          ) : !related || related.memories.length === 0 ? (
+          ) : relatedMemories.length === 0 ? (
             <p className="text-xs text-theme-text-secondary py-3 text-center">
               No related decisions found yet. Past completed decisions with similar context appear here.
             </p>
           ) : (
             <div className="space-y-2">
-              {related.memories.map((m) => (
+              {relatedMemories.map((m) => (
                 <div key={m.memoryId} className="p-3 rounded bg-theme-bg-tertiary border border-theme-border">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-theme-text-primary">{m.title}</span>

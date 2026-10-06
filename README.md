@@ -284,8 +284,12 @@ the stored token or builds an `Authorization` header itself:
   user out. The layer never retries and never navigates, so a dead session cannot
   produce a redirect loop.
 
-The token is still **not** validated on page load: a stale token renders the app
-and is discovered dead by the first API call, which then signs the user out.
+The token is validated on page load (Phase 20): a stored credential is checked
+once with `GET /api/auth/me` before the route guards will render protected UI. A
+stale token is rejected then and there — the guards wait in a pending state
+rather than bouncing a deep link through `/login` — while a network failure or
+server error is not treated as proof of a dead credential and leaves the session
+intact.
 
 Moving to `HttpOnly` session cookies is designed but **not implemented**: cookie
 `SameSite`/`Secure`/`Domain` depend on the production topology (same-origin vs

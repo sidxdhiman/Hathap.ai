@@ -21,7 +21,7 @@ confused:
 | A2A honouring credential invalidation | **Implemented and tested** (Phase 17, §2.4) |
 | Single client request/credential layer; one 401 → sign-out path | **Implemented and tested** (Phase 18, §2.5) |
 | Token still readable by page scripts (`localStorage`) | **Unchanged — still an open limitation** (§2.4, §2.5.4) |
-| Token validated on load (`/api/auth/me` bootstrap) | **Not implemented** — a stale token is still found dead by the first API call (§2.5.4) |
+| Token validated on load (`/api/auth/me` bootstrap) | **Implemented and tested** (Phase 20, §2.5.5) — a stale token is rejected on load, not by the first API call |
 | `HttpOnly` cookie transport | **Not implemented** — blocked on §4.4 |
 | CSRF token / Origin enforcement | **Not implemented** — contingent on cookies (§6.3) |
 
@@ -296,15 +296,44 @@ network call.
 ### 2.5.4 What Phase 18 does not do
 
 - It does **not** move the credential out of `localStorage`. §2.3.1 stays open.
-- It does **not** validate the token on load. `ProtectedRoute` still gates on
-  credential *presence*; a stale token renders the app shell and is discovered
-  dead by the first API call, which then signs the user out. A `/api/auth/me`
-  bootstrap would change that, and is not part of this phase.
+- It does **not** validate the token on load — `ProtectedRoute` gates on
+  credential *presence*. **Superseded by Phase 20 (§2.5.5):** the `/api/auth/me`
+  bootstrap now runs, so a stale token is rejected on load rather than by the
+  first API call. What Phase 18 established (one request path, one 401 handler)
+  is what Phase 20 reuses; there is no second authentication path.
 - It does **not** shorten the 7-day TTL.
 - It does **not** add retries, caching, request cancellation, or a query-string
   credential. SSE keeps its `Authorization` header rather than moving the token
   into a URL, where it would land in logs.
 - It does **not** implement cookies, CSRF, CORS credentials, or server sessions.
+
+### 2.5.5 Phase 20: startup session validation
+
+**Status: implemented and tested.** The `loading → authenticated | anonymous`
+machine described in §5.4 now exists over the bearer transport:
+
+- `AuthContext` starts in `loading` when a credential is stored, issues exactly
+  one `GET /api/auth/me` through `api/client.ts`, and only then reports
+  `authenticated`. `ProtectedRoute` / `LoggedInRoute` render a neutral pending
+  state while `status === 'loading'` instead of redirecting, so a deep link is
+  no longer bounced through `/login` and back.
+- The request travels the Phase 18 path — `api/client.ts` attaches the
+  `Authorization` header, and a `401` reaches the same centralized invalidation
+  handler as any other credentialed `401`. Startup validation therefore inherits
+  signature, expiry, account-existence and `authVersion` checks (§2.4) without a
+  second implementation.
+- Four outcomes, deliberately distinct: `valid`, `invalid` (the only one that
+  signs the device out), `unavailable` (network failure or `5xx` — the credential
+  is **kept**, because an outage is not proof of a dead credential), and `idle`.
+- A credential issued by login/signup/password-change skips the bootstrap: the
+  server just authenticated it, so a round trip would add latency and no
+  information.
+- A validation response that lands after the credential was already retired (a
+  concurrent `401`) is discarded, so no orphaned `hathap_user` is written back
+  into storage.
+
+**Not claimed:** the credential is still in `localStorage`, the TTL is unchanged,
+and cookies/CSRF are still unimplemented.
 
 ---
 
@@ -562,6 +591,11 @@ loading  → GET /api/auth/me (once per page load)
 authenticated (user) | anonymous
 ```
 
+**Shipped in Phase 20 (§2.5.5)** for the non-cookie half: the three states, the
+`/me` bootstrap, and guards that branch on `status` and render a pending state
+while `loading`. The cookie-specific rows below (`credentials: 'include'`, the
+CSRF header) remain pending on §4.4.
+
 - `ProtectedRoute`/`LoggedInRoute` branch on `status`, not on a token string.
   While `loading`, render a neutral loading state instead of redirecting.
 - A single `client/src/api/client.ts` owns the base URL, `credentials: 'include'`,
@@ -575,8 +609,10 @@ authenticated (user) | anonymous
 ### 5.5 Rate limiting
 
 The current limiter is mounted on the entire `/api/auth` router
-(`server/src/index.ts:77`), so a `/me` bootstrap on every page load would share a
-30-request/15-minute budget with login. Split it:
+(`server/src/index.ts:77`). Since Phase 20 the `/me` bootstrap **does** run on
+every page load, so it now shares a 30-request/15-minute budget with login.
+That is still one request per full page load (not per navigation), so the shared
+budget is tolerable today; split it when the traffic proves otherwise:
 
 - `loginLimiter` / `signupLimiter` — credential endpoints, 30 / 15 min per IP.
 - `sessionLimiter` — `/me`, `/logout`, refresh, 120 / 15 min per IP+user.
@@ -804,6 +840,12 @@ Still open, and explicitly **not** claimed by Phase 18: the cookie transport and
 CSRF (as above), plus a `/api/auth/me` bootstrap that validates the token on
 load (§2.5.4). The `status` state machine and central API client are no longer
 in this list — they shipped in Phase 18.
+
+**Update (Phase 20):** the `/api/auth/me` bootstrap is no longer open either —
+it shipped in Phase 20 (§2.5.5) and is covered by `AuthContext.test.tsx` and
+`AppRoutes.integration.test.tsx`. The `loading` state now exists in the shipped
+code, not only in the §5.4 target description. Cookies and CSRF remain open and
+unchanged.
 
 ## 10. Evidence appendix
 

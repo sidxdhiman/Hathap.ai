@@ -1647,8 +1647,10 @@ Not currently implemented. When adding tests:
   that account. Per-device revocation would require a server-side session store
 - Cookie migration, CSRF token and shortened TTL are **not implemented**; they are
   blocked on the deployment decision record (architecture doc §4.4)
-- Token is **not validated on page load** (no `/api/auth/me` bootstrap); a stale
-  credential renders the app shell until its first API call rejects it
+- Token **is** validated on page load since Phase 20 (one `GET /api/auth/me`
+  through the central client); a rejected credential signs the device out on
+  load, and a transient failure keeps the session rather than logging the user
+  out
 
 **Client transport (updated in Phase 18):**
 - `client/src/api/authTransport.ts` is the only module that reads or writes

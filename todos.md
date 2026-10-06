@@ -1,6 +1,81 @@
-# Hathap.ai — Phase 19 todos (deployment/auth decision)
+# Hathap.ai — Phase 20 todos (startup session validation)
 
-Last updated: Phase 19.
+Last updated: Phase 20.
+
+## Phase 20 scope
+
+- [x] Validate the stored credential on page load with a single
+      `GET /api/auth/me` issued through the Phase 18 request layer, so no second
+      authentication path is created on either side of the call.
+- [x] Give the client session an explicit `loading` state and make
+      `ProtectedRoute` / `LoggedInRoute` render a pending placeholder instead of
+      redirecting while validation is in flight (no deep-link bounce through
+      `/login`).
+- [x] Keep four validation outcomes distinct: `valid`, `invalid` (the only one
+      that signs the device out), `unavailable` (network failure or `5xx` keeps
+      the credential), `idle`.
+- [x] Skip the bootstrap for credentials the server just issued (login, signup,
+      password change).
+- [x] Ensure a validation response that lands after the credential was already
+      retired cannot write an orphaned profile back into storage.
+- [x] Harden `MemoryPanel` against a `related` payload without `memories`.
+- [x] Update documentation that still claimed "no `/api/auth/me` bootstrap".
+- [x] Full validation, diff review, commit, push.
+
+## Phase 20 outcome
+
+**Startup session validation shipped.** The `loading → authenticated |
+anonymous` state machine from `docs/AUTHENTICATION_ARCHITECTURE.md` §5.4 now
+exists over the bearer transport. The bootstrap request goes through
+`api/client.ts`, so it inherits the Phase 17 server checks (signature, expiry,
+account existence, `authVersion`) and the Phase 18 centralized `401` handling —
+there is still exactly one request layer and one localStorage owner on the
+client, and one verification path on the server.
+
+**The failure semantics are the substance of the change.** A rejected credential
+(`401`) is the only outcome that ends the session; a network failure or `5xx`
+leaves the credential in place, because an outage is not evidence that a token
+is dead. A credential minted by login/signup/password-change skips validation
+entirely, and a validation response arriving after a concurrent `401` is
+discarded so no orphaned `hathap_user` is persisted.
+
+**No server file changed.** Cookies, `credentials: 'include'`, CSRF and the
+split rate limiter remain unimplemented and blocked on §4.4 exactly as Phase 19
+left them.
+
+## Phase 20 findings (evidence recorded)
+
+- **The working tree at Phase 20 start contained an unfinished, failing
+  implementation.** HEAD was `9ede498 chore: record phase 20 remaining todos
+  (work stopped)`, so Phase 20's application code was uncommitted while its
+  `.phase20_remaining.txt` listed the outstanding work. Three client tests
+  failed and one threw an unhandled exception.
+- **Two of the three failures were test-harness defects, not product defects.**
+  The `settle()` helper resets fetch call history so "exactly one request"
+  assertions stay literal, and two validation tests then asserted on history it
+  had just cleared. `settle()` now returns the validation calls it captured
+  before the reset, so both the count and the request shape are asserted
+  directly.
+- **The third failure was a real product defect.** The integration mock for the
+  pending-state test omitted `/related`, so `getRelatedDecisions` received `{}`
+  and passed an object with no `memories` array into `MemoryPanel`, which
+  dereferenced `related.memories.length` and threw during render. The test now
+  reuses the shared decision-detail mock, and `MemoryPanel` degrades to its
+  empty state instead of crashing the detail page on an unexpected payload.
+
+## Where we are
+
+Phases 1-20 are committed and pushed to `main`. Quality gates: server
+`npx tsc --noEmit` clean, **341/341 tests**, build green; client lint clean
+(`--max-warnings 0`), **114/114 tests**, `typecheck:config` clean, build green.
+
+The client count moved from the Phase 19 baseline of 98 to 114: Phase 20 added
+16 (13 in `AuthContext.test.tsx`, 3 in `AppRoutes.integration.test.tsx`).
+
+The honest headline: the credential is now *verified* on load rather than merely
+*present*, which removes the stale-shell flash and the wasted first API call.
+It is still in `localStorage`, so nothing about token theft changed, and the
+cookie migration is still blocked on §4.4.
 
 ## Phase 19 scope
 
@@ -138,10 +213,10 @@ remains outside `client/src/api/client.ts`.
   page refresh on a protected route no longer bounces through `/login`.
 
 Phase 18 changed **no server file** and no auth semantics. Stated limits: the token
-is still in `localStorage` and still readable by page scripts; it is still **not**
-validated on page load, so a stale token renders the app shell until its first API
-call; TTL is still 7 days; and the cookie migration, CSRF and split rate limiter
-remain unimplemented and blocked on the Phase 16 deployment decision record.
+is still in `localStorage` and still readable by page scripts; it was still **not**
+validated on page load (closed by Phase 20, below); TTL is still 7 days; and the
+cookie migration, CSRF and split rate limiter remain unimplemented and blocked on
+the Phase 16 deployment decision record.
 
 ## Phase 18 findings (evidence recorded)
 
@@ -318,7 +393,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-19 recap)
+## Done (Phases 11-20 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -344,7 +419,8 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   (sole storage owner + invalidation signal), `api/client.ts` (sole request layer,
   one 401 → sign-out path, no retry, no navigation), all 73 call sites migrated,
   and synchronous session restoration so a page refresh no longer bounces through
-  `/login`. The token is still in `localStorage` and still not validated on load.
+  `/login`. The token is still in `localStorage` and (as of Phase 18) was not yet
+  validated on load — Phase 20 closed that gap.
 - Phase 19: Deployment/auth decision formalized. An exhaustive inventory of every
   tracked file confirmed the production topology is **absent from the repository**,
   so the decision record in `docs/AUTHENTICATION_ARCHITECTURE.md` §4.4 was
@@ -352,6 +428,13 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   **No cookie/CSRF code was written and none should be until those rows are
   filled.** Two undocumented-but-live server env vars were documented
   (`NODE_ENV`, `APP_URL`); no application behavior changed.
+- Phase 20: Startup session validation shipped. `AuthContext` gained an explicit
+  `loading` state and issues one `GET /api/auth/me` through the Phase 18 request
+  layer; route guards render a pending placeholder instead of redirecting, so a
+  deep link no longer bounces through `/login`. A `401` is the only verdict that
+  signs the device out; network failures and `5xx` keep the credential. No server
+  file changed. Cookie migration, CSRF and the split rate limiter remain
+  unimplemented and blocked on §4.4.
 
 ## Remaining (ship blockers / known debt)
 
@@ -376,15 +459,18 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   ends every session for the account, including other devices. Per-device
   revocation would need a server-side session store, which this phase deliberately
   did not introduce.
-- **The token is not validated on page load.** There is no `/api/auth/me`
-  bootstrap, so a stale credential renders the app shell and is discovered dead by
-  the first API call. Phase 18 made that failure *visible and signed out* rather
-  than silent, but the call itself is still missing.
+- **The page-load bootstrap deliberately tolerates an unknown verdict.** Since
+  Phase 20 a stale credential is caught on load, but a validation request that
+  fails with a network error or `5xx` keeps the session and lets the request
+  layer catch a real `401` later. That is the intended trade-off (an outage must
+  not sign users out), not an open defect.
 - Client `npm audit` residual findings (12) are documented in
   `docs/SECURITY_AUDIT_REPORT.md`; revisit together with a Vite →
   `@typescript-eslint` major upgrade in a dedicated phase.
-- Login rate limiting covers the whole `/api/auth` router (30 / 15 min), which
-  will need splitting if `/me` is ever added to run on every page load.
+- Auth rate limiting still covers the whole `/api/auth` router (30 / 15 min).
+  Since Phase 20 that budget also covers the `/me` bootstrap, which runs once per
+  full page load — tolerable now, but the router needs splitting if `/me` traffic
+  or credential-endpoint traffic grows.
 - Non-auth authentication-adjacent findings recorded during the Phase 16
   investigation (SSRF via user-supplied model `baseUrl`, mass assignment on
   `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing parent-ownership

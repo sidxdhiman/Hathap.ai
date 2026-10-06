@@ -25,15 +25,21 @@ function jsonResponse(body: unknown, ok = true, status = 200): HttpResponse {
 const mockResearchStatus = () =>
   jsonResponse({ provider: 'mock', real: false, mock: true, configured: false, mode: 'mock' });
 
-// Mirrors the guard wiring in App.tsx.
+// Mirrors the guard wiring in App.tsx, including the pending branch: a guard
+// that redirects while session validation is in flight would bounce the user off
+// a deep link and back, which is the exact regression this file guards.
+const SessionPending: React.FC = () => <div>Checking session</div>;
+
 const ProtectedRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, status } = useAuth();
+  if (status === 'loading') return <SessionPending />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
 const LoggedInRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, status } = useAuth();
+  if (status === 'loading') return <SessionPending />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
@@ -59,14 +65,30 @@ function renderApp(initialPath: string) {
   );
 }
 
+const storedProfile = { id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' };
+
+/** Seeds storage as a returning visitor whose credential the server accepts. */
+function seedStoredSession(token = 'jwt-123') {
+  localStorage.setItem('hathap_token', token);
+  localStorage.setItem('hathap_user', JSON.stringify(storedProfile));
+}
+
+/** Response for the startup session-validation request. */
+function sessionCheckResponse(overrides: Partial<HttpResponse> = {}): HttpResponse {
+  return { ...jsonResponse(storedProfile), ...overrides };
+}
+
 function mockCollections(
   models: unknown[],
   agents: unknown[],
   courtrooms: unknown[],
-  options: { researchStatus?: HttpResponse } = {}
+  options: { researchStatus?: HttpResponse; sessionCheck?: HttpResponse } = {}
 ) {
   fetchMock.mockImplementation((input: any, init?: any) => {
     const url = String(input);
+    if (url.endsWith('/api/auth/me')) {
+      return Promise.resolve(options.sessionCheck ?? sessionCheckResponse());
+    }
     if (init?.method === 'POST' && url.endsWith('/api/auth/login')) {
       return Promise.resolve(
         jsonResponse({ token: 'jwt-login', user: { id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' } })
@@ -113,9 +135,16 @@ const completedSnapshot = {
   executions: [],
 };
 
-function mockDecisionDetail(id: string, decision: unknown, snapshot: HttpResponse, extra: Record<string, unknown> = {}) {
+function mockDecisionDetail(
+  id: string,
+  decision: unknown,
+  snapshot: HttpResponse,
+  extra: Record<string, unknown> = {},
+  sessionCheck: HttpResponse = sessionCheckResponse()
+) {
   fetchMock.mockImplementation((input: any) => {
     const url = String(input);
+    if (url.endsWith('/api/auth/me')) return Promise.resolve(sessionCheck);
     if (url.endsWith(`/api/decisions/${id}/snapshot`)) return Promise.resolve(snapshot);
     if (url.endsWith(`/api/decisions/${id}/research`)) return Promise.resolve(jsonResponse([]));
     if (url.endsWith(`/api/decisions/${id}/plans`)) return Promise.resolve(jsonResponse([]));
@@ -148,8 +177,7 @@ describe('App page-flow integration', () => {
   });
 
   it('deep-links into a decision detail route without bouncing through the login page', async () => {
-    localStorage.setItem('hathap_token', 'jwt-123');
-    localStorage.setItem('hathap_user', JSON.stringify({ id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' }));
+    seedStoredSession();
     mockDecisionDetail('dec-3', { ...completedDecision, _id: 'dec-3' }, jsonResponse(completedSnapshot));
     renderApp('/decisions/dec-3');
 
@@ -160,11 +188,83 @@ describe('App page-flow integration', () => {
     expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
   });
 
+  it('waits on the pending state instead of redirecting while the session is validated', async () => {
+    seedStoredSession();
+    // A validation response the test releases by hand, so the pending branch is
+    // observable rather than a race against a resolved promise. Every other
+    // endpoint is served by the shared decision-detail mock, so the page behind
+    // the guard is the same one the other deep-link test asserts on.
+    let releaseCheck: () => void = () => {};
+    const checkGate = new Promise<void>((resolve) => {
+      releaseCheck = resolve;
+    });
+    const gatedSessionCheck: HttpResponse = {
+      ok: true,
+      status: 200,
+      json: () => checkGate.then(() => storedProfile),
+    };
+
+    mockDecisionDetail(
+      'dec-9',
+      { ...completedDecision, _id: 'dec-9' },
+      jsonResponse(completedSnapshot),
+      {},
+      gatedSessionCheck
+    );
+
+    renderApp('/decisions/dec-9');
+
+    // The credential exists but has not been verified yet. The guard must hold
+    // its ground: redirecting here is precisely what produces the login bounce.
+    expect(screen.getByText('Checking session')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
+
+    releaseCheck();
+
+    // Once verified, the deep link resolves normally with no intermediate login
+    // visit and no reload.
+    expect(await screen.findByRole('heading', { name: 'Hire a Senior Engineer' })).toBeInTheDocument();
+    expect(screen.queryByText('Checking session')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
+  });
+
+  it('lands on the login page when validation rejects the stored credential', async () => {
+    seedStoredSession('expired-token');
+    mockCollections([], [], [], { sessionCheck: jsonResponse({ error: 'Unauthorized' }, false, 401) });
+    renderApp('/dashboard');
+
+    // An expired credential must never present the authenticated shell, and the
+    // sign-out must clear the cached profile with the credential.
+    expect(await screen.findByPlaceholderText('you@example.com')).toBeInTheDocument();
+    expect(screen.queryByText('Overview')).not.toBeInTheDocument();
+    await waitFor(() => expect(localStorage.getItem('hathap_token')).toBeNull());
+    expect(localStorage.getItem('hathap_user')).toBeNull();
+
+    // No retry loop: the rejected credential is asked about exactly once.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/auth/me')).length).toBe(1)
+    );
+    expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
+  });
+
+  it('keeps a protected route usable when validation cannot reach the server', async () => {
+    seedStoredSession();
+    mockCollections([{ ...baseModel, _id: 'm1' }], [], [], {
+      sessionCheck: jsonResponse({ error: 'Authentication service unavailable.' }, false, 500),
+    });
+    renderApp('/dashboard');
+
+    // An outage is not a verdict. Signing out on one would discard a valid
+    // session every time the server hiccups.
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(localStorage.getItem('hathap_token')).toBe('jwt-123');
+  });
+
   it('signs the device out and returns to login when an authenticated request is rejected', async () => {
-    localStorage.setItem('hathap_token', 'stale-token');
-    localStorage.setItem('hathap_user', JSON.stringify({ id: 'u1', email: 'analyst@hathap.ai', name: 'Analyst' }));
+    seedStoredSession('stale-token');
     fetchMock.mockImplementation((input: any) => {
       const url = String(input);
+      if (url.endsWith('/api/auth/me')) return Promise.resolve(sessionCheckResponse());
       if (url.endsWith('/api/models')) {
         return Promise.resolve(jsonResponse({ error: 'Unauthorized.' }, false, 401));
       }

@@ -195,8 +195,10 @@ Expected: All features work identically
 - [ ] Expired or revoked credentials end the session promptly in the UI — **done**
       (Phase 18). Every client request goes through one layer; a `401` on a
       credentialed request clears the session once and the route guard redirects.
-      Note this is reactive: the token is still not validated on page load, so an
-      already-dead token renders the app shell until its first API call
+      Since Phase 20 this is also proactive: a stored token is validated on page
+      load with `GET /api/auth/me`, so an already-dead token is rejected before
+      the protected shell renders. A validation request that cannot reach a
+      verdict (network failure, `5xx`) deliberately keeps the session.
 - [ ] HTTPS ready (for production)
 
 ---
