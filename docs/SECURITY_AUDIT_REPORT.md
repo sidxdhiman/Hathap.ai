@@ -102,3 +102,46 @@ re-run at that point:
   `react-router-dom@7` upgrade already in the documented residual set above; the app is not
   SSR, so the hydration advisory does not apply. No finding was suppressed and no
   dependency was changed.
+## 7. Phase 23 addendum — model provider URL / SSRF boundary
+
+Phase 23 closed the SSRF item that 6.5 previously listed as a non-goal: `Model.baseUrl`
+is attacker-controlled input that makes the *server* open a socket, and authorisation
+(Phase 22) does not make a destination safe to connect to.
+
+**Control.** `server/src/security/modelUrlGuard.ts` is the single outbound boundary.
+
+- *Write path* (`POST`/`PUT /api/models`, no DNS so saving stays fast): parses with the
+  WHATWG URL parser so alternate spellings (`0x7f.0.0.1`, `2130706433`, `0177.0.0.1`,
+  `[::ffff:127.0.0.1]`) normalise to what they really are; allows `http`/`https` only;
+  refuses embedded credentials, query strings and fragments, values over 2048 characters,
+  IP literals outside public address space, and local/single-label hostnames.
+- *Request path* (`safeModelFetch`, the SDK's `fetch`): re-runs every rule, resolves the
+  hostname exactly once, requires **every** answer to be public (a mixed answer set is
+  refused rather than filtered), and pins the socket to the validated address through a
+  custom `lookup`, so there is no validate-then-rebind (TOCTOU) window. Redirects are
+  re-validated on every hop, capped at 3, and `authorization`/`cookie`/`proxy-authorization`
+  are dropped when a redirect changes origin.
+- *Escape hatch*: `MODEL_URL_ALLOWLIST` (empty by default) exempts named base URLs from the
+  destination check only — syntax rules still apply and redirect targets are still checked
+  independently. Entries are exact `origin + path` prefixes; there is no wildcard syntax.
+
+**Client-visible failures are deliberately coarse.** Blocked requests return
+`Model provider URL rejected: <reason>` with a fixed reason set that never contains a
+resolved address, a resolver error, a stack or a credential, so the error text cannot be
+used as an internal DNS/network oracle. The specific cause is logged server-side as
+`[model-url-guard] blocked provider host="..." (...)`.
+
+**Not claimed.** This does **not** make SSRF "fully prevented". Documented residual limits
+are recorded in `todos.md` (Phase 23 outcome) and in 6.5 of
+`docs/AUTHENTICATION_ARCHITECTURE.md`; in short: an allow-listed URL is trusted, a
+publicly routable attacker-controlled host is still reachable by design, plaintext `http`
+remains permitted, a port scan of public hosts is still possible, and any future code path
+that dials a model URL without going through `safeModelFetch` bypasses all of this.
+
+**Tests:** `server/src/tests/modelSsrf.test.ts` (49 cases) covers address classification,
+write-path rules, request-time DNS/pinning, redirect policy, the allow-list, the `callLLM`
+boundary (including SDK error wrapping) and the `/api/models` write path. Server total went
+from **368** to **417**; client is unchanged at **114** and no client file changed.
+
+**Audit:** no dependency was added or removed, so the findings in 6 are unchanged —
+server 4 (1 critical `proxy-addr`, 3 high `braces` via `ts-node-dev`), client 22.

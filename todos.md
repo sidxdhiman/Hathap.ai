@@ -1,6 +1,81 @@
-# Hathap.ai — Phase 22 todos (auth/authorization/abuse hardening)
+# Hathap.ai - Phase 23 todos (model provider URL / SSRF hardening)
 
-Last updated: Phase 22.
+Last updated: Phase 23.
+
+## Phase 23 scope
+
+- [x] Audit every consumer of `Model.baseUrl` (single `new OpenAI` in
+      `server/src/engine/llmClient.ts`, its raw diagnostic re-fetch, and the
+      `POST`/`PUT`/`POST :id/test` routes) and route all of them through one
+      guard module.
+- [x] Add `server/src/security/modelUrlGuard.ts`: write-path validation
+      (`validateModelBaseUrl`) and request-time validation + transport
+      (`safeModelFetch`), with a DNS test seam and an HTTP transport seam.
+- [x] Enforce URL syntax rules: `http`/`https` only, no embedded credentials,
+      no query/fragment on a stored value, length cap, WHATWG normalisation of
+      alternate IPv4/IPv6 spellings before any check runs.
+- [x] Enforce the destination rule: IP literals must already be public
+      (IANA special-purpose, RFC1918, CGNAT, link-local/metadata, multicast,
+      reserved, loopback, and the IPv6 equivalents), local/single-label
+      hostnames are refused, and every DNS answer must be public with the
+      socket pinned to the validated address (no rebinding TOCTOU).
+- [x] Bound and re-validate redirects (max 3 hops) and drop
+      `authorization`/`cookie`/`proxy-authorization` on a cross-origin redirect.
+- [x] Keep the client-visible message coarse and free of DNS/IP/stack detail;
+      log the specific cause server-side.
+- [x] Add `MODEL_URL_ALLOWLIST` as an explicit, empty-by-default operator opt-in
+      for providers that really do live on a private address.
+- [x] Regression tests: new `modelSsrf.test.ts` (49 cases); re-run every quality
+      gate.
+- [x] Update documentation (audit report, auth architecture non-goals, README,
+      `.env.example`, `agent_context.md`) and commit.
+
+## Phase 23 outcome
+
+**The server no longer dials a user-chosen private network address.**
+`Model.baseUrl` is untrusted input that makes the *server* open a socket, so
+Phase 22 authorisation alone was never enough. Every outbound provider request
+now leaves through `safeModelFetch`, which parses with the WHATWG URL parser
+(so `0x7f.0.0.1`, `2130706433`, `0177.0.0.1`, `[::ffff:127.0.0.1]` normalise to
+what they really are first), allows only `http`/`https`, refuses embedded
+credentials and (on save) query strings/fragments, refuses IP literals outside
+public address space and local/single-label hostnames, resolves the name exactly
+once, requires **every** answer to be public, and pins the socket to the address
+it validated through a custom `lookup`. Redirects are re-checked on every hop,
+capped at 3, and cross-origin hops lose `authorization`/`cookie`/`proxy-authorization`.
+`validateModelBaseUrl` applies the DNS-free half of those rules on
+`POST`/`PUT /api/models`, so a bad URL is a clean `400` instead of a dial.
+
+**Nothing leaks through the error message.** A blocked request returns
+`Model provider URL rejected: <one of seven fixed reasons>` - never a resolved
+address, a resolver error, a stack or a credential - so the message cannot be
+used as an internal DNS/network oracle; the specific cause is logged server-side
+as `[model-url-guard] blocked provider host="..." (...)`. In `callLLM` the guard
+error is extracted *before* the retry wrapper, so it is never retried and never
+rewritten into a generic "LLM call failed after N attempts".
+
+**Bug found and fixed by the new tests:** the pinned `lookup` was invoking
+Node's non-`all` callback as `(address, family)` instead of `(err, address,
+family)`, so a pinned connect would have treated the address as an error. Fixed
+in `modelUrlGuard.ts`.
+
+**Stated limits (what this does NOT stop).** SSRF is hardened, not "fully
+prevented". Still possible by design: a publicly routable attacker-controlled
+host is reachable (application-level port probing through ordinary provider
+failures, not through the guard); an allow-listed URL is trusted and skips the
+destination check; plaintext `http` remains permitted for third-party
+OpenAI-compatible providers; an operator who lists a private base URL opts that
+destination in permanently; and any *future* code path that dials a model URL
+without going through `safeModelFetch` bypasses this boundary entirely. A2A task
+authorization, process-local SSE fan-out, the cookie migration (blocked on
+A4.4) and the split rate limiter are unchanged and still out of scope.
+
+**Test counts:** server grew from **368** to **417** (49 in
+`modelSsrf.test.ts`); client is unchanged at **114**. No client file changed and
+no dependency was added or removed, so the audits are unchanged (server 4 - 1
+critical `proxy-addr` + 3 high `braces` via `ts-node-dev`; client 22).
+
+
 
 ## Phase 22 scope
 
@@ -489,7 +564,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-22 recap)
+## Done (Phases 11-23 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -544,6 +619,14 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   tasks); `PUT /api/decisions/:id` and `PUT /api/models/:id` use field allow-lists
   instead of a raw body spread; and `signup`/`login` validate credential types at
   runtime. No auth semantics, cookie, CSRF or client behavior changed.
+- Phase 23: Model provider URL / SSRF boundary hardened. `server/src/security/modelUrlGuard.ts`
+  validates `Model.baseUrl` on `POST`/`PUT /api/models` and re-validates every outbound
+  provider request through `safeModelFetch` (WHATWG-normalised URL rules, public-only DNS
+  answers, socket pinned to the validated address, redirects re-checked and capped at 3 with
+  credentials stripped cross-origin), with `MODEL_URL_ALLOWLIST` as an empty-by-default
+  operator opt-in. Rejections return a coarse `Model provider URL rejected: ...` message with
+  no address/resolver detail. No client file, dependency, auth semantics, cookie, CSRF or rate
+  limiter changed.
 
 ## Remaining (ship blockers / known debt)
 
@@ -581,9 +664,13 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   full page load — tolerable now, but the router needs splitting if `/me` traffic
   or credential-endpoint traffic grows.
 - Non-auth authentication-adjacent findings recorded during the Phase 16
-  investigation: SSRF via user-supplied model `baseUrl`, A2A task authorization,
-  and process-local SSE fan-out on multi-replica deployments remain tracked
-  separately and out of scope. **Phase 22 closed** the other three: mass
+  investigation: A2A task authorization and process-local SSE fan-out on
+  multi-replica deployments remain tracked separately and out of scope. **Phase
+  23 closed** the SSRF item: `Model.baseUrl` is now validated on the write path
+  and re-validated (with DNS + socket pinning + redirect re-checks) on every
+  outbound provider request via `server/src/security/modelUrlGuard.ts`, with an
+  empty-by-default `MODEL_URL_ALLOWLIST` opt-in for providers that really do run
+  on a private address. The residual exposure is documented, not eliminated. **Phase 22 closed** the other three: mass
   assignment on `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing
   parent-ownership checks on courtroom messages/verdict, and (found while
   auditing) the cross-tenant decision-delete cascade and missing signup/login

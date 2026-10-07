@@ -37,9 +37,22 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > child rows). The generic update endpoints (`PUT /api/decisions/:id`,
 > `PUT /api/models/:id`) use explicit field allow-lists, so `userId` and other
 > server-managed fields cannot be mass-assigned. `POST /api/auth/signup` and
-> `/login` validate credential types at runtime. Still out of scope: SSRF via
-> user-supplied model `baseUrl`, A2A task authorization, and multi-replica SSE
-> fan-out. See `docs/AUTHENTICATION_ARCHITECTURE.md` §6.5.
+> `/login` validate credential types at runtime.
+>
+> **Provider-URL note (updated Phase 23):** a user-supplied model `baseUrl` makes
+> the *server* dial a socket, so authorisation is not enough. Every stored value is
+> validated on `POST`/`PUT /api/models` and re-validated on every outbound request
+> by `server/src/security/modelUrlGuard.ts` (`validateModelBaseUrl` +
+> `safeModelFetch`): `http`/`https` only, no embedded credentials, no query/fragment
+> on save, IP literals must be public, local/single-label hostnames are refused,
+> every DNS answer must be public and the socket is pinned to the address that was
+> validated (no rebinding TOCTOU), and redirects are re-checked on each of at most
+> 3 hops with credentials stripped cross-origin. Operators opt private providers in
+> with `MODEL_URL_ALLOWLIST` (empty by default). Rejections are a coarse
+> `Model provider URL rejected: ...` message with no address or resolver detail.
+> Still out of scope: A2A task authorization, and multi-replica SSE fan-out. See
+> `docs/AUTHENTICATION_ARCHITECTURE.md` non-goals section and Phase 23 in
+> `docs/SECURITY_AUDIT_REPORT.md`.
 >
 > **Client note (updated Phase 18):** the client no longer hand-rolls requests.
 > `client/src/api/authTransport.ts` is the only module that touches
@@ -233,6 +246,8 @@ External Integrations:
    - Express REST API with authentication middleware
    - Debate engine for multi-agent orchestration
    - Database models and business logic
+   - `server/src/security/modelUrlGuard.ts` - SSRF boundary for user-controlled
+     model provider URLs (Phase 23)
 
 3. **Debate Engine** (`server/src/engine/`)
    - Core orchestration of multi-agent debates
@@ -510,6 +525,7 @@ Hathap.ai/
 - `debateEngine.ts` - Main orchestration logic
 - `agentRunner.ts` - Individual agent execution
 - `llmClient.ts` - LLM provider abstraction
+- `../security/modelUrlGuard.ts` - SSRF boundary for user-controlled model provider URLs (write-path validation, request-time DNS + socket pinning, redirect policy, `MODEL_URL_ALLOWLIST`)
 - `strategies/*.ts` - Debate strategy implementations
 - `verdictGenerator.ts` - Verdict synthesis
 
@@ -1274,8 +1290,8 @@ npm start
 Test suites are implemented and run in CI:
 
 - Server: `npm test` in `server/` runs the full suite under
-  `server/src/tests/` (272 tests across ~23 files; node's test runner).
-- Client: `npm test` in `client/` runs the Vitest suite (~58 tests / 13 files,
+  `server/src/tests/` (417 tests across 29 files; node's test runner).
+- Client: `npm test` in `client/` runs the Vitest suite (114 tests / 14 files,
   React Testing Library + Vitest).
 - CI: `.github/workflows/ci.yml` runs server (typecheck, tests, build) and
   client (lint, tests, typecheck, build) gates on every push.

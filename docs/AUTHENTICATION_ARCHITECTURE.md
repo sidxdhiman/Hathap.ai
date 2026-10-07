@@ -695,9 +695,8 @@ cookies mean a subdomain cannot overwrite the session cookie.
 
 ### 6.5 Non-goals
 
-This design does not address (tracked separately, out of scope here): SSRF via
-user-supplied model `baseUrl`, A2A task authorization, and process-local SSE
-fan-out on multi-replica deployments.
+This design does not address (tracked separately, out of scope here): A2A task
+authorization, and process-local SSE fan-out on multi-replica deployments.
 
 Two items previously listed here were closed by Phase 22 (which kept the bearer
 transport and changed no auth semantics): the mass-assignment on
@@ -708,6 +707,19 @@ otherwise. Phase 22 also closed two adjacent authorization/validation holes it
 found while auditing: the decision-delete cascade now verifies ownership before
 touching child collections, and `signup`/`login` validate credential types at
 runtime (blocking Mongo operator injection and the non-string `bcrypt` `500`).
+
+The third item, **SSRF via user-supplied model `baseUrl`, was closed by Phase 23**
+and is therefore no longer a non-goal. `Model.baseUrl` is validated on the write
+path and re-validated on every outbound request by
+`server/src/security/modelUrlGuard.ts` (`validateModelBaseUrl` +
+`safeModelFetch`), which also pins the socket to the address it validated and
+re-checks every redirect hop. What remains deliberately out of scope is the
+residual, documented exposure — see 7 of `docs/SECURITY_AUDIT_REPORT.md` and the
+"Stated limits" paragraph of the Phase 23 outcome in `todos.md`: an operator
+allow-listed URL is trusted, a public attacker-controlled host is still reachable
+by design, plaintext `http` is still permitted, public-host port probing is still
+possible, and any future code path that dials a model URL without going through
+`safeModelFetch` bypasses the boundary.
 
 ---
 

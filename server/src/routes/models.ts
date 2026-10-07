@@ -10,6 +10,7 @@ import {
   modelForLlmCall,
 } from '../services/modelService';
 import { callLLM } from '../engine/llmClient';
+import { isBlockedModelUrlError, validateModelBaseUrl } from '../security/modelUrlGuard';
 
 const router = express.Router();
 
@@ -25,6 +26,12 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
     if (!apiKey || apiKey.includes('•')) {
       return res.status(400).json({ error: 'A valid API key is required when adding a model.' });
+    }
+
+    // `baseUrl` names a network destination the server itself will dial, so it
+    // is guarded on the write path (fast, DNS-free) as well as at request time.
+    if (Object.prototype.hasOwnProperty.call(rest, 'baseUrl')) {
+      rest.baseUrl = validateModelBaseUrl(rest.baseUrl);
     }
 
     const model = new Model({
@@ -47,6 +54,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
       agentsAssigned: assignedCount,
     });
   } catch (error: any) {
+    if (isBlockedModelUrlError(error)) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('[Models POST]', error);
     res.status(500).json({ error: serverErrorMessage(error, 'Failed to create model.') });
   }
@@ -71,7 +81,8 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
     const { apiKey } = req.body || {};
     for (const field of MODEL_UPDATABLE_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-        (model as any)[field] = req.body[field];
+        (model as any)[field] =
+          field === 'baseUrl' ? validateModelBaseUrl(req.body[field]) : req.body[field];
       }
     }
     applyApiKeyToModel(model, apiKey);
@@ -79,6 +90,9 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     res.json(serializeModel(model));
   } catch (error: any) {
+    if (isBlockedModelUrlError(error)) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('[Models PUT]', error);
     res.status(500).json({ error: serverErrorMessage(error, 'Failed to update model.') });
   }

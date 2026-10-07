@@ -7,7 +7,7 @@ A modern web application for creating debate rooms ("Courtrooms") where multiple
 ### Core Functionality
 - **Authentication**: JWT-based signup/login with per-user data scoping, server-side credential invalidation (logout, password change, account deletion), a single client request/credential layer with centralized 401 sign-out, password change, data export, and account deletion
 - **Dashboard**: Overview with statistics and recent courtrooms
-- **Models Management**: Connect and manage AI models from multiple providers
+- **Models Management**: Connect and manage AI models from multiple providers. A custom model's base URL is untrusted input that makes the *server* dial a socket, so it is validated on save and again on every request: `http`/`https` only, no embedded credentials, no query string or fragment, and a destination that must resolve to public address space (loopback, private, link-local/cloud-metadata and other special-purpose ranges are refused, redirect targets are re-checked, and the connection is pinned to the address that was validated). Operators running a provider on a private address must opt in explicitly with `MODEL_URL_ALLOWLIST` (see `server/.env.example`); with it unset, no private destination is reachable.
 - **Agent Templates**: Create reusable AI agent personas with custom prompts
 - **Courtroom Creation**: Set up debate rooms with specific objectives
 - **Debate Visualization**: Real-time threaded debate discussion

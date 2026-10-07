@@ -3,6 +3,11 @@ import { IModel } from '../models/Model';
 import { decryptApiKey, isEncrypted } from '../utils/encryption';
 import { recordUsage, LLMUsageCallback } from '../decision/usage';
 import { TokenUsage } from '../decision/types';
+import {
+  findBlockedModelUrlError,
+  safeModelFetch,
+  validateModelBaseUrl,
+} from '../security/modelUrlGuard';
 
 export interface LLMCallOptions {
   responseFormatJson?: boolean;
@@ -30,15 +35,21 @@ export async function callLLM(
     );
   }
   
-  // Clean up baseURL to ensure it doesn't end with a trailing slash if openai library requires it
-  let baseURL = model.baseUrl || undefined;
-  if (baseURL && baseURL.endsWith('/')) {
-    baseURL = baseURL.slice(0, -1);
+  // `baseUrl` is user-controlled. It is validated before anything is resolved
+  // or dialled so a rejected URL fails fast with a clean message, and every
+  // request it produces goes through `safeModelFetch`, which re-runs the
+  // destination check (with DNS) for the request and for every redirect hop.
+  let baseURL = '';
+  if (model.baseUrl) {
+    baseURL = validateModelBaseUrl(model.baseUrl);
+    if (baseURL.endsWith('/')) {
+      baseURL = baseURL.slice(0, -1);
+    }
   }
 
   const openai = new OpenAI({
     apiKey,
-    baseURL,
+    baseURL: baseURL || undefined,
     // Many proxies and OpenRouter reject the default keep-alive streaming response
     // with a "Premature close" error. The OpenAI SDK defaults to streaming, which
     // we don't need for single-shot calls. Disable max-timeout issues and force
@@ -52,6 +63,9 @@ export async function callLLM(
       'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173',
       'X-Title': 'Hathap.AI',
     },
+    // The SDK must not be able to dial anything the guard would not have let
+    // us dial: this is the one place outbound model traffic leaves the server.
+    fetch: safeModelFetch,
   });
 
   const responseFormat = options.responseFormatJson ? { type: 'json_object' as const } : undefined;
@@ -104,6 +118,18 @@ export async function callLLM(
 
       return responseContent;
     } catch (error: any) {
+      // A blocked provider URL is a deliberate, safe rejection — never a
+      // transport failure. Surface it immediately (no retries, no generic
+      // "connection error" wrapper, no raw re-fetch) so the API returns the
+      // one message the user can actually act on.
+      const blocked = findBlockedModelUrlError(error);
+      if (blocked) {
+        console.warn(
+          `[LLM Blocked URL] ${blocked.message} modelName="${model.modelName}" baseUrl="${model.baseUrl || '(default)'}" detail=${blocked.detail || 'n/a'}`
+        );
+        throw blocked;
+      }
+
       // Surface useful diagnostic info: HTTP status, response body, error type.
       const status = error?.status || error?.response?.status;
       const body = error?.error || error?.response?.data || error?.body;
@@ -124,10 +150,11 @@ export async function callLLM(
       // and tell the user what's really wrong.
       if (
         retries === 0 &&
+        baseURL &&
         /Premature close|Invalid response body|fetch failed/i.test(error?.message || '')
       ) {
         try {
-          const raw = await fetch(`${baseURL}/chat/completions`, {
+          const raw = await safeModelFetch(`${baseURL}/chat/completions`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -161,6 +188,8 @@ export async function callLLM(
           }
         } catch (rawErr: any) {
           // If the raw fetch also fails, fall through to the normal retry/error path.
+          const blockedRaw = findBlockedModelUrlError(rawErr);
+          if (blockedRaw) throw blockedRaw;
           if (rawErr?.message?.startsWith('Provider')) throw rawErr;
           console.error(`[LLM Raw Fetch failed] ${rawErr?.message || rawErr}`);
         }
