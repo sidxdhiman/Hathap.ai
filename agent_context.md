@@ -50,8 +50,15 @@ Hathap.AI is a multi-agent AI debate and collaboration platform that enables use
 > 3 hops with credentials stripped cross-origin. Operators opt private providers in
 > with `MODEL_URL_ALLOWLIST` (empty by default). Rejections are a coarse
 > `Model provider URL rejected: ...` message with no address or resolver detail.
-> Still out of scope: A2A task authorization, and multi-replica SSE fan-out. See
-> `docs/AUTHENTICATION_ARCHITECTURE.md` non-goals section and Phase 23 in
+>
+> **A2A task note (updated Phase 24):** the A2A transports now require a
+> principal before dispatching (`requireA2AAuthentication`), and ownership is
+> enforced in the task store (`server/src/a2a/taskStore.ts`) so one user cannot
+> read, cancel, resume or subscribe to another user's task.
+> `server/src/a2a/taskAccess.ts` answers a foreign or unknown task id with the
+> same `taskNotFound`, so the endpoint is not an existence oracle; agent-card
+> discovery stays public. Still out of scope: multi-replica SSE fan-out. See
+> `docs/AUTHENTICATION_ARCHITECTURE.md` non-goals section and Phase 24 in
 > `docs/SECURITY_AUDIT_REPORT.md`.
 >
 > **Client note (updated Phase 18):** the client no longer hand-rolls requests.

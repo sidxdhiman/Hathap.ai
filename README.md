@@ -273,6 +273,14 @@ still no server-side session store; and the token is still held in `localStorage
 so any script on the origin can read it. Server-side invalidation bounds how long a
 stolen credential is useful — it does not prevent the theft.
 
+**A2A task authorization is enforced (Phase 24).** Both A2A transports
+(`/a2a/jsonrpc` and `/a2a/rest`) reject an unauthenticated caller before they
+parse or dispatch, and ownership is checked in the task store, so one account
+cannot read, cancel, resume or live-subscribe to another account's task. A
+foreign task id and an id that never existed return byte-identical responses, so
+the surface is not an existence oracle. The agent-card discovery document at
+`/.well-known/agent-card.json` stays public and carries no user data.
+
 **The client has a single request/credential layer (Phase 18).** No module reads
 the stored token or builds an `Authorization` header itself:
 

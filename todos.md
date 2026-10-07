@@ -1,6 +1,103 @@
-# Hathap.ai - Phase 23 todos (model provider URL / SSRF hardening)
+# Hathap.ai - Phase 24 todos (A2A task authentication and authorization)
 
-Last updated: Phase 23.
+Last updated: Phase 24.
+
+## Phase 24 scope
+
+- [x] Audit every A2A task-scoped operation end to end — `tasks/get`,
+      `tasks/cancel`, `tasks/resubscribe`, `message/send` and `message/stream`
+      with a `taskId`, `referenceTaskIds`, and every
+      `tasks/pushNotificationConfig/*` route — on both transports
+      (`/a2a/jsonrpc`, `/a2a/rest`), and record which of them authenticate and
+      which of them authorize.
+- [x] Add `server/src/a2a/taskStore.ts` (`OwnedTaskStore`): replace the SDK's
+      context-ignoring `InMemoryTaskStore` with one that binds every task to the
+      principal that created it and refuses to overwrite a foreign task.
+- [x] Add `server/src/a2a/a2aAuth.ts` (`requireA2AAuthentication`): reject an
+      unauthenticated caller before either transport dispatches, mirroring
+      `requireAuth`'s `401 { error: 'Unauthorized' }`.
+- [x] Add `server/src/a2a/taskAccess.ts` (`createTaskAccessGate`): a
+      pre-dispatch ownership gate that answers a foreign or unknown identifier
+      with the protocol's real `taskNotFound`, and answers the owner's
+      terminal-state cancel/resume with `taskNotCancelable`/`invalidRequest`
+      rather than the 500 the SDK's broken `A2AError` `instanceof` would emit.
+- [x] Keep protocol discovery public: `/.well-known/agent-card.json` stays
+      outside the auth and ownership checks and carries no user data.
+- [x] Close payload-borne ownership holes in `messageParser.ts`: the raw
+      `{ ...request, skill }` spread is now an allow-list, `agentIds` is
+      validated before it can reach `Agent.find({ _id: { $in } })`, and
+      `courtroomId` must be a string before it reaches `Courtroom.findOne`.
+- [x] Make `normalizeDebateRequest` failures visible: a JSON-object message
+      payload no longer falls back to being re-run as a plain-text objective,
+      so a refused payload reports why instead of silently changing meaning.
+- [x] Regression tests: new `phase24A2ATaskAuthz.test.ts` (17 cases) driving the
+      real `setupA2A` wiring over HTTP; re-run every quality gate.
+- [x] Update documentation (`todos.md`, `agent_context.md`,
+      `docs/AUTHENTICATION_ARCHITECTURE.md`, `docs/SECURITY_AUDIT_REPORT.md`,
+      `README.md`) and commit.
+
+## Phase 24 outcome
+
+**One authenticated user cannot reach another user's A2A task.** The audit
+found that the SDK's `DefaultRequestHandler` performs *no* authorization at all:
+`getTask`, `cancelTask`, `resubscribe` and `_createRequestContext` (which
+`message/send` uses to resume a task and to resolve `referenceTaskIds`) all
+call `taskStore.load(id, context)`, and the SDK's `InMemoryTaskStore` ignores
+that context entirely. Task IDs are `uuidv4()` and client-supplied ids are
+rejected, so the identifiers were unguessable — but they were the *only*
+protection, and any leak (a log line, a URL, a shared screen) was a full read,
+cancel, resume and live-subscribe capability. Worse, no transport checked
+authentication before dispatching, so even the executor's own
+"is this an authenticated principal?" check was the first place an anonymous
+caller was noticed — after the request had already been parsed and routed.
+
+Ownership now lives in the store (`OwnedTaskStore.load` returns `undefined`
+unless the caller is the owner, and `save` refuses to persist without an
+authenticated owner or to overwrite a foreign task), so *every* read the
+handler performs internally — history append, reference resolution, reload
+after a cancel — passes through the same check. `requireA2AAuthentication` puts
+a principal check in front of both transports, and `createTaskAccessGate` turns
+the refusal into the protocol's real answer.
+
+**Foreign and nonexistent are byte-identical.** Both resolve to `undefined`
+from `loadFor`, so the gate can only emit `Task not found: <id>`; the REST
+response normalises to the same bytes with the id swapped, and the JSON-RPC
+response likewise. No task-id existence oracle.
+
+**The response-shape bug is a real SDK defect, and it is documented rather than
+worked around silently.** `@a2a-js/sdk` ships CommonJS bundles in which
+`dist/server/index.cjs` and `dist/server/express/index.cjs` each declare their
+own `var A2AError = class ...`. This server compiles to CommonJS, so every
+`error instanceof A2AError` in the transport resolves to `false` and the
+transport's `catch` rewrites `taskNotFound` (`-32001`), `taskNotCancelable`
+(`-32002`) and `invalidRequest` (`-32600`) into HTTP 500 / JSON-RPC `-32603`.
+`A2AError` is not re-exported by `@a2a-js/sdk/server/express`, so it cannot be
+re-attached from outside the package either. Answering before dispatch is
+therefore the only way to give callers the status the protocol specifies without
+patching `node_modules`; the gate mirrors the SDK's messages and
+`mapErrorToStatus` mapping exactly.
+
+**False positives recorded.** Push-notification configuration routes are not
+exploitable: `capabilities.pushNotifications` is `false` in the agent card, so
+the SDK throws `pushNotificationNotSupported` before any store access.
+`supportsAuthenticatedExtendedCard` is unset, so the extended-card route is
+unreachable. Neither is an authorization hole, and neither needed a fix.
+
+**Stated limits.** A2A tasks are held in process memory, so a restart drops
+them and a multi-replica deployment would not share them (the same
+process-local SSE fan-out limitation recorded in Phase 16 — still out of
+scope). The gate only inspects the protocol fields the A2A spec defines; an
+unknown future method that names a task in a new field would fall through to
+the store, which still refuses the access and would surface as the SDK's 500
+rather than a clean 4xx. The `x-a2a-api-key` / `A2A_DEFAULT_USER_ID` fallback
+in `userBuilder.ts` is unchanged and still lets a deployment expose A2A to a
+shared key; that is a deployment choice, not something this phase reopens.
+
+**Test counts:** server grew from **417** to **434** (17 in
+`phase24A2ATaskAuthz.test.ts`); client is unchanged at **114**. No client file
+changed and no dependency was added or removed, so the audits are unchanged
+(server 4 - 1 critical `proxy-addr` + 3 high `braces` via `ts-node-dev`;
+client 22).
 
 ## Phase 23 scope
 
@@ -66,9 +163,10 @@ failures, not through the guard); an allow-listed URL is trusted and skips the
 destination check; plaintext `http` remains permitted for third-party
 OpenAI-compatible providers; an operator who lists a private base URL opts that
 destination in permanently; and any *future* code path that dials a model URL
-without going through `safeModelFetch` bypasses this boundary entirely. A2A task
-authorization, process-local SSE fan-out, the cookie migration (blocked on
-A4.4) and the split rate limiter are unchanged and still out of scope.
+without going through `safeModelFetch` bypasses this boundary entirely.
+Process-local SSE fan-out, the cookie migration (blocked on
+A4.4) and the split rate limiter are unchanged and still out of scope; A2A task
+authorization was closed by **Phase 24**.
 
 **Test counts:** server grew from **368** to **417** (49 in
 `modelSsrf.test.ts`); client is unchanged at **114**. No client file changed and
@@ -121,10 +219,10 @@ instead of reaching `User.findOne` (operator injection) and a non-string
 password is a `400` instead of a `bcrypt` `500`. Signup now also enforces the
 8-character minimum that `change-password` already required.
 
-**Stated limits.** SSRF via user-supplied model `baseUrl`, A2A task
-authorization, and process-local SSE fan-out remain out of scope and unchanged;
-the token stays in `localStorage` and the cookie migration is still blocked on
-the §4.4 deployment decision record.
+**Stated limits.** SSRF via user-supplied model `baseUrl` and process-local SSE
+fan-out remain out of scope and unchanged (A2A task authorization was closed by
+**Phase 24**); the token stays in `localStorage` and the cookie migration is
+still blocked on the §4.4 deployment decision record.
 
 **Test counts:** server grew from **355** to **368** (9 in
 `phase22Authorization.test.ts`, 4 auth validation); client is unchanged at
@@ -564,7 +662,7 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
 - **Dependencies**: unchanged. No package.json/lockfile edit in this phase;
   audits stay at server 0 and the 12 documented client findings.
 
-## Done (Phases 11-23 recap)
+## Done (Phases 11-24 recap)
 
 - Phase 11: Real web-grounded research (Brave + DuckDuckGo sources), provider
   resolution, research status/demo routes, web-grounded dashboard banner.
@@ -627,6 +725,18 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   operator opt-in. Rejections return a coarse `Model provider URL rejected: ...` message with
   no address/resolver detail. No client file, dependency, auth semantics, cookie, CSRF or rate
   limiter changed.
+- Phase 24: A2A task authorization hardened. The SDK's `DefaultRequestHandler`
+  authorizes nothing and its `InMemoryTaskStore` ignores the call context, so
+  `tasks/get`, `tasks/cancel`, `tasks/resubscribe`, `message/send` with a
+  `taskId` and `referenceTaskIds` were open to any caller who could name a task —
+  and neither transport required a principal before dispatching. Ownership now
+  lives in `server/src/a2a/taskStore.ts` (`OwnedTaskStore`), both mounts sit
+  behind `requireA2AAuthentication`, and `server/src/a2a/taskAccess.ts` answers
+  a foreign or unknown id with a byte-identical `taskNotFound` before the SDK can
+  turn it into a 500. Payload-side, the raw `{ ...request, skill }` spread is now
+  an allow-list and `agentIds`/`courtroomId` are type-validated. Agent card
+  discovery stays public. No client file, dependency, auth semantics, cookie, CSRF
+  or rate limiter changed.
 
 ## Remaining (ship blockers / known debt)
 
@@ -664,9 +774,9 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   full page load — tolerable now, but the router needs splitting if `/me` traffic
   or credential-endpoint traffic grows.
 - Non-auth authentication-adjacent findings recorded during the Phase 16
-  investigation: A2A task authorization and process-local SSE fan-out on
-  multi-replica deployments remain tracked separately and out of scope. **Phase
-  23 closed** the SSRF item: `Model.baseUrl` is now validated on the write path
+  investigation: process-local SSE fan-out on multi-replica deployments remain
+  tracked separately and out of scope. **Phase 23 closed** the SSRF item:
+  `Model.baseUrl` is now validated on the write path
   and re-validated (with DNS + socket pinning + redirect re-checks) on every
   outbound provider request via `server/src/security/modelUrlGuard.ts`, with an
   empty-by-default `MODEL_URL_ALLOWLIST` opt-in for providers that really do run
@@ -674,7 +784,11 @@ CSRF/CORS design, per-file change list, test plan, and acceptance criteria.
   assignment on `PUT /api/decisions/:id` and `PUT /api/models/:id`, missing
   parent-ownership checks on courtroom messages/verdict, and (found while
   auditing) the cross-tenant decision-delete cascade and missing signup/login
-  type validation.
+  type validation. **Phase 24 closed** the last one: A2A task reads, cancels,
+  resumes and live subscriptions are now ownership-checked in
+  `server/src/a2a/taskStore.ts` behind `requireA2AAuthentication`, with
+  `server/src/a2a/taskAccess.ts` returning a byte-identical `taskNotFound` for a
+  foreign and an unknown id.
 - **Server audit now carries 1 critical transitive finding** (`proxy-addr`,
   GHSA-jqcg-44mw-7w3h), newly disclosed since Phase 12.6 and not actioned in
   Phase 22. It is only reachable behind a proxy with a configured trust

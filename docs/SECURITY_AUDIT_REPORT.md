@@ -145,3 +145,72 @@ from **368** to **417**; client is unchanged at **114** and no client file chang
 
 **Audit:** no dependency was added or removed, so the findings in 6 are unchanged —
 server 4 (1 critical `proxy-addr`, 3 high `braces` via `ts-node-dev`), client 22.
+
+## 8. Phase 24 addendum — A2A task authentication and authorization
+
+Phase 24 closed the last item 6.5 listed as a non-goal: whether one caller on the
+A2A surface can create, read, mutate, execute, cancel or observe another caller's
+task.
+
+**Findings.** The A2A surface is `/a2a/jsonrpc` and `/a2a/rest` plus the public
+`/.well-known/agent-card.json` discovery document. Neither transport required a
+principal before dispatch, and the SDK's `DefaultRequestHandler` performs no
+authorization whatsoever: `getTask`, `cancelTask`, `resubscribe`,
+`_createRequestContext` (used by `message/send` to resume a task and to resolve
+`referenceTaskIds`) and all `tasks/pushNotificationConfig/*` handlers call
+`taskStore.load(id, context)`, and `InMemoryTaskStore` ignores that context and
+returns whatever task matches the id. `HathapDebateExecutor` did refuse to
+*execute* anonymously, but that check sat after parsing and routing, and reads,
+cancels, resumes and live subscriptions never checked at all. Task ids are
+`uuidv4()` and a client-supplied `message.taskId` that does not exist is
+rejected, so ids were unguessable — but they were the *only* control.
+
+**Fix.**
+
+- `server/src/a2a/taskStore.ts` — `OwnedTaskStore` replaces the SDK store.
+  `load` returns `undefined` unless the caller is the owner; `save` refuses to
+  persist without an authenticated owner and refuses to overwrite a foreign
+  task, so ownership cannot be reassigned after creation.
+- `server/src/a2a/a2aAuth.ts` — `requireA2AAuthentication` rejects an
+  unauthenticated caller with the same `401 { error: 'Unauthorized' }` the rest
+  of the API uses, before either transport parses or dispatches.
+- `server/src/a2a/taskAccess.ts` — `createTaskAccessGate` runs behind the auth
+  middleware and answers a foreign or unknown task id before dispatch, so the
+  caller gets the protocol's real `taskNotFound` (`-32001` / HTTP `404`) with a
+  message that is byte-identical for the two cases, plus `taskNotCancelable`
+  (`-32002` / `409`) and `invalidRequest` (`-32600` / `400`) for the owner's
+  terminal-state cancel and resume.
+- `server/src/a2a/messageParser.ts` — the raw `{ ...request, skill }` spread is
+  now an allow-list, `agentIds` must be a list of non-empty strings before it can
+  reach `Agent.find({ _id: { $in } })`, `courtroomId` must be a string before it
+  can reach `Courtroom.findOne`, and a JSON-object payload no longer silently
+  falls back to being re-run as plain text (which had made every
+  `normalizeDebateRequest` check unreachable over the wire).
+
+**Upstream defect (documented, not worked around silently).** `@a2a-js/sdk`
+0.3.13 ships CommonJS bundles in which `dist/server/index.cjs` and
+`dist/server/express/index.cjs` each declare their own `var A2AError = class
+...`. This server compiles to CommonJS, so `error instanceof A2AError` in the
+transport is always `false` and every application error the handler raises would
+surface as HTTP 500 / JSON-RPC `-32603` instead of the `404`/`409`/`400` that
+`mapErrorToStatus` specifies. `A2AError` is not re-exported by
+`@a2a-js/sdk/server/express`, so it cannot be re-attached from outside the
+package. The gate answers before dispatch instead, mirroring the SDK's messages
+and status mapping exactly.
+
+**False positives.** Push-notification configuration routes are unreachable
+(`capabilities.pushNotifications` is `false`, so the SDK throws
+`pushNotificationNotSupported` before any store access), and the authenticated
+extended card is unsupported (`supportsAuthenticatedExtendedCard` unset).
+Neither was an authorization hole.
+
+**Tests:** `server/src/tests/phase24A2ATaskAuthz.test.ts` (17 cases) drives the
+real `setupA2A` wiring over HTTP — both transports, the auth middleware and the
+ownership store, against a real Mongo instance — covering owner read, foreign
+read/cancel/resume/subscribe, the foreign≡unknown oracle equivalence, the
+unauthenticated matrix, invalid credentials, public discovery, malformed ids and
+the payload allow-list. Server total went from **417** to **434**; client is
+unchanged at **114** and no client file changed.
+
+**Audit:** no dependency was added or removed, so the findings in 6 are unchanged —
+server 4 (1 critical `proxy-addr`, 3 high `braces` via `ts-node-dev`), client 22.

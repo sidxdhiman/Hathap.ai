@@ -695,8 +695,37 @@ cookies mean a subdomain cannot overwrite the session cookie.
 
 ### 6.5 Non-goals
 
-This design does not address (tracked separately, out of scope here): A2A task
-authorization, and process-local SSE fan-out on multi-replica deployments.
+This design does not address (tracked separately, out of scope here):
+process-local SSE fan-out on multi-replica deployments.
+
+**A2A task authorization was closed by Phase 24** and is therefore no longer a
+non-goal. The A2A surface is `/a2a/jsonrpc` and `/a2a/rest`, plus the public
+`/.well-known/agent-card.json` discovery document, which carries no user data
+and stays outside every check.
+
+| Surface | Authentication | Authorization |
+| --- | --- | --- |
+| `GET /.well-known/agent-card.json` | none (by design) | n/a |
+| `message/send`, `message/stream` (new task) | `requireA2AAuthentication` | creator-bound on save (`OwnedTaskStore.save`) |
+| `message/send`, `message/stream` (existing `taskId`) | `requireA2AAuthentication` | owner only, via `OwnedTaskStore.load` |
+| `tasks/get` | `requireA2AAuthentication` | owner only |
+| `tasks/cancel` | `requireA2AAuthentication` | owner only, non-terminal state |
+| `tasks/resubscribe` | `requireA2AAuthentication` | owner only |
+| `tasks/pushNotificationConfig/*` | `requireA2AAuthentication` | owner only (and unsupported: `capabilities.pushNotifications` is `false`) |
+| `agent/getAuthenticatedExtendedCard` | `requireA2AAuthentication` | n/a (unsupported: `supportsAuthenticatedExtendedCard` unset) |
+
+A foreign task id and an id that never existed produce byte-identical
+responses, so the surface is not an existence oracle. `referenceTaskIds` are
+resolved through the same store and contribute nothing to a task the caller
+does not own. Ownership cannot be reassigned: `save` refuses to persist
+without an authenticated owner and refuses to overwrite a foreign task.
+
+Phase 24 also documented an upstream packaging defect that this design works
+around rather than inherits: `@a2a-js/sdk`'s CommonJS bundles declare
+`A2AError` twice, so `error instanceof A2AError` is always false in this
+CommonJS build and the transport would report every application error as HTTP
+500 / JSON-RPC `-32603`. `server/src/a2a/taskAccess.ts` answers before dispatch,
+mirroring the SDK's own messages and `mapErrorToStatus` mapping.
 
 Two items previously listed here were closed by Phase 22 (which kept the bearer
 transport and changed no auth semantics): the mass-assignment on
