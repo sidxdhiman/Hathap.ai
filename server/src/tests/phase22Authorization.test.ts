@@ -5,6 +5,7 @@ import http from 'http';
 import mongoose from 'mongoose';
 import type { AddressInfo } from 'net';
 import User from '../models/User';
+import Agent from '../models/Agent';
 import Courtroom from '../models/Courtroom';
 import Message from '../models/Message';
 import Verdict from '../models/Verdict';
@@ -19,6 +20,7 @@ import Model from '../models/Model';
 import decisionsRouter from '../routes/decisions';
 import courtroomsRouter from '../routes/courtrooms';
 import modelsRouter from '../routes/models';
+import agentsRouter from '../routes/agents';
 import { signToken } from '../utils/authToken';
 
 /**
@@ -54,6 +56,7 @@ async function makeServer(): Promise<{
   app.use('/api/decisions', decisionsRouter);
   app.use('/api/courtrooms', courtroomsRouter);
   app.use('/api/models', modelsRouter);
+  app.use('/api/agents', agentsRouter);
   const server = await new Promise<http.Server>((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
@@ -95,6 +98,7 @@ async function clean(): Promise<void> {
     Message.deleteMany({}),
     Verdict.deleteMany({}),
     Model.deleteMany({}),
+    Agent.deleteMany({}),
   ]);
 }
 
@@ -320,5 +324,53 @@ describe('Phase 22 - mass assignment on generic update endpoints', () => {
     assert.equal(stored.enabled, false, 'an allowed field is applied');
     assert.equal(String(stored.userId), userA, 'ownership is not reassignable');
     assert.equal(stored.status, 'untested', 'status stays server-managed');
+  });
+
+  /**
+   * Before this guard a caller could rewrite `userId` on their own agent or
+   * courtroom, which does not merely edit the document — it moves it into
+   * someone else's workspace. The attacker keeps the id they already know, and
+   * the victim's roster silently gains an attacker-authored `systemPrompt` (or
+   * courtroom objective/participants) that runs inside their debates.
+   */
+  test('update an agent cannot rewrite ownership', async () => {
+    const agent = await Agent.create({
+      userId: userA,
+      name: 'Owned agent',
+      systemPrompt: 'owner-authored prompt',
+    });
+
+    const res = await server.request(`/api/agents/${agent._id}`, {
+      method: 'PUT',
+      token: await tokenFor(userA),
+      body: { name: 'Renamed', userId: userB, createdAt: new Date('2000-01-01') },
+    });
+    assert.equal(res.status, 200);
+
+    const stored = await Agent.findById(agent._id) as any;
+    assert.equal(stored.name, 'Renamed', 'an allowed field is applied');
+    assert.equal(String(stored.userId), userA, 'ownership is not reassignable');
+    assert.notEqual(stored.createdAt.toISOString(), '2000-01-01T00:00:00.000Z', 'createdAt stays server-managed');
+
+    const inVictim = await Agent.find({ userId: userB });
+    assert.equal(inVictim.length, 0, 'the agent never lands in the other user workspace');
+  });
+
+  test('update a courtroom cannot rewrite ownership', async () => {
+    const courtroomId = await seedCourtroom(userA);
+
+    const res = await server.request(`/api/courtrooms/${courtroomId}`, {
+      method: 'PUT',
+      token: await tokenFor(userA),
+      body: { name: 'Renamed Court', userId: userB },
+    });
+    assert.equal(res.status, 200);
+
+    const stored = await Courtroom.findById(courtroomId) as any;
+    assert.equal(stored.name, 'Renamed Court', 'an allowed field is applied');
+    assert.equal(String(stored.userId), userA, 'ownership is not reassignable');
+
+    const inVictim = await Courtroom.find({ userId: userB });
+    assert.equal(inVictim.length, 0, 'the courtroom never lands in the other user workspace');
   });
 });

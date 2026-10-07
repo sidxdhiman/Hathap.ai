@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { serverErrorMessage } from '../utils/httpError';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
 import { benchmarkService, cleanBenchmarkInput, cleanCaseInput } from '../evaluation/benchmarkService';
@@ -12,6 +13,27 @@ import { EVALUATION_POLICY_VERSION, DEFAULT_EXPECTED_STRUCTURE, sanitizeSignal }
 import { evaluateStructure } from '../evaluation/structuralEvaluator';
 
 const router = express.Router();
+
+/**
+ * Every `:xxxId` on this router addresses a Mongo document. Rejecting a
+ * malformed one before the handler runs keeps a client-side typo from reaching
+ * Mongoose, where it surfaces as a CastError — a 500 on some routes and a raw
+ * driver message on others, instead of the controlled 404 the rest of the API
+ * returns for an id that does not exist.
+ */
+function rejectMalformedIdParam(param: string): void {
+  router.param(param, (req, res, next, value) => {
+    if (!mongoose.Types.ObjectId.isValid(String(value))) {
+      res.status(404).json({ error: 'Resource not found.' });
+      return;
+    }
+    next();
+  });
+}
+
+(['runId', 'benchmarkId', 'caseId', 'rubricId', 'baselineId', 'comparisonId'] as const).forEach(
+  rejectMalformedIdParam
+);
 
 /** Lax patch cleaner: PATCH updates any subset of a case's fields. */
 function cleanCasePatch(body: any): Record<string, unknown> {

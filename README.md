@@ -101,6 +101,11 @@ Hathap.ai/
 
 ### Installation
 
+> There is **no root `package.json`**: running `npm install` in the repository
+> root installs nothing. `client/` and `server/` are independent workspaces and
+> each has to be installed on its own. On Windows, `install.bat` at the
+> repository root does both.
+
 1. Clone the repository:
 ```bash
 git clone <repository-url>
@@ -124,6 +129,12 @@ npm install
 # In server directory
 cp .env.example .env
 # Edit .env with your MongoDB URI, JWT secret, and encryption secret
+#
+# Two values are load-bearing — the server refuses to start without them:
+#   JWT_SECRET                >= 16 characters (required when NODE_ENV=production)
+#   API_KEY_ENCRYPTION_SECRET >= 32 characters, always
+# `.env.example` ships placeholders that already satisfy both.
+#
 # Web-grounded research (Phase 11): add a Brave Developer API key to go real, e.g.
 #   BRAVE_SEARCH_API_KEY=BSA_xxxxxxxxxxxxxxxxxxxx
 #   HATHAP_RESEARCH_PROVIDER=brave        # 'auto' (default) also works once the key is set
@@ -132,7 +143,22 @@ cp .env.example .env
 # placeholder data). See docs/PHASE11_ENGINEERING_REPORT.md.
 ```
 
-5. Start the development servers:
+5. Add a model on the Models page (API key, base URL) so agents have something
+   to call.
+
+   Model base URLs must resolve to public address space — loopback, RFC1918,
+   link-local and other special-purpose ranges are refused by default. The
+   shipped **"Ollama (local)"** preset points at `http://localhost:11434/v1`,
+   which is exactly such a destination, so using it requires an explicit
+   operator opt-in in `server/.env`:
+```bash
+MODEL_URL_ALLOWLIST=http://localhost:11434/v1
+```
+   The value is a comma-separated list of exact base URLs (see
+   `server/.env.example`); leave it unset to keep every private destination
+   unreachable.
+
+6. Start the development servers:
 
 **Backend (from server directory):**
 ```bash
@@ -145,6 +171,26 @@ Server will run on `http://localhost:4000`
 npm run dev
 ```
 Frontend will run on `http://localhost:5173`
+
+### First-run checklist
+
+1. Open `http://localhost:5173` and sign up — every new account is seeded with
+   10 ready-made agents, so you are never starting from an empty roster.
+2. **Models → Add model**: paste a provider key and base URL (see the
+   `MODEL_URL_ALLOWLIST` note above for local providers). Runs need at least
+   one *enabled* model; without one every task fails with
+   `No models configured or enabled`.
+3. **Decisions → New decision → Start**: you do not pick participants — a
+   decision with no panel automatically debates with your own agent roster
+   (capped by its configured agent limit), and the resolved panel is saved
+   onto the decision.
+4. **Courtrooms**: create a courtroom, add at least one participant, then
+   Start. The Start button stays disabled until there is a participant and an
+   enabled model.
+5. **Evaluations → Seed benchmark → New run → Execute**: the seeded benchmark
+   runs against your decision engine with no provider configuration of its
+   own. A failed run keeps the reason on each case result
+   (`GET /api/evaluations/runs/:id/results`).
 
 ### Build for Production
 

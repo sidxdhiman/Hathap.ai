@@ -21,7 +21,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { _id, id: bodyId, ...rest } = req.body;
+    const { _id, id: bodyId, createdAt, ...rest } = req.body;
     const item = new Courtroom({ ...rest, userId: req.userId });
     await item.save();
     res.json(item);
@@ -31,13 +31,35 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Fields a client may change through the generic update endpoint. `userId`
+ * (ownership) and `createdAt` are server-managed: a raw body spread let a
+ * caller rewrite `userId`, planting a courtroom — participants, objective and
+ * mode chosen by the caller — inside another user's workspace.
+ */
+const COURTROOM_UPDATABLE_FIELDS = [
+  'name',
+  'description',
+  'objective',
+  'mode',
+  'participants',
+  'status',
+] as const;
+
+function pickCourtroomUpdates(body: any): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  for (const field of COURTROOM_UPDATABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
+  }
+  return updates;
+}
+
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { _id, id: bodyId, ...updates } = req.body;
     const updated = await Courtroom.findOneAndUpdate(
       { _id: id, userId: req.userId },
-      updates,
+      pickCourtroomUpdates(req.body || {}),
       { new: true }
     );
     res.json(updated);

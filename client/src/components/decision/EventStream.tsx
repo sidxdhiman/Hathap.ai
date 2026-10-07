@@ -54,6 +54,18 @@ const EVENT_LABELS: Record<string, string> = {
   'agent.failed': 'Agent failed',
 };
 
+/**
+ * The reason an execution or task failed, as carried on the event payload.
+ * Without it the stream only ever shows a label ("Execution failed") and the
+ * operator has to go digging through API responses for the actual cause.
+ */
+function eventMessage(event: DecisionEvent): string {
+  const data = event.data;
+  if (!data || typeof data !== 'object') return '';
+  const message = (data as Record<string, unknown>).message;
+  return typeof message === 'string' && message.trim() ? message.trim() : '';
+}
+
 function matchesFilter(event: DecisionEvent, filter: string): boolean {
   const type = event.type;
   const taskType =
@@ -142,12 +154,13 @@ export const EventStream: React.FC<EventStreamProps> = ({ events, loading }) => 
           <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
             {filtered.map((event) => {
               const color = ERROR_EVENT_COLORS[event.type] || 'text-theme-text-primary';
+              const message = eventMessage(event);
               return (
                 <div key={event._id} className="flex items-center gap-2 text-xs py-1 border-b border-theme-border/40 last:border-0">
                   <span className="text-[10px] text-theme-text-secondary font-mono shrink-0">
                     {formatTime(new Date(event.createdAt))}
                   </span>
-                  <span className={`font-medium truncate ${color}`}>
+                  <span className={`font-medium shrink-0 ${color}`}>
                     {EVENT_LABELS[event.type] || event.type}
                   </span>
                   {event.taskId && (
@@ -168,6 +181,15 @@ export const EventStream: React.FC<EventStreamProps> = ({ events, loading }) => 
                   {event.data && typeof event.data === 'object' && 'phase' in event.data && (
                     <span className="text-[10px] text-theme-text-secondary shrink-0">
                       {String(event.data.phase)}
+                    </span>
+                  )}
+                  {message && (
+                    <span
+                      className="text-[10px] text-theme-text-secondary truncate min-w-0 flex-1"
+                      title={message}
+                      data-testid="event-message"
+                    >
+                      {message}
                     </span>
                   )}
                 </div>

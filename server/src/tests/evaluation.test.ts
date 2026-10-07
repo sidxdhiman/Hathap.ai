@@ -366,6 +366,14 @@ describe('Phase 9 - static evaluation runs', () => {
     expectStatus(execute, 400, 'run-isolation-execute');
   });
 
+  test('a malformed run id is a 404, not a Mongoose cast error', async () => {
+    for (const path of ['/runs/notanid', '/runs/notanid/aggregate', '/runs/notanid/results']) {
+      const res = await reqA(path);
+      expectStatus(res, 404, `malformed-run${path}`);
+      assert.equal(res.body.error, 'Resource not found.');
+    }
+  });
+
   test('cancel draft run and delete run', async () => {
     const created = await reqA('/runs', {
       method: 'POST',

@@ -1,5 +1,6 @@
 import Courtroom from '../models/Courtroom';
 import Agent from '../models/Agent';
+import Decision from '../models/Decision';
 import Model from '../models/Model';
 import Message from '../models/Message';
 import Verdict from '../models/Verdict';
@@ -26,6 +27,13 @@ export interface DecisionDebateOptions {
   /** Phase 6 routing override: agent + model the router selected for this task. */
   routing?: { agentId?: string; modelId?: string };
 }
+
+/**
+ * Panel size used when a decision carries no participants and no
+ * `configuration.maxAgents` limit. Matches the `maxAgents` default a decision
+ * is created with, so an unconfigured decision uses the whole default roster.
+ */
+const DEFAULT_DECISION_AGENT_COUNT = 10;
 
 class DebateEngine {
   private strategies: Record<string, DebateStrategy> = {};
@@ -172,20 +180,55 @@ class DebateEngine {
     const userId = options.userId;
     const strategyKey = normalizeDebateMode(options.strategy);
 
-    // Resolve agent participants
-    const participantIds = (options.participants || [])
+    // Resolve agent participants.
+    //
+    // None of the flows that create a Decision ask the user for a panel: the
+    // create form has no participant picker, the evaluation runner and the
+    // research demo construct a decision directly, and `POST /api/decisions`
+    // simply omits the field. An empty `participants` list is therefore the
+    // normal case rather than a caller mistake, and treating it as fatal meant
+    // every one of those decisions failed its first task with
+    // "No valid agent participants could be resolved for this decision."
+    //
+    // Fall back to the user's own agent roster (capped by the decision's
+    // configured agent limit, the same way the A2A path picks a default panel)
+    // and persist the resolved panel so every downstream task in the execution
+    // — analysis, debate, synthesis — debates with the same agents.
+    const decision = options.decisionId
+      ? await Decision.findById(options.decisionId).lean()
+      : null;
+
+    let participants: any[] = Array.isArray(options.participants) ? options.participants : [];
+    const participantIds = participants
       .map((p: any) => p?.agentId || p?.id || p?._id)
       .filter(Boolean);
 
-    const agents = participantIds.length > 0
+    let agents = participantIds.length > 0
       ? await Agent.find({ _id: { $in: participantIds }, userId })
       : [];
+
+    if (agents.length === 0) {
+      const configuredLimit = Number(decision?.configuration?.maxAgents);
+      const limit =
+        Number.isFinite(configuredLimit) && configuredLimit > 0
+          ? Math.floor(configuredLimit)
+          : DEFAULT_DECISION_AGENT_COUNT;
+      agents = await Agent.find({ userId }).sort({ createdAt: 1 }).limit(limit);
+
+      if (agents.length > 0 && options.decisionId) {
+        participants = agents.map((agent) => ({ agentId: agent._id.toString() }));
+        await Decision.updateOne(
+          { _id: options.decisionId, userId },
+          { $set: { participants } }
+        );
+      }
+    }
 
     // Phase 6 — the router selected the agent that should lead this debate. If
     // that agent is not among the decision's participants, include it so the
     // routed choice actually participates (decision path only; courtrooms are
     // untouched).
-    if (options.routing?.agentId && participantIds.length > 0) {
+    if (options.routing?.agentId && agents.length > 0) {
       const routedPresent = agents.some(
         (a) => a._id.toString() === options.routing?.agentId || a.id === options.routing?.agentId
       );
@@ -198,7 +241,9 @@ class DebateEngine {
     }
 
     if (agents.length === 0) {
-      throw new Error('No valid agent participants could be resolved for this decision.');
+      throw new Error(
+        'No agents available for this decision. Create at least one agent on the Agents page.'
+      );
     }
 
     // Resolve enabled models
@@ -213,7 +258,7 @@ class DebateEngine {
       courtroom: {
         name: 'Decision',
         objective,
-        participants: options.participants || [],
+        participants,
       } as any,
       agents,
       models,

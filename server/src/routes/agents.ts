@@ -12,7 +12,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { _id, id: bodyId, ...rest } = req.body;
+    const { _id, id: bodyId, createdAt, ...rest } = req.body;
     const item = new Agent({ ...rest, userId: req.userId });
     await item.save();
     res.json(item);
@@ -22,13 +22,40 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Fields a client may change through the generic update endpoint. `userId`
+ * (ownership) and `createdAt` are server-managed. Spreading the raw body let a
+ * caller rewrite `userId`, which moves the agent into another user's workspace:
+ * the attacker keeps the document id and the victim's roster silently gains an
+ * attacker-authored `systemPrompt` that runs inside their debates.
+ */
+const AGENT_UPDATABLE_FIELDS = [
+  'name',
+  'description',
+  'systemPrompt',
+  'assignedModelId',
+  'avatar',
+  'colorTag',
+  'logo',
+  'capabilities',
+  'tools',
+  'constraints',
+] as const;
+
+function pickAgentUpdates(body: any): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  for (const field of AGENT_UPDATABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
+  }
+  return updates;
+}
+
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { _id, id: bodyId, ...updates } = req.body;
     const updated = await Agent.findOneAndUpdate(
       { _id: id, userId: req.userId },
-      updates,
+      pickAgentUpdates(req.body || {}),
       { new: true }
     );
     res.json(updated);
