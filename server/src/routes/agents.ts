@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { serverErrorMessage } from '../utils/httpError';
 import Agent from '../models/Agent';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
@@ -53,6 +54,12 @@ function pickAgentUpdates(body: any): Record<string, unknown> {
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    // A malformed id must be a controlled 404, never a Mongoose CastError: this
+    // handler is async and Express 4 does not forward its rejections, so an
+    // unhandled cast would take the process down.
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Agent not found.' });
+    }
     const updated = await Agent.findOneAndUpdate(
       { _id: id, userId: req.userId },
       pickAgentUpdates(req.body || {}),
@@ -66,9 +73,17 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  await Agent.deleteOne({ _id: id, userId: req.userId });
-  res.json({ ok: true });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Agent not found.' });
+    }
+    await Agent.deleteOne({ _id: id, userId: req.userId });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[Agents DELETE]', error);
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to delete agent.') });
+  }
 });
 
 export default router;

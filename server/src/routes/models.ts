@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { serverErrorMessage } from '../utils/httpError';
 import Model from '../models/Model';
 import { requireAuth, AuthRequest } from '../middleware/authMiddleware';
@@ -73,6 +74,11 @@ const MODEL_UPDATABLE_FIELDS = ['provider', 'displayName', 'modelName', 'baseUrl
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    // A malformed id must be a controlled 404, never a Mongoose CastError (an
+    // async rejection Express 4 would not catch).
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Model not found.' });
+    }
     const model = await Model.findOne({ _id: id, userId: req.userId });
     if (!model) {
       return res.status(404).json({ error: 'Model not found.' });
@@ -99,9 +105,17 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  await Model.deleteOne({ _id: id, userId: req.userId });
-  res.json({ ok: true });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Model not found.' });
+    }
+    await Model.deleteOne({ _id: id, userId: req.userId });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[Models DELETE]', error);
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to delete model.') });
+  }
 });
 
 router.post('/:id/test', requireAuth, async (req: AuthRequest, res) => {

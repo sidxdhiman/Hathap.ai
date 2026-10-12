@@ -102,4 +102,53 @@ describe('AppProvider', () => {
     }
     expect(result.current.toasts).toHaveLength(0);
   });
+
+  it('surfaces a failed model delete and resyncs instead of hiding it', async () => {
+    const model = { _id: 'm1', ...baseModel, apiKey: 'sk-live' };
+    fetchMock.mockImplementation((url: string, init?: any) => {
+      const method = init?.method || 'GET';
+      if (url.endsWith('/api/models') && method === 'GET') return Promise.resolve(jsonResponse([model]));
+      if (url.endsWith('/api/agents')) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/courtrooms')) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/models/m1') && method === 'DELETE') {
+        return Promise.resolve(jsonResponse({ error: 'nope' }, false));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { result } = renderHook(() => useApp(), { wrapper: AppProvider });
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+
+    await act(async () => {
+      result.current.deleteModel('m1');
+    });
+
+    // The optimistic removal is rolled back by a resync, and the failure is shown.
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.toasts.some((t) => t.variant === 'error')).toBe(true);
+  });
+
+  it('reconciles a newly created agent with the server-assigned id', async () => {
+    fetchMock.mockImplementation((url: string, init?: any) => {
+      const method = init?.method || 'GET';
+      if (url.endsWith('/api/models')) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/agents') && method === 'GET') return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/courtrooms')) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith('/api/agents') && method === 'POST') {
+        return Promise.resolve(jsonResponse({ _id: 'server-1', name: 'A', assignedModelId: 'm1' }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { result } = renderHook(() => useApp(), { wrapper: AppProvider });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      result.current.addAgentTemplate({ id: 'agent-temp', name: 'A', assignedModelId: 'm1' } as any);
+    });
+
+    await waitFor(() => expect(result.current.agentTemplates).toHaveLength(1));
+    expect(result.current.agentTemplates[0].id).toBe('server-1');
+    expect(result.current.toasts).toHaveLength(0);
+  });
 });

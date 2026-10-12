@@ -57,6 +57,11 @@ function pickCourtroomUpdates(body: any): Record<string, unknown> {
 router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    // A malformed id must be a controlled 404, never a Mongoose CastError (an
+    // async rejection Express 4 would not catch).
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
     const updated = await Courtroom.findOneAndUpdate(
       { _id: id, userId: req.userId },
       pickCourtroomUpdates(req.body || {}),
@@ -70,9 +75,17 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const { id } = req.params;
-  await Courtroom.deleteOne({ _id: id, userId: req.userId });
-  res.json({ ok: true });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
+    await Courtroom.deleteOne({ _id: id, userId: req.userId });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('[Courtrooms DELETE]', error);
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to delete courtroom.') });
+  }
 });
 
 router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {

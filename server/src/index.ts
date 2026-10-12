@@ -19,6 +19,17 @@ import { serverErrorMessage } from './utils/httpError';
 
 dotenv.config();
 
+// Express 4 does not forward a rejected promise from an async route handler to
+// the error middleware; the rejection is left unhandled and Node's default
+// policy (--unhandled-rejections=throw) turns it into a process-terminating
+// uncaught exception. A single bad request could then reset every in-flight
+// connection. Registering a listener disables that default and keeps the server
+// serving. Routes are still expected to handle their own errors — this is the
+// last-resort net, not a substitute for a controlled response.
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled rejection]', reason);
+});
+
 if (!process.env.API_KEY_ENCRYPTION_SECRET || process.env.API_KEY_ENCRYPTION_SECRET.length < 32) {
   console.error(
     'FATAL: API_KEY_ENCRYPTION_SECRET must be set in server/.env and be at least 32 characters.'

@@ -156,22 +156,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteModel = (id: string) => {
     setModels((prev) => prev.filter((m) => m.id !== id));
-    void apiFetch(`/api/models/${id}`, { method: 'DELETE' }).catch(() => {});
+    // Optimistic, but never silent: if the server refuses the delete, say so and
+    // resync so the UI does not claim a change that was not persisted.
+    void apiJson(`/api/models/${id}`, { method: 'DELETE', errorMessage: 'Failed to delete model.' }).catch(
+      async () => {
+        showToast('error', 'Failed to delete model.');
+        await refreshData();
+      }
+    );
   };
 
   const addAgentTemplate = (agent: AgentTemplate) => {
     setAgentTemplates((prev) => [...prev, agent]);
-    void apiFetch('/api/agents', { method: 'POST', json: agent }).catch(() => {});
+    // The server owns the id. Reconcile the optimistic row with the persisted
+    // document so a later edit/delete targets the real id, and surface a failure
+    // instead of leaving a row that only exists in the browser.
+    void apiJson<AgentTemplate>('/api/agents', {
+      method: 'POST',
+      json: agent,
+      errorMessage: 'Failed to create agent.',
+    })
+      .then((data) => {
+        const saved = mapAgent(data);
+        setAgentTemplates((prev) => prev.map((a) => (a.id === agent.id ? saved : a)));
+      })
+      .catch(async () => {
+        showToast('error', 'Failed to create agent.');
+        await refreshData();
+      });
   };
 
   const updateAgentTemplate = (id: string, updates: Partial<AgentTemplate>) => {
     setAgentTemplates((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
-    void apiFetch(`/api/agents/${id}`, { method: 'PUT', json: updates }).catch(() => {});
+    void apiJson(`/api/agents/${id}`, {
+      method: 'PUT',
+      json: updates,
+      errorMessage: 'Failed to update agent.',
+    }).catch(async () => {
+      showToast('error', 'Failed to update agent.');
+      await refreshData();
+    });
   };
 
   const deleteAgentTemplate = (id: string) => {
     setAgentTemplates((prev) => prev.filter((a) => a.id !== id));
-    void apiFetch(`/api/agents/${id}`, { method: 'DELETE' }).catch(() => {});
+    void apiJson(`/api/agents/${id}`, { method: 'DELETE', errorMessage: 'Failed to delete agent.' }).catch(
+      async () => {
+        showToast('error', 'Failed to delete agent.');
+        await refreshData();
+      }
+    );
   };
 
   const addCourtroom = async (courtroom: Omit<Courtroom, 'id'>) => {
