@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlaskConical,
   Play,
@@ -230,29 +230,55 @@ const BenchmarkCardBody: React.FC<{ benchmark: Benchmark }> = ({ benchmark }) =>
   );
 };
 
-const RunRow: React.FC<{ run: EvaluationRun }> = ({ run }) => {
-  const { getRunResults, cancelRun, deleteRun, getRunAggregate, createBaseline } = useEvaluation();
+export const RunRow: React.FC<{ run: EvaluationRun }> = ({ run }) => {
+  const { getRunResults, startRun, cancelRun, deleteRun, getRunAggregate, createBaseline } = useEvaluation();
   const { showToast } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [results, setResults] = useState<EvaluationCaseResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [aggregate, setAggregate] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState<string | null>(null);
+  const resultsLoadedRef = useRef(false);
 
-  const toggle = async () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (next && results.length === 0 && (run.status === 'completed' || run.status === 'partial')) {
-      setLoading(true);
+  const isTerminal = run.status === 'completed' || run.status === 'partial' || run.status === 'failed';
+
+  const toggle = () => setExpanded((prev) => !prev);
+
+  // Load results once a run reaches a terminal state while the row is open. This
+  // also covers runs that finish after the row was expanded, and failed runs
+  // whose per-case error reasons would otherwise stay hidden behind "no results".
+  useEffect(() => {
+    if (!expanded || !isTerminal || resultsLoadedRef.current) return;
+    resultsLoadedRef.current = true;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
       try {
-        setResults(await getRunResults(run.id));
+        const fetched = await getRunResults(run.id);
+        if (cancelled) return;
+        setResults(fetched);
         const agg = await getRunAggregate(run.id);
-        if (typeof agg.score === 'number') setAggregate(agg.score);
+        if (!cancelled && typeof agg.score === 'number') setAggregate(agg.score);
       } catch (err: any) {
         showToast('error', err.message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, isTerminal, run.id, getRunResults, getRunAggregate, showToast]);
+
+  const handleStart = async () => {
+    setBusy('start');
+    try {
+      await startRun(run.id);
+      showToast('info', 'Run started — results stream in as cases complete');
+    } catch (err: any) {
+      showToast('error', err.message);
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -344,9 +370,9 @@ const RunRow: React.FC<{ run: EvaluationRun }> = ({ run }) => {
             <p className="text-sm text-theme-text-secondary">Loading results…</p>
           ) : results.length === 0 ? (
             <p className="text-sm text-theme-text-secondary">
-              {run.status === 'completed' || run.status === 'partial'
-                ? 'No results returned for this run.'
-                : 'Start or execute this run to produce results.'}
+              {isTerminal
+                ? 'No results were recorded for this run.'
+                : 'Start this run to produce results.'}
             </p>
           ) : (
             <div className="space-y-2">
@@ -385,9 +411,9 @@ const RunRow: React.FC<{ run: EvaluationRun }> = ({ run }) => {
                 <Download size={14} /> Save as baseline
               </Button>
             )}
-            {(run.status === 'draft' || run.status === 'cancelled' || run.status === 'failed') && (
-              <Button size="sm" variant="secondary" disabled title="Open the run record on the server">
-                <Play size={14} /> Start / execute via API
+            {run.status === 'draft' && (
+              <Button size="sm" variant="secondary" onClick={handleStart} isLoading={busy === 'start'}>
+                <Play size={14} /> Start run
               </Button>
             )}
             {(run.status === 'running' || run.status === 'queued') && (

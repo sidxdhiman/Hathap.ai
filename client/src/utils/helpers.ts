@@ -66,9 +66,13 @@ export const getStatusColor = (
     case 'completed':
       return 'bg-green-500/20';
     case 'error':
+    case 'failed':
       return 'bg-red-500/20';
     case 'untested':
     case 'draft':
+    case 'paused':
+    case 'cancelled':
+    case 'awaiting_review':
       return 'bg-yellow-500/20';
     default:
       return 'bg-blue-500/20';
@@ -84,9 +88,13 @@ export const getStatusText = (
     case 'completed':
       return 'text-green-400';
     case 'error':
+    case 'failed':
       return 'text-red-400';
     case 'untested':
     case 'draft':
+    case 'paused':
+    case 'cancelled':
+    case 'awaiting_review':
       return 'text-yellow-400';
     default:
       return 'text-blue-400';

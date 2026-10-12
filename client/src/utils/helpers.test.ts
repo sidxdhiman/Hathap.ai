@@ -76,11 +76,25 @@ describe('helpers', () => {
     expect(getStatusColor('anything-else')).toBe('bg-blue-500/20');
   });
 
+  it('getStatusColor flags terminal decision states so failures are not shown as in-progress', () => {
+    expect(getStatusColor('failed')).toBe('bg-red-500/20');
+    expect(getStatusColor('cancelled')).toBe('bg-yellow-500/20');
+    expect(getStatusColor('paused')).toBe('bg-yellow-500/20');
+    expect(getStatusColor('awaiting_review')).toBe('bg-yellow-500/20');
+    expect(getStatusColor('debating')).toBe('bg-blue-500/20');
+  });
+
   it('getStatusText maps the same statuses to the text palette', () => {
     expect(getStatusText('completed')).toBe('text-green-400');
     expect(getStatusText('error')).toBe('text-red-400');
     expect(getStatusText('untested')).toBe('text-yellow-400');
     expect(getStatusText('unknown')).toBe('text-blue-400');
+  });
+
+  it('getStatusText flags failed decisions in red', () => {
+    expect(getStatusText('failed')).toBe('text-red-400');
+    expect(getStatusText('cancelled')).toBe('text-yellow-400');
+    expect(getStatusText('verifying')).toBe('text-blue-400');
   });
 
   it('formatDate renders a stable en-US date string', () => {

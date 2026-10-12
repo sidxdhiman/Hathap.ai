@@ -32,6 +32,7 @@ export const ModelsPage: React.FC = () => {
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [togglingModel, setTogglingModel] = useState<string | null>(null);
 
   const emptyForm = {
     provider: '',
@@ -122,7 +123,15 @@ export const ModelsPage: React.FC = () => {
   };
 
   const handleToggleEnabled = async (model: Model) => {
-    await updateModel(model.id, { enabled: !model.enabled });
+    setTogglingModel(model.id);
+    try {
+      await updateModel(model.id, { enabled: !model.enabled });
+      showToast('success', `${model.displayName} ${model.enabled ? 'disabled' : 'enabled'}.`);
+    } catch (err: any) {
+      showToast('error', err.message || `Failed to update ${model.displayName}.`);
+    } finally {
+      setTogglingModel(null);
+    }
   };
 
   const handleTestConnection = async (model: Model) => {
@@ -274,6 +283,7 @@ export const ModelsPage: React.FC = () => {
                     size="sm"
                     variant="secondary"
                     onClick={() => handleToggleEnabled(model)}
+                    isLoading={togglingModel === model.id}
                   >
                     {model.enabled ? 'Enabled' : 'Disabled'}
                   </Button>

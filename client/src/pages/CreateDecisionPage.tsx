@@ -261,6 +261,13 @@ export const CreateDecisionPage: React.FC = () => {
                   />
                   Verify claims against retrieved evidence
                 </label>
+                <p className="text-xs text-theme-text-secondary mt-3">
+                  Participants are chosen automatically from your agent roster — manage them on the{' '}
+                  <Link to="/agents" className="text-sky-400 underline">
+                    Agents
+                  </Link>{' '}
+                  page.
+                </p>
               </CardBody>
               <CardFooter>
                 <Button onClick={handleCreate} isLoading={isCreating} disabled={isCreating}>
