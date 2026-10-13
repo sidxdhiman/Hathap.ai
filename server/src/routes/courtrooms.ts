@@ -15,8 +15,15 @@ import { aggregateUsage } from '../decision/usage';
 const router = express.Router();
 
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
-  const items = await Courtroom.find({ userId: req.userId });
-  res.json(items);
+  // Guard the async work so a database fault answers the request instead of
+  // leaving it unanswered (Express 4 does not forward rejected async handlers).
+  try {
+    const items = await Courtroom.find({ userId: req.userId });
+    res.json(items);
+  } catch (error: any) {
+    console.error('[Courtrooms GET]', error);
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to load courtrooms.') });
+  }
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
@@ -67,6 +74,13 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
       pickCourtroomUpdates(req.body || {}),
       { new: true }
     );
+    // null means the id matched nothing the caller owns — a foreign id or a
+    // nonexistent one. Returning `200 null` let the client believe an edit was
+    // persisted when it was not; the caller gets the same 404 for both cases so
+    // a foreign resource's existence is never disclosed.
+    if (!updated) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
     res.json(updated);
   } catch (error: any) {
     console.error('[Courtrooms PUT]', error);
@@ -80,7 +94,12 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'Courtroom not found.' });
     }
-    await Courtroom.deleteOne({ _id: id, userId: req.userId });
+    const result = await Courtroom.deleteOne({ _id: id, userId: req.userId });
+    // A delete that matched nothing is a 404, consistent with the update path
+    // and the decision router, instead of an unconditional `{ ok: true }`.
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
     res.json({ ok: true });
   } catch (error: any) {
     console.error('[Courtrooms DELETE]', error);
@@ -92,6 +111,11 @@ router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   const { id } = req.params;
   const usageRecords: TokenUsage[] = [];
   try {
+    // Reject a malformed id before it reaches `validateDebateReady`, which
+    // casts `_id` and would otherwise raise a CastError surfaced as a 500.
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Courtroom not found.' });
+    }
     const validation = await validateDebateReady(id, req.userId!);
     if (!validation.ok) {
       return res.status(400).json({ error: validation.errors.join(' '), errors: validation.errors });

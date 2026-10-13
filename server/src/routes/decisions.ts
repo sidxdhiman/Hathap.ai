@@ -203,7 +203,7 @@ router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
     });
   } catch (error: any) {
     console.error('[Decisions start]', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to start the decision.') });
   }
 });
 
@@ -256,7 +256,7 @@ router.post('/:id/plan', requireAuth, async (req: AuthRequest, res) => {
     });
   } catch (error: any) {
     console.error('[Decisions plan]', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to plan the decision.') });
   }
 });
 
@@ -358,7 +358,7 @@ router.post('/:id/pause', requireAuth, async (req: AuthRequest, res) => {
     await decisionOrchestrator.pauseDecision(req.params.id, req.userId!);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to pause the decision.') });
   }
 });
 
@@ -367,7 +367,7 @@ router.post('/:id/resume', requireAuth, async (req: AuthRequest, res) => {
     await decisionOrchestrator.resumeDecision(req.params.id, req.userId!);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to resume the decision.') });
   }
 });
 
@@ -376,7 +376,7 @@ router.post('/:id/cancel', requireAuth, async (req: AuthRequest, res) => {
     await decisionOrchestrator.cancelDecision(req.params.id, req.userId!);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to cancel the decision.') });
   }
 });
 
@@ -798,7 +798,7 @@ router.get('/:id/report', requireAuth, async (req: AuthRequest, res) => {
     }
     res.send(result.markdown);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: serverErrorMessage(error, 'Failed to generate the report.') });
   }
 });
 

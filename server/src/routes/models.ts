@@ -16,9 +16,16 @@ import { isBlockedModelUrlError, validateModelBaseUrl } from '../security/modelU
 const router = express.Router();
 
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
-  await migratePlainTextApiKeys(req.userId!);
-  const models = await Model.find({ userId: req.userId });
-  res.json(serializeModels(models));
+  // Guard the async work so a database fault answers the request instead of
+  // leaving it unanswered (Express 4 does not forward rejected async handlers).
+  try {
+    await migratePlainTextApiKeys(req.userId!);
+    const models = await Model.find({ userId: req.userId });
+    res.json(serializeModels(models));
+  } catch (error: any) {
+    console.error('[Models GET]', error);
+    res.status(500).json({ error: serverErrorMessage(error, 'Failed to load models.') });
+  }
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
@@ -110,7 +117,14 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(404).json({ error: 'Model not found.' });
     }
-    await Model.deleteOne({ _id: id, userId: req.userId });
+    const result = await Model.deleteOne({ _id: id, userId: req.userId });
+    // A delete that matched nothing (foreign or already removed) is a 404,
+    // consistent with the update path and the decision router, instead of an
+    // unconditional `{ ok: true }`. Foreign and nonexistent are the same 404,
+    // so the response still does not disclose whether a foreign model exists.
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Model not found.' });
+    }
     res.json({ ok: true });
   } catch (error: any) {
     console.error('[Models DELETE]', error);
@@ -121,6 +135,14 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 router.post('/:id/test', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    // Reject a malformed id before it reaches Mongoose. A CastError raised here
+    // would land in the catch below, whose own re-query on the same id rejects
+    // again outside any handler — an unhandled rejection that leaves the caller
+    // with no response at all (the failure Phase 27's process-level net only
+    // logs, it does not answer).
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Model not found.' });
+    }
     const model = await Model.findOne({ _id: id, userId: req.userId });
     if (!model) {
       return res.status(404).json({ error: 'Model not found.' });
@@ -143,10 +165,20 @@ router.post('/:id/test', requireAuth, async (req: AuthRequest, res) => {
 
     res.json({ success: true, model: serializeModel(model) });
   } catch (error: any) {
-    const model = await Model.findOne({ _id: req.params.id, userId: req.userId });
-    if (model) {
-      model.status = 'error';
-      await model.save();
+    // Record the failure, but never let bookkeeping replace the response: a
+    // second database fault while flipping the status must not leave the caller
+    // without an answer. The connection-test message stays verbatim because it
+    // is the reason the user ran the test (an expected diagnostic, not an
+    // internal fault).
+    let model: any = null;
+    try {
+      model = await Model.findOne({ _id: req.params.id, userId: req.userId });
+      if (model) {
+        model.status = 'error';
+        await model.save();
+      }
+    } catch (statusError) {
+      console.error('[Models test] failed to record error status', statusError);
     }
     res.status(400).json({
       success: false,

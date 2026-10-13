@@ -51,6 +51,14 @@ router.post('/signup', async (req, res) => {
   if (!isNonEmptyString(email) || !isNonEmptyString(password) || !isNonEmptyString(name)) {
     return res.status(400).json({ error: 'Missing fields' });
   }
+  // Structurally validate the email before it can create an unusable account.
+  // Deliberately a shape check only (`local@domain.tld`), not a full RFC parse —
+  // it rejects obvious junk while accepting every address the app legitimately
+  // creates. Login and password recovery are untouched: they never validate
+  // format, so an account created before this rule still authenticates.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
   if (password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
@@ -141,10 +149,15 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
  *  dropped at the login screen. Every *other* session is invalidated. */
 router.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
   const { currentPassword, newPassword } = req.body || {};
-  if (!currentPassword || !newPassword) {
+  // Both credentials must be non-empty strings. TypeScript types are erased at
+  // runtime, so a non-string `currentPassword` (an injected object, say) would
+  // otherwise reach `bcrypt.compare`, which throws on illegal arguments and
+  // turns a malformed request into a 500 instead of the controlled 400 this
+  // endpoint already returns for every other bad input.
+  if (!isNonEmptyString(currentPassword) || !isNonEmptyString(newPassword)) {
     return res.status(400).json({ error: 'Current and new password are required.' });
   }
-  if (typeof newPassword !== 'string' || newPassword.length < 8) {
+  if (newPassword.length < 8) {
     return res.status(400).json({ error: 'New password must be at least 8 characters.' });
   }
   if (currentPassword === newPassword) {
