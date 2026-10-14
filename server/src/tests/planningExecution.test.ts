@@ -263,13 +263,28 @@ async function clean(): Promise<void> {
   ]);
 }
 
-async function waitUntil(fn: () => Promise<boolean>, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await fn()) return;
+/**
+ * Drive the worker until the execution reaches a terminal state.
+ *
+ * The debate handler schedules downstream verify/red-team/reconciliation tasks
+ * mid-execution; those only become claimable on a later tick. A fixed iteration
+ * count that stops ticking, then polls the DB, can strand freshly scheduled
+ * tasks as `pending` and produce a false timeout under load. Ticking continues
+ * through the whole time budget so no task is left unclaimed. Assertions after
+ * this call are unchanged and still require the execution to have COMPLETED.
+ */
+async function driveUntilTerminal(worker: Worker, execId: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const e = await Execution.findById(execId);
+    if (e && ['completed', 'failed', 'cancelled'].includes(e.status as string)) return;
+    await worker.tickNow();
     await new Promise((r) => setTimeout(r, 30));
   }
-  throw new Error('Timed out waiting for condition');
+  const e = await Execution.findById(execId);
+  throw new Error(
+    `Timed out waiting for execution to reach a terminal state (status=${e?.status ?? 'unknown'})`
+  );
 }
 
 const planCallFor = (plan: unknown): PlanCallFunction =>
@@ -307,14 +322,7 @@ async function runPlannedExecution(plan: PlanShape): Promise<string> {
   await Execution.updateOne({ _id: execution._id }, { $set: { status: 'queued', planningStatus: 'planned' } });
 
   const worker = makeWorker();
-  for (let i = 0; i < 50 && (await Execution.findById(executionId))?.status !== 'completed'; i++) {
-    await worker.tickNow();
-    await new Promise((r) => setTimeout(r, 30));
-  }
-  await waitUntil(async () => {
-    const e = await Execution.findById(executionId);
-    return !!e && e.status === 'completed';
-  });
+  await driveUntilTerminal(worker, executionId);
   return executionId;
 }
 
@@ -396,14 +404,7 @@ describe('Phase 5 — intelligent planning full execution graph (persistent, rea
     await Execution.updateOne({ _id: execution._id }, { $set: { status: 'queued', planningStatus: 'planned' } });
 
     const worker = makeWorker();
-    for (let i = 0; i < 50 && (await Execution.findById(executionId))?.status !== 'completed'; i++) {
-      await worker.tickNow();
-      await new Promise((r) => setTimeout(r, 30));
-    }
-    await waitUntil(async () => {
-      const e = await Execution.findById(executionId);
-      return !!e && e.status === 'completed';
-    });
+    await driveUntilTerminal(worker, executionId);
     assert.equal((await Execution.findById(executionId))!.status, 'completed');
     const planDoc = await ExecutionPlan.findOne({ executionId });
     assert.ok(['fallback','baseline'].includes(planDoc!.source));

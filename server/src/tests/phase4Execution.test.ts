@@ -156,13 +156,28 @@ async function clean(): Promise<void> {
   ]);
 }
 
-async function waitUntil(fn: () => Promise<boolean>, timeoutMs = 8000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await fn()) return;
+/**
+ * Drive the worker until the execution reaches a terminal state.
+ *
+ * The debate handler schedules downstream verify/red-team/reconciliation tasks
+ * mid-execution; those only become claimable on a later tick. A fixed iteration
+ * count that stops ticking, then polls the DB, can strand freshly scheduled
+ * tasks as `pending` and produce a false timeout under load. Ticking continues
+ * through the whole time budget so no task is left unclaimed. Assertions after
+ * this call are unchanged and still require the execution to have COMPLETED.
+ */
+async function driveUntilTerminal(worker: Worker, execId: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const e = await Execution.findById(execId);
+    if (e && ['completed', 'failed', 'cancelled'].includes(e.status as string)) return;
+    await worker.tickNow();
     await new Promise((r) => setTimeout(r, 30));
   }
-  throw new Error('Timed out waiting for condition');
+  const e = await Execution.findById(execId);
+  throw new Error(
+    `Timed out waiting for execution to reach a terminal state (status=${e?.status ?? 'unknown'})`
+  );
 }
 
 let decisionId: string;
@@ -255,15 +270,7 @@ describe('Phase 4 full execution graph (persistent, real task IDs)', () => {
     });
 
     const worker = makeWorker();
-    for (let i = 0; i < 40 && (await Execution.findById(executionId))?.status !== 'completed'; i++) {
-      await worker.tickNow();
-      await new Promise((r) => setTimeout(r, 30));
-    }
-
-    await waitUntil(async () => {
-      const e = await Execution.findById(executionId);
-      return !!e && e.status === 'completed';
-    });
+    await driveUntilTerminal(worker, executionId);
 
     const tasks = await Task.find({ executionId }).sort({ type: 1 });
     const byType: Record<string, number> = {};

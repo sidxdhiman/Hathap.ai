@@ -32,6 +32,21 @@ import { lessonsService, cleanLessonInput, LessonInput } from '../memory/lessonS
 
 const router = express.Router();
 
+/**
+ * Reject a malformed decision id before any handler runs. Every route below
+ * scopes its queries by `_id`; without this guard a malformed id raised a
+ * Mongoose CastError that surfaced as a 500 on the read paths — inconsistent
+ * with the controlled 404 the update/delete paths (and the rest of the API)
+ * already return, and with the client's expectation of a `404 { error }`.
+ */
+router.param('id', (req, res, next, value) => {
+  if (!mongoose.Types.ObjectId.isValid(String(value))) {
+    res.status(404).json({ error: 'Decision not found.' });
+    return;
+  }
+  next();
+});
+
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const items = await Decision.find({ userId: req.userId }).sort({ createdAt: -1 });
@@ -173,6 +188,13 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/:id/start', requireAuth, async (req: AuthRequest, res) => {
   try {
+    // A decision the caller does not own (or that does not exist) is a 404.
+    // Delegating the existence check to the orchestrator would throw a bare
+    // Error that the generic catch maps to a 400, misreporting an authorization
+    // boundary as a malformed request.
+    const owner = await Decision.findOne({ _id: req.params.id, userId: req.userId });
+    if (!owner) return res.status(404).json({ error: 'Decision not found.' });
+
     const researchQueries: Array<{ query: string; purpose?: string; maxResults?: number }> = Array.isArray(
       req.body?.researchQueries
     )
