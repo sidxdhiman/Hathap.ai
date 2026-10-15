@@ -9,6 +9,50 @@
 
 ---
 
+## Phase 31 — Credential Exposure Review & Secret-Scanning Controls
+
+> Authoritative for credential-hygiene items. Phase 30 remains authoritative
+> for release items. Procedures: `docs/SECRET_SCANNING.md`; full evidence:
+> `docs/PHASE31_ENGINEERING_REPORT.md`.
+
+### A. Verified this phase
+
+| Item | Evidence |
+|---|---|
+| GitHub secret-scanning alert #1 (`mongodb_atlas_db_uri_with_credentials`, open, `publicly_leaked=true`, created 14 s after the Phase 30 push) classified **false positive** | Location: `server/src/tests/securityConfig.test.ts:127` (blob from `3d6e215`) — synthetic `admin`/`topsecret` fixture on host `ac-abc.mongodb.net`; no other alerts (open=1, resolved=0); no force-pushes in the last ~90 days |
+| False-positive literal removed from source | Fixture now assembled from fragments at runtime; assertions preserved (redaction equality + username/password absence). Alert left **open** for the owner to dismiss manually — Phase 31 made no GitHub security-state changes |
+| Repo-wide + full-history scans | 464 worktree files / 1510 history blobs (incl. unreachable) inspected; all high findings classified placeholders/test fixtures/code expressions; new scanner: 287 tracked sources and 1267 history sources, **0 errors** |
+| Recurrence prevention | `scripts/secret-scan.cjs` (dependency-free, values never printed) + CI job `secret-scan` + regression test `repoSecretHygiene.test.ts` in `npm test` |
+| Push-protection status | **Unknown**: push-protection-alerts API returns 404; `security_and_analysis` statuses not readable. GitHub secret scanning itself is confirmed active |
+
+### B. Unresolved security risk — historical `server/.env`
+
+- **Classification: probable/unverified historical exposure.** Audit docs
+  (`AUDIT_PHASE11.md`, `POST_PHASE10_AUDIT.md`) state as fact that
+  `server/.env` (JWT secret + AES encryption key) was tracked before the
+  Sep-21 history cleanup. The file never appears in any commit reachable from
+  local refs; pre-rewrite SHAs cited by those audits are missing from the
+  object database; the local reflog starts at the cleanup tag — consistent
+  with a rewrite. **Whether those commits ever reached GitHub cannot be
+  verified from this machine.**
+- **Absence of a secret-scanning alert is not evidence the credentials were
+  never exposed** — GitHub indexes reachable commits; a rewritten-away commit
+  would not re-alert.
+
+- [ ] **Owner action — rotate `JWT_SECRET`** (see `docs/SECRET_SCANNING.md`
+  rotation table; all sessions invalidated). Keep this item open until done.
+- [ ] **Owner action — rotate `API_KEY_ENCRYPTION_SECRET` ONLY with a
+  re-encryption plan** (blind rotation makes stored model API keys
+  undecryptable). Keep this item open until done and verified.
+
+### C. Owner actions — GitHub state
+
+- [ ] Dismiss secret-scanning **alert #1** as `false_positive` (evidence in
+  this section) — done manually by the owner, not by Phase 31.
+- [ ] Consider enabling push protection for `main`.
+
+---
+
 ## Phase 30 — Release Blocker Review & Deployment Readiness
 
 ### A. Implemented and verified (this phase)

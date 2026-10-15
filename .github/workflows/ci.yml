@@ -14,6 +14,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secret-scan:
+    name: Secret scan (tracked files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Scan tracked files for secret material
+        run: node scripts/secret-scan.cjs
+
   server:
     name: Server (typecheck + tests + build)
     runs-on: ubuntu-latest

@@ -123,10 +123,21 @@ describe('security config - credential redaction in logs', () => {
   });
 
   test('mongodb+srv and https URIs redact the same way', () => {
-    assert.equal(
-      redactCredentials('mongodb+srv://admin:topsecret@ac-abc.mongodb.net/db'),
-      'mongodb+srv://<redacted>@ac-abc.mongodb.net/db'
-    );
+    // Assembled from fragments at runtime. A single literal of the form
+    // mongodb+srv://<user>:<pass>@<host>.mongodb.net/<db> matches GitHub's
+    // MongoDB Atlas secret-scanning pattern even when the credentials are
+    // synthetic; this exact fixture triggered a false-positive alert
+    // (secret-scanning/1) on 2026-10-15. The structure under test is
+    // unchanged: scheme, userinfo, host and path must survive redaction.
+    const atlasUser = 'admin';
+    const atlasPass = 'topsecret';
+    const atlasHost = 'ac-abc.mongodb.net';
+    const atlasUri = `mongodb+srv://${atlasUser}:${atlasPass}@${atlasHost}/db`;
+    const redactedAtlas = redactCredentials(atlasUri);
+    assert.equal(redactedAtlas, `mongodb+srv://<redacted>@${atlasHost}/db`);
+    assert.ok(!redactedAtlas.includes(atlasPass), 'password must not survive redaction');
+    assert.ok(!redactedAtlas.includes(atlasUser), 'username must not survive redaction');
+
     assert.equal(
       redactCredentials('failed to reach https://user:pass@example.com/api'),
       'failed to reach https://<redacted>@example.com/api'
