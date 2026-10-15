@@ -13,11 +13,23 @@ import evaluationsRoutes from './routes/evaluations';
 import researchRoutes from './routes/research';
 import { setupA2A } from './a2a/setupA2A';
 import { worker } from './tasks/worker';
-import { isProductionEnvironment, getJwtSecret } from './config/security';
+import { isProductionEnvironment, getJwtSecret, resolveTrustProxy, redactCredentials } from './config/security';
 import { corsMiddleware } from './middleware/cors';
 import { serverErrorMessage } from './utils/httpError';
 
 dotenv.config();
+
+// Every production-only rule in this server keys off NODE_ENV being exactly
+// `production` (JWT secret enforcement, deny-by-default CORS, generic
+// client-facing errors). With it unset the process silently adopts development
+// behavior — including the fallback JWT secret — so an unconfigured deployment
+// announces itself at boot instead of being discovered after go-live.
+if (!(process.env.NODE_ENV || '').trim()) {
+  console.warn(
+    '[config] NODE_ENV is not set — running with development behavior ' +
+      '(development JWT/CORS/error defaults). Set NODE_ENV=production for production deployments.'
+  );
+}
 
 // Express 4 does not forward a rejected promise from an async route handler to
 // the error middleware; the rejection is left unhandled and Node's default
@@ -27,7 +39,8 @@ dotenv.config();
 // serving. Routes are still expected to handle their own errors — this is the
 // last-resort net, not a substitute for a controlled response.
 process.on('unhandledRejection', (reason) => {
-  console.error('[Unhandled rejection]', reason);
+  const detail = reason instanceof Error ? reason.stack ?? String(reason) : String(reason);
+  console.error('[Unhandled rejection]', redactCredentials(detail));
 });
 
 if (!process.env.API_KEY_ENCRYPTION_SECRET || process.env.API_KEY_ENCRYPTION_SECRET.length < 32) {
@@ -49,6 +62,16 @@ if (isProductionEnvironment()) {
 }
 
 const app = express();
+
+// Reverse-proxy trust is opt-in (TRUST_PROXY). Unset is the secure default:
+// `request.ip` stays the socket peer, so `X-Forwarded-For` from an untrusted
+// client can never forge a rate-limit key. Behind a proxy it MUST be set, or
+// every client shares the proxy's address and the auth limiter's
+// 30-requests-per-15-minutes budget becomes one site-wide bucket that locks out
+// legitimate logins. See config/security.ts resolveTrustProxy.
+const trustProxy = resolveTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
+
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 // Env-driven CORS: allow-list (CORS_ORIGINS), localhost dev origins, and
 // non-browser (no-Origin) requests. Unknown cross-origin browser requests are
@@ -89,16 +112,24 @@ async function start() {
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+  // A2A routes are mounted BEFORE the error middleware on purpose: Express only
+  // forwards `next(err)` to an error handler registered after the layer that
+  // threw. Registered in the previous order, `requireA2AAuthentication`'s
+  // documented "let the app-level error handler report it" fallback (and the
+  // task gate's) silently missed this handler and fell through to Express's
+  // default finalizer — an HTML body instead of `{ error }`, and a stack trace
+  // whenever NODE_ENV was not `production`.
+  setupA2A(app);
+
   // Safety net for errors that reach Express as middleware errors (a thrown
   // synchronous handler, or an explicit `next(err)`). The real error is logged
   // here; in production the client only receives a generic 5xx message.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('[Unhandled error]', err);
+    const detail = err instanceof Error ? err.stack ?? String(err) : String(err);
+    console.error('[Unhandled error]', redactCredentials(detail));
     const status = (err as { status?: number })?.status ?? 500;
     res.status(status).json({ error: serverErrorMessage(err) });
   });
-
-  setupA2A(app);
 
   const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
@@ -117,7 +148,11 @@ async function start() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-start().catch((err) => {
-  console.error('Failed to start server:', err);
+start().catch((err: unknown) => {
+  // Driver failures can echo the connection string (a malformed MONGODB_URI
+  // surfaces as a MongoParseError containing the URI). Credentials embedded in
+  // the URI are redacted before the failure reaches the log stream.
+  const detail = err instanceof Error ? err.stack ?? String(err) : String(err);
+  console.error('Failed to start server:', redactCredentials(detail));
   process.exit(1);
 });

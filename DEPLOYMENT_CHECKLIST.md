@@ -1,5 +1,87 @@
 # 🚀 Deployment Checklist
 
+> **Phase 30 — authoritative section.** The material below this divider
+> predates Phase 30 (it is a token-budget era record from 2024) and is kept
+> only as history. For anything release-related, this Phase 30 section is the
+> source of truth. Evidence for every ✅ is a command actually executed in
+> this repository on 2026-10-15 against commit `604f8df` (plus this phase's
+> diff); evidence for every ⬜ is the absence of that execution.
+
+---
+
+## Phase 30 — Release Blocker Review & Deployment Readiness
+
+### A. Implemented and verified (this phase)
+
+| Item | Evidence |
+|---|---|
+| Reverse-proxy support (opt-in `TRUST_PROXY`: hop count / `loopback` / …, refused otherwise) | `server/src/config/security.ts` `resolveTrustProxy`; wired via `app.set('trust proxy', …)` in `index.ts`; tests in `securityConfig.test.ts` |
+| Boot warning when `NODE_ENV` is unset (previously: silent development rules incl. fallback JWT secret) | `server/src/index.ts`; warn-only, never a 500 |
+| Credential redaction in startup / unhandled-rejection / middleware-error logs (`scheme://user:pass@` → `<redacted>`) | `redactCredentials` in `security.ts`; used in `index.ts`; regression tests |
+| Latent A2A error-path hardening: `setupA2A(app)` now mounts **before** the error middleware so `next(error)` reaches the `{ error }` JSON handler instead of Express's HTML finalizer | `server/src/index.ts` (paths were unreachable in practice — defensive) |
+| Dependency audit: measured, classified, dispositioned (no blind fixes) | Server 3 high (`braces` dev-chain, no fix, exposure documented) / client 21 findings; one safe in-range remediation applied (`source-map-js` 1.2.1→1.2.2, lockfile-only, 22→21). `npm audit fix`/`--force` rejected: dry-run churned 21 packages incl. an `@typescript-eslint` downgrade without removing findings. Full rationale in `README.md` → Security audit |
+| Full local validation after changes | Server: `tsc --noEmit` clean, **511/511 tests** (2 consecutive full runs, exit 0; Phase 29's flaky `planningExecution` timeout did not recur — execution status stays `queued` until finalize, so `queued` under load is expected), `npm run build` clean. Client: `eslint` clean (0 warnings), `tsc --noEmit` clean, `typecheck:config` clean, **123/123 tests** (15 files), `npm run build` clean |
+| Production configuration contract documented | `README.md` → "Production Configuration Contract (Phase 30)": required env vars and their actual enforcement, boot/health/shutdown semantics, single-replica constraint, client bake-time contract |
+| `.env.example` updated | `server/.env.example` documents `TRUST_PROXY` semantics and the failure mode it prevents |
+
+### B. Documented, not executed (verifiable later; not this phase's scope)
+
+- [ ] **Staging deployment** — no staging environment exists in this repository; nothing has been deployed.
+- [ ] **TLS / HTTPS end-to-end** — TLS termination is a platform concern, not implemented in this repo.
+- [ ] **Production build from a clean checkout** (`npm ci && npm run build` in both packages, start from `server/`) — locally verified with `npm test`/`npm run build` trees, not on a clean remote host.
+- [ ] **Live provider calls** (Brave Search, model endpoints) — tests use the explicitly-labeled mock.
+- [ ] **Real-browser smoke test against a built bundle** — client tests are jsdom-based.
+- [ ] **Backup / restore of MongoDB** — no backup tooling exists in this repo.
+- [ ] **`npm audit` re-run** — numbers above are this phase's measurement; re-run on any dependency change.
+
+### C. Not implemented — required before a real production launch
+
+- [ ] **Container / deploy descriptor** (Dockerfile, compose, or PaaS config): none exists; the tree has no production process definition beyond `npm start`.
+- [ ] **Reverse-proxy / web-server config**: no nginx/Caddy/Traefik config is checked in. The topology choice (same-origin SPA+API vs split origins) is still an open decision — see `docs/AUTHENTICATION_ARCHITECTURE.md` §4.4 — and it gates the HttpOnly-cookie migration (tokens are currently `localStorage`, i.e. XSS-readable).
+- [ ] **Static hosting decision**: `client/dist` must be served at the domain root (no `base` is configured in `vite.config.ts`); sub-path hosting is unsupported as-is.
+- [ ] **Log aggregation / monitoring / alerting**: logs go to stdout only; there is no metrics endpoint, no tracing, no on-call wiring.
+- [ ] **Process supervision**: no `uncaughtException` handler (Node default: exit 1) — a supervisor must restart the process; graceful shutdown exists for SIGINT/SIGTERM only.
+- [ ] **Backup automation and documented RTO/RPO**.
+- [ ] **Rate-limit strategy for shared deployments** — limits are per-process in-memory; the single-replica constraint (README, Production Configuration Contract) must hold, or limits/worker/SSE must move to shared infrastructure.
+- [ ] **Secret provisioning/rotation story** — especially `API_KEY_ENCRYPTION_SECRET` (no rotation tool; changing it bricks stored model keys).
+- [ ] **Reproducible dependency-remediation plan** for the deferred audit findings (semver-major upgrades of Vite/Tailwind/React Router/Vitest/`@typescript-eslint` toolchains).
+
+### D. Decisions the platform owner must supply
+
+- [ ] Hostname(s) and DNS; public origin(s) for `CORS_ORIGINS`, `APP_URL`, `A2A_BASE_URL`.
+- [ ] TLS termination point and proxy hop count (→ `TRUST_PROXY`).
+- [ ] MongoDB provider, URI, credentials, retention/backup policy.
+- [ ] Replica count (must be `1` until C's rate-limit/worker/SSE items are addressed).
+- [ ] Which env-var values are provisioned where (the repo never embeds them; `server/.env` is git-ignored and local-only).
+- [ ] Rollback mechanism and health-check path configuration (`GET /api/health` is the built-in probe).
+
+### Release blockers disposition (Phase 29 gate, re-evaluated here)
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | No production config documentation | **Fixed** — README contract + this checklist |
+| 2 | `NODE_ENV` unset ⇒ silent dev rules (fallback JWT secret, dev CORS) | **Fixed** — loud boot warning (env-var use itself is a deployment decision, §D) |
+| 3 | No `trust proxy` support ⇒ behind-proxy auth rate-limit lockout | **Fixed** — opt-in `TRUST_PROXY`, secure default unchanged |
+| 4 | Startup log could echo `MONGODB_URI` credentials | **Fixed** — `redactCredentials` on all three log sites |
+| 5 | A2A routes mounted after error middleware (latent HTML/stack responses) | **Fixed** — reordered; paths currently unreachable (defensive) |
+| 6 | Dependency advisories (server 3 high / client 21) | **Deferred with acceptance** — all in dev/build/test tooling; exposure, fix-availability and upgrade cost documented in README. No blind/downgrade fixes applied |
+| 7 | One flaky server test under load (`planningExecution`, Phase 29) | **Not recurring** — root-caused (`queued` is a non-terminal state), 2× full-suite green |
+| 8 | No deploy artifacts, monitoring, backups, topology (§C) | **Out of scope by design** — requires platform information that does not exist in this repo; tracked in §C/§D |
+
+### Local validation procedure (re-run before any release)
+
+```bash
+cd server && npm ci && npx tsc --noEmit && npm test && npm run build
+cd client && npm ci && npm run lint && npx tsc --noEmit \
+  && npm run typecheck:config && npm test && npm run build
+```
+
+Plus CI on GitHub Actions (`.github/workflows/ci.yml` — server job with
+MongoDB 7 service, client job, test-only env values) must be green on the
+release commit, and `npm audit` re-run for a fresh exposure reading.
+
+---
+
 ## Pre-Deployment Verification
 
 ### Code Changes

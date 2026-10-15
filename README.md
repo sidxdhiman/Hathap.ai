@@ -208,6 +208,90 @@ npm run build
 ```
 The compiled build will be in the `server/dist` directory.
 
+## 🚀 Production Configuration Contract (Phase 30)
+
+Everything below is read from the implementation (`server/src/index.ts`,
+`server/src/config/security.ts`, `server/src/utils/encryption.ts`,
+`server/src/research/researchConfig.ts`, `client/src/api/client.ts`,
+`server/.env.example`). It states what the code enforces — not what any
+particular host does. No deployment has been performed from this repository:
+there is still no Dockerfile, compose file, PaaS descriptor, reverse-proxy
+config or production hostname in the tree.
+
+### Runtime, build and start
+
+| Requirement | Value | Verified in |
+|---|---|---|
+| Node.js | 20 (LTS), pinned in `.nvmrc` (root); CI reads it via `node-version-file` | `.nvmrc`, `.github/workflows/ci.yml` |
+| Install | `npm ci` in each of `server/` and `client/` (each has its own lockfile; there is no root `package.json`) | `README` above, CI |
+| Server build | `cd server && npm run build` → `server/dist` (git-ignored) | `server/package.json` |
+| Server start | `cd server && npm start` → `node dist/index.js` | `server/package.json` |
+| `.env` location | `dotenv.config()` loads from the **process working directory**, so start the server from `server/` | `server/src/index.ts` |
+| Client build | `cd client && npm run build` (`tsc && vite build`) → `client/dist`; `VITE_API_URL` is baked in at build time | `client/package.json` |
+
+### Required environment variables
+
+| Variable | Required | What the code actually does |
+|---|---|---|
+| `NODE_ENV=production` | **Required** (not enforced) | Exact-string match switches on every production rule. Unset ⇒ silently development: fallback JWT secret allowed, dev CORS origins allowed, raw error messages returned to clients. The server now prints a boot warning when it is unset (`index.ts`). |
+| `JWT_SECRET` (≥ 16 chars) | Required in production | Server exits(1) at boot if missing or short when `NODE_ENV=production`. Development falls back to a non-secret value with a warning. |
+| `API_KEY_ENCRYPTION_SECRET` (≥ 32 chars) | Required in **every** environment | Server exits(1) at boot; AES-256-GCM key derivation also re-checks per call. **Changing it later makes every stored model key undecryptable — there is no rotation tool.** |
+| `MONGODB_URI` | Required in practice | Silent default `mongodb://localhost:27017/hathap`; a connect failure exits(1) after the driver timeout. Format is not validated at boot. |
+| `PORT` | Optional (default `4000`) | `app.listen(PORT)` with **no host argument** — it binds all interfaces. There is no `HOST` variable. |
+| `CORS_ORIGINS` | Required when client and API are on different origins | Comma-separated allow-list. Production reflects **no** browser origin when unset; requests without an `Origin` header are always allowed. No credentials header is ever emitted. |
+| `TRUST_PROXY` | Required **behind** a reverse proxy | Opt-in hop count (`1`), `true/false`, `loopback`/`linklocal`/`uniquelocal`; unset ⇒ `X-Forwarded-For` ignored (secure default). Unset behind a proxy collapses the auth rate limiter (30 req/15 min) into one site-wide bucket. |
+| `APP_URL` | Recommended | Public origin sent upstream as `HTTP-Referer`; defaults to `http://localhost:5173`. |
+| `A2A_BASE_URL` | Recommended if the A2A surface is exposed | Published in the agent card and logged at boot; defaults to `http://localhost:4000`. |
+| `A2A_API_KEY` + `A2A_DEFAULT_USER_ID` | Optional | Service auth for A2A; both must be set or the header is ignored. |
+| `BRAVE_SEARCH_API_KEY`, `HATHAP_RESEARCH_PROVIDER` | Optional | Default `auto`: real research only with a key, otherwise an explicitly labeled mock. A production misconfiguration fails when a research task runs, **not** at boot. |
+| `MODEL_URL_ALLOWLIST` | Optional | Opt-in list of exact base URLs that may be private addresses (SSRF guard); unset ⇒ no private destination reachable. |
+| `OPENAI_API_KEY` | Optional | Fallback provider key for stored models that have no key of their own. |
+| Client: `VITE_API_URL` | Optional | Baked in at build time. Unset ⇒ relative `/api/…` on the SPA's own origin (same-origin topology or reverse proxy required). Must not include an `/api` suffix. |
+
+Secret generation: any strong random value, e.g. `openssl rand -base64 48` for
+`JWT_SECRET` and a 32+ character random string for
+`API_KEY_ENCRYPTION_SECRET`. Placeholders in `server/.env.example` satisfy the
+length checks but are public — replace them. Never commit real values
+(`server/.env` is git-ignored).
+
+### Startup, health, shutdown
+
+- Boot order: env guards (`API_KEY_ENCRYPTION_SECRET`, then `JWT_SECRET` in
+  production) → MongoDB connect → background worker start → routes →
+  `GET /api/health` → listen. Any guard or connect failure logs and exits(1);
+  the health route exists only after a successful connect, and the process does
+  not listen before then.
+- `GET /api/health` → `200 {"ok":true}`, unauthenticated, un-rate-limited —
+  use it as the platform health check.
+- Shutdown: on `SIGINT`/`SIGTERM` the server stops accepting connections,
+  lets in-flight worker tasks drain (≤ 10 s), disconnects from MongoDB, and
+  exits 0. There is **no** `uncaughtException` handler: an uncaught exception
+  terminates the process (Node's default) and the platform must restart it.
+  `unhandledRejection` is logged and does **not** crash the process.
+- **Single-replica constraint:** the task worker, the SSE event bus and the
+  rate-limit store are all process-local. Running more than one API replica
+  without external coordination will double-execute work and break live event
+  delivery.
+
+### Logging and error responses
+
+- In production, client-facing errors are the generic message from
+  `serverErrorMessage` (`utils/httpError.ts`); the detail is logged
+  server-side only. Development passes the real message through.
+- Startup-failure, unhandled-rejection and middleware-error logs redact
+  `scheme://user:pass@` credentials (Phase 30), so a malformed `MONGODB_URI`
+  cannot print a connection-string password into the log stream.
+- Some deliberate 400 validation responses echo the validator's own message;
+  these are caller-input echoes, not internal state.
+
+### What this contract does not cover
+
+Hosting platform, TLS termination, DNS, backups, log aggregation and the
+SPA/API topology are **not** defined by this repository. See
+[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) for the readiness
+checklist and [`docs/AUTHENTICATION_ARCHITECTURE.md`](docs/AUTHENTICATION_ARCHITECTURE.md)
+§4.4 for the topology decision record that gates the HttpOnly cookie migration.
+
 ## 🔧 Development & CI (Reproducible Verification)
 
 The repository is verifiable from a clean checkout. The GitHub Actions workflow at
@@ -277,21 +361,39 @@ npm run build        # build client/dist
 
 ### Security audit
 
-`npm audit` is not a CI gate by design. Baseline (Phase 12.6, see
-[`docs/SECURITY_AUDIT_REPORT.md`](docs/SECURITY_AUDIT_REPORT.md)):
+`npm audit` is not a CI gate by design: several findings only resolve through
+semver-major upgrades of build/test tooling, so a blocking audit gate would
+fail required CI against an intentional, documented dependency state. Current
+measured state (Phase 30, re-run in this repository):
 
-- **Server**: `npm audit` → **1 critical transitive finding** (`proxy-addr`,
-  [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
-  IPv4-mapped IPv6 trust subnet) disclosed after the Phase 12.6 baseline. It is
-  reachable only behind a proxy with a configured trust boundary, and `trust
-  proxy` is unset here, so practical exposure is limited; track it for a
-  dedicated dependency-remediation pass. (The Phase 12.6 baseline was 0.)
-- **Client**: `npm audit` → **12 documented findings** that only resolve via semver-major
-  upgrades (Vite → 8, `@typescript-eslint` → 8, React Router → 7, Vitest mocker → 4.1.11).
-  A blocking audit gate would fail required CI against an intentional, documented
-  dependency state, so audit is kept out of the required path. Run `npm audit` in
-  `client/` and `server/` whenever dependencies are touched and review the output against
-  the report.
+- **Server: 3 high, 0 critical.** All three are the same chain —
+  `ts-node-dev` → `chokidar` → `braces@3.0.3`
+  ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm),
+  stack-exhaustion DoS through deeply nested patterns). npm reports
+  **no fix available** (no patched `braces` is published). Verified exposure:
+  `npm ls braces --omit=dev` is empty — the chain exists only under
+  `devDependencies`, is loaded only by `npm run dev`, and the production
+  start path (`node dist/index.js`) loads none of these modules. Attack
+  condition is a local development machine watching attacker-shaped file
+  patterns. **Disposition: deferred** until a patched `braces` ships or the
+  dev runner is replaced; re-check on every dependency change. (The earlier
+  `proxy-addr` critical was remediated in Phase 28.)
+- **Client: 21 findings (6 moderate, 13 high, 2 critical)**, all in
+  development/build/test tooling: `tailwindcss`/`@typescript-eslint` chains
+  (`braces`, `minimatch`, `fast-glob`, `postcss-selector-parser`),
+  `vite`/`esbuild` (dev-server request smuggling), `react-router` (fixed only
+  in v7), and `vitest`'s `tinypool`/`@vitest/mocker` (test-runner only).
+  None of these packages are imported by application source, so none are
+  bundled into `client/dist`; the shipped artifact is static HTML/JS/CSS.
+  Phase 30 removed the one safely fixable high (`source-map-js`, in-range
+  lockfile update, 22 → 21). The remaining findings need semver-major
+  upgrades (Vite 8, Tailwind 4, React Router 7, Vitest 5, ESLint-serializer
+  majors) and are **deferred with acceptance**, not marked harmless — they
+  are real advisories whose exposure is currently build/test-time on trusted
+  code.
+
+Run `npm audit` in `client/` and `server/` whenever dependencies are touched
+and review the output against [`docs/SECURITY_AUDIT_REPORT.md`](docs/SECURITY_AUDIT_REPORT.md).
 
 ### Authentication and sessions
 

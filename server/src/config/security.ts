@@ -1,6 +1,7 @@
 /**
  * Central, deliberately-small configuration for security-sensitive settings:
- * the JWT signing secret, and the CORS origin policy.
+ * the JWT signing secret, the CORS origin policy, the reverse-proxy trust
+ * setting, and log redaction of embedded credentials.
  *
  * Rules:
  *  - Production requires an explicit, strong `JWT_SECRET`. There is NO
@@ -8,6 +9,9 @@
  *    configuration is a hard error (the server refuses to start).
  *  - Development keeps a conventional (non-secret) fallback so local tooling
  *    and tests work out of the box, clearly separated from production.
+ *  - Express `trust proxy` stays disabled unless the operator opts in, because
+ *    trusting `X-Forwarded-For` from an untrusted peer lets a client forge its
+ *    own rate-limit key.
  */
 
 const DEV_FALLBACK_JWT_SECRET = 'secret';
@@ -96,4 +100,56 @@ export function isAllowedCorsOrigin(origin: string | undefined): boolean {
 
   if (isProductionEnvironment()) return false;
   return DEV_ALLOWED_ORIGINS.includes(origin);
+}
+
+/** Values Express accepts for `app.set('trust proxy', …)` that we permit. */
+export type TrustProxySetting = number | boolean | 'loopback' | 'linklocal' | 'uniquelocal';
+
+/**
+ * Parse the opt-in `TRUST_PROXY` environment variable.
+ *
+ * Returns `undefined` when the variable is unset/empty or unsupported, which
+ * leaves Express at its default (`trust proxy = false`) — the secure default,
+ * because an untrusted `X-Forwarded-For` header must never become the identity
+ * a request is keyed or authorized by.
+ *
+ * Why this exists: `express-rate-limit` keys on `request.ip`. Behind a reverse
+ * proxy with trust disabled, every client shares the proxy's address, so the
+ * 30-requests-per-15-minutes auth limiter becomes one site-wide bucket and
+ * legitimate logins start receiving 429. Set this ONLY when the proxy is in
+ * front of the app and overwrites/appends `X-Forwarded-For` (a hop count like
+ * `1`, or `loopback`) — never on an internet-facing socket, where a client
+ * could forge the header to evade rate limiting.
+ */
+export function resolveTrustProxy(raw: string | undefined): TrustProxySetting | undefined {
+  if (raw === undefined) return undefined;
+  const value = raw.trim();
+  if (value === '') return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  if (value === 'loopback' || value === 'linklocal' || value === 'uniquelocal') return value;
+
+  console.warn(
+    `[security] Ignoring unsupported TRUST_PROXY value ${JSON.stringify(value.slice(0, 40))}. ` +
+      `Expected a hop count (0, 1, 2, ...), true/false, loopback, linklocal or uniquelocal.`
+  );
+  return undefined;
+}
+
+// `scheme://userinfo@host` — the userinfo segment of a connection string
+// (`mongodb://user:password@host`, `postgres://…`, `https://…`). The userinfo
+// group is deliberately broad: anything up to the first `/` or `@` is treated
+// as credentials so unusual URI shapes still redact instead of leaking.
+const URI_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^/@\s]+)@/gi;
+
+/**
+ * Strip credentials embedded in connection-string style URIs before text is
+ * written to a log. `MONGODB_URI` frequently carries a username and password;
+ * driver errors (e.g. a `MongoParseError` for a malformed URI) echo the URI
+ * back verbatim, so the startup failure path must redact it rather than hand a
+ * live credential to the log stream.
+ */
+export function redactCredentials(text: string): string {
+  return text.replace(URI_USERINFO, (_match, scheme: string) => `${scheme}<redacted>@`);
 }
