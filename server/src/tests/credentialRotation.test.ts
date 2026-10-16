@@ -1,6 +1,8 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
@@ -330,5 +332,105 @@ describe('Phase 32 — encryption-key migration service', () => {
     assert.ok(!v.undecryptableIds.includes(m6), 'the resumed record must verify under the new key');
     assert.ok(!JSON.stringify(v).includes(PLAIN_1), 'verification output must never contain plaintext values');
     assert.ok(!JSON.stringify(v).includes('enc:v1:'), 'verification output must never contain ciphertext');
+  });
+});
+
+describe('Phase 33 — operator CLI refusal paths and dry-run (spawned)', () => {
+  const CLI_URI = process.env.MONGODB_URI_TEST_ROTATION || 'mongodb://localhost:27017/hathap_test_phase32_rotation';
+  const CLI_OLD = 'phase33-cli-old-secret-0123456789abcdefg';
+  const CLI_NEW = 'phase33-cli-new-secret-abcdefghijklmnopqrstuvwxyz';
+  const CLI_PLAIN = 'phase33-cli-dryrun-key-0123456789ab';
+  const CLI_PATH = path.resolve(__dirname, '../scripts/rotateApiKeyEncryption.ts');
+
+  let recordId = '';
+
+  function runCli(
+    flags: string[],
+    env: Record<string, string>
+  ): Promise<{ code: number | null; output: string }> {
+    return new Promise((resolve) => {
+      // cwd is the tests directory: there is no .env there, so dotenv cannot
+      // inject ambient values and the spawned CLI sees only what we pass.
+      const child = spawn(
+        process.execPath,
+        ['-r', 'ts-node/register', CLI_PATH, ...flags],
+        { cwd: __dirname, env: { ...process.env, ...env } }
+      );
+      let output = '';
+      child.stdout.on('data', (chunk) => { output += chunk; });
+      child.stderr.on('data', (chunk) => { output += chunk; });
+      child.on('close', (code) => resolve({ code, output }));
+    });
+  }
+
+  before(async () => {
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(CLI_URI);
+    }
+    await Model.deleteMany({});
+    const doc = await Model.create({
+      provider: 'openai',
+      displayName: 'CLI-DRY',
+      modelName: 'cli-dry',
+      apiKey: encryptApiKey(CLI_PLAIN, CLI_OLD),
+      userId: new mongoose.Types.ObjectId(),
+    });
+    recordId = String(doc._id);
+  });
+
+  after(async () => {
+    await Model.deleteMany({});
+    await mongoose.connection.close();
+  });
+
+  test('the CLI refuses to run without the old secret and never echoes key material', async () => {
+    const { code, output } = await runCli(['--dry-run'], {
+      MONGODB_URI: CLI_URI,
+      API_KEY_ENCRYPTION_SECRET: CLI_NEW,
+    });
+    assert.equal(code, 1);
+    assert.ok(output.includes('API_KEY_ENCRYPTION_SECRET_OLD'), 'the refusal must name the missing variable');
+    assert.ok(!output.includes(CLI_NEW), 'no secret value may appear in CLI output');
+  });
+
+  test('the CLI refuses identical old and new secrets', async () => {
+    const { code, output } = await runCli(['--dry-run'], {
+      MONGODB_URI: CLI_URI,
+      API_KEY_ENCRYPTION_SECRET: CLI_NEW,
+      API_KEY_ENCRYPTION_SECRET_OLD: CLI_NEW,
+    });
+    assert.equal(code, 1);
+    assert.ok(output.includes('identical'));
+    assert.ok(!output.includes(CLI_NEW), 'no secret value may appear in CLI output');
+  });
+
+  test('the CLI refuses to modify data without an explicit --yes', async () => {
+    const { code, output } = await runCli([], {
+      MONGODB_URI: CLI_URI,
+      API_KEY_ENCRYPTION_SECRET: CLI_NEW,
+      API_KEY_ENCRYPTION_SECRET_OLD: CLI_OLD,
+    });
+    assert.equal(code, 1);
+    assert.ok(output.includes('Refusing to modify data without --yes'));
+  });
+
+  test('a spawned dry-run reports the plan, exits 0, and writes nothing', async () => {
+    const before = (await Model.findById(recordId))!.apiKey;
+
+    const { code, output } = await runCli(['--dry-run'], {
+      MONGODB_URI: CLI_URI,
+      API_KEY_ENCRYPTION_SECRET: CLI_NEW,
+      API_KEY_ENCRYPTION_SECRET_OLD: CLI_OLD,
+    });
+    assert.equal(code, 0, `dry-run should exit 0 when every record is classifiable; output was: ${output}`);
+    assert.ok(/scanned=1\b/.test(output), `expected scanned=1; output was: ${output}`);
+    assert.ok(/reEncrypted=1\b/.test(output), `expected reEncrypted=1; output was: ${output}`);
+    assert.ok(/failed=0\b/.test(output), `expected failed=0; output was: ${output}`);
+    assert.ok(!output.includes(CLI_PLAIN), 'no plaintext key may appear in CLI output');
+    assert.ok(!output.includes('enc:v1:'), 'no ciphertext may appear in CLI output');
+
+    const after = (await Model.findById(recordId))!.apiKey;
+    assert.equal(after, before, 'a dry-run must not modify the stored record');
+    assert.equal(decryptApiKey(after, CLI_OLD), CLI_PLAIN, 'the record must still decrypt under the old key');
   });
 });

@@ -254,13 +254,18 @@ Secret generation: any strong random value, e.g. `openssl rand -base64 48` for
 length checks but are public — replace them. Never commit real values
 (`server/.env` is git-ignored).
 
-### Credential rotation (Phase 32)
+### Credential rotation (Phase 32; status updated Phase 33)
 
 Both rotation procedures are documented with evidence in
-[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) → Phase 32 and
-[`docs/PHASE32_ENGINEERING_REPORT.md`](docs/PHASE32_ENGINEERING_REPORT.md).
-Neither has been executed against any environment — both are pending owner
-action.
+[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) → Phase 32/33 and
+[`docs/PHASE33_ENGINEERING_REPORT.md`](docs/PHASE33_ENGINEERING_REPORT.md).
+**No production rotation exists to perform — nothing is deployed.** Phase 33
+re-keyed the local dev database off the historically exposed AES key (3
+records migrated and verified; all 8 records now decrypt only under the
+current local secret) and confirmed that the current local `JWT_SECRET` /
+`API_KEY_ENCRYPTION_SECRET` are *not* the exposed historical values. The
+operator CLI is registered as `npm run rotate:api-keys -- --dry-run` in
+`server/` (defaults to dry-run; writes require `--yes`).
 
 - **`JWT_SECRET`:** replace the value in the deployment environment and
   restart. There is a single signing secret (no key rollover, no `kid`), so

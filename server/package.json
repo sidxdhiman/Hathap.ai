@@ -13,7 +13,8 @@
     "test:engine": "node -r ts-node/register --test src/tests/executionEngine.test.ts",
     "test:research": "node -r ts-node/register --test src/tests/researchEngine.test.ts",
     "test:security": "node -r ts-node/register --test src/tests/researchSecurity.test.ts",
-    "test:integration": "node -r ts-node/register --test src/tests/orchestratorLifecycle.test.ts"
+    "test:integration": "node -r ts-node/register --test src/tests/orchestratorLifecycle.test.ts",
+    "rotate:api-keys": "ts-node src/scripts/rotateApiKeyEncryption.ts"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.13",

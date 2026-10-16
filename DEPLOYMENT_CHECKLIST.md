@@ -1,15 +1,83 @@
 # 🚀 Deployment Checklist
 
-> **Phase 32 — production security gate (authoritative for go/no-go and
-> credential-rotation status).** Phase 30 remains authoritative for release
-> items, Phase 31 for credential-hygiene items. The material below the Phase
-> 30 divider predates Phase 30 (a token-budget era record from 2024) and is
-> kept only as history. Evidence for every ✅ is a command actually executed in
-> this repository; evidence for every ⬜ is the absence of that execution.
+> **Phase 33 — credential containment & release gate (authoritative for
+> go/no-go and credential status).** Phase 32 remains the record of the
+> rotation tooling; Phase 30 for release items, Phase 31 for credential
+> hygiene. The material below the Phase 30 divider predates Phase 30 (a
+> token-budget era record from 2024) and is kept only as history. Evidence for
+> every ✅ is a command actually executed in this repository; evidence for
+> every ⬜ is the absence of that execution.
+
+---
+
+## Phase 33 — Credential Containment & Production Release Gate
+
+> **Go/No-Go: 🔴 NO-GO for production deployment.** Full evidence:
+> `docs/PHASE33_ENGINEERING_REPORT.md`. Statuses below are evidence-backed;
+> "owner action required" means this phase reached a checkpoint that only the
+> repository/platform owner can perform (provider consoles, GitHub UI).
+
+### A. Security actions — status table
+
+| # | Action | Status | Evidence |
+|---|---|---|---|
+| 1 | Historical `server/.env` exposure | **Confirmed (upgraded from probable/unverified) — rotation still owner-pending** | Pre-cleanup commits `46aa067a4…`, `aeb6930b…`, `9a7dbb6690…` and their `server/.env` blobs (`99282f1`, 455 B; `2a4a6be`, 841 B) resolve on GitHub today (REST API, 2026-10-16). The file's key list (names/lengths only, values never printed or stored): `MONGODB_URI` (32, credential-free localhost, equals current local), `JWT_SECRET` (9), `API_KEY_ENCRYPTION_SECRET` (36), `PORT`, `A2A_BASE_URL`, `HATHAP_RESEARCH_PROVIDER`. **Not implicated:** MongoDB Atlas credentials, GitHub PAT, `BRAVE_SEARCH_API_KEY`, `A2A_API_KEY` — absent from the historical file and from all scanned history |
+| 2 | Historical `JWT_SECRET` (9-char) | **Local side contained; production rotation owner-action-required** | Hash comparison only: current local `JWT_SECRET` (47 chars) ≠ exposed value. No production deployment exists, so the exposed secret signs nothing live. Before any go-live, generate a **fresh** value from a clean secret manager — never reuse any historical value |
+| 3 | Historical `API_KEY_ENCRYPTION_SECRET` (36-char) | **Local data re-keyed off the exposed key (executed + verified)** | Owner-authorized local-only migration (2026-10-16): pre-migration dry-run `scanned=8 reEncrypted=3 alreadyOnNewKey=5 failed=0`; `--yes` run identical with `failed=0`; post-migration `--verify-only` under the current local key: `total=8 decryptable=8 plaintext=0 undecryptable=0` (exit 0); under the exposed key: `decryptable=0` — the exposed key no longer decrypts anything. Backup of all 8 encrypted records (ciphertext only, ACL-restricted, outside the repo) validated before the write; post-migration comparison: 0 missing, 0 unexpected changes, exactly the 3 expected ciphertexts changed |
+| 4 | GitHub secret-scanning alert #1 | **Owner action required (still OPEN)** | API re-read 2026-10-16: `state=open`, `resolution` null, only alert ever. Synthetic Atlas-URI fixture (Phase 31/32) remains proven false-positive; fixture literal is assembled from fragments (`securityConfig.test.ts:132-135`) and no longer exists as a single literal. Dismiss as `false_positive` in the UI (Security → Secret scanning) — no phase automates this |
+| 5 | Push protection | **Verified complete** | Repo metadata (`security_and_analysis`): `secret_scanning=enabled`, `secret_scanning_push_protection=enabled`; push-protection-alerts endpoint: 0 alerts. Verified via API 2026-10-16 (status was "unknown" in Phases 31–32) |
+| 6 | Production-grade secret provisioning | **Not implemented / blocked on platform (owner)** | Nothing has ever been deployed; no Dockerfile/PaaS/proxy config exists. Startup guards live-verified this phase: missing `API_KEY_ENCRYPTION_SECRET` → exit 1; `NODE_ENV=production` without/with-short `JWT_SECRET` → exit 1 before listening. Requirements: README → Production Configuration Contract |
+| 7 | AES migration tooling safety | **Verified complete** | Code review (decrypt-old/encrypt-new only; undecryptable preserved), 19/19 rotation tests incl. 4 new spawned-CLI refusal/dry-run tests; refusal paths re-exercised live (missing old secret, identical secrets, missing `--yes` → exit 1 each) |
+
+### B. Remaining owner actions (incident stays OPEN until done)
+
+- [ ] **Dismiss secret-scanning alert #1** as `false_positive` in the GitHub UI
+      (Phase 33 re-verified it is still open; evidence in §A4).
+- [ ] **Rotate the two/three OpenRouter provider keys** stored in local dev
+      records `6a3cd154…`, `6a3cd170…`, `6a59cbfd…` **if still active** — they
+      were encrypted under the exposed historical key until this phase's local
+      migration (ciphertext never left the local DB, so exposure requires a DB
+      copy too; rotation closes it regardless). OpenRouter dashboard → Keys →
+      regenerate/revoke; then update the model entries.
+- [ ] **At production provisioning:** generate **fresh** `JWT_SECRET` (≥16) and
+      `API_KEY_ENCRYPTION_SECRET` (≥32) from a clean secret manager; set
+      `NODE_ENV=production`; never reuse any historical value. Follow
+      `docs/SECRET_SCANNING.md` rotation table.
+- [ ] **Consider a GitHub Support request** to purge the unreachable
+      pre-cleanup commits/blobs (`46aa067…`, `aeb6930…`, `9a7dbb6…` and their
+      `server/.env` blobs) — unreachable objects are not removed by force-push
+      and remain retrievable by anyone who knows the SHAs (the SHAs are cited
+      in tracked audit docs). Requires the owner's GitHub account; no phase
+      rewrites history.
+- [ ] **After accepting the Phase 33 migration**, securely delete the backup
+      at `%TEMP%\opencode\hathap_local_key_backup.json` (ciphertext-only
+      rollback file; ACL already restricted to the owner account) — e.g.
+      `icacls … /inheritance:r` then delete, or a file-shredding tool. Keep it
+      until then; do not commit it (it is outside the repo by design).
+
+### C. Production blockers (🔴 NO-GO — all must clear before deployment)
+
+1. Historical credential exposure **confirmed and only partially contained**:
+   the exposed secrets still exist in retained GitHub objects (§A1); provider
+   key rotation (§B) and alert dismissal (§B) are owner-pending.
+2. No production environment exists (§A6) — deployment platform, TLS,
+   hostname, backups, single-replica topology decision all open (Phase 30 §B/§C).
+3. Production secrets must be freshly generated at provisioning (§B); no
+   production `JWT_SECRET`/`API_KEY_ENCRYPTION_SECRET` has ever been set.
+
+**The security incident stays OPEN** until §B is completed with evidence and
+confirmed by the owner. Local engineering completion ≠ incident closure ≠
+deployment readiness.
 
 ---
 
 ## Phase 32 — Credential Rotation & Production Security Gate
+
+> **Status superseded by Phase 33 (above).** Kept as the record of the
+> rotation tooling and runbooks. Two Phase 32 statements were corrected by
+> Phase 33 evidence: the historical `server/.env` did **not** contain an Atlas
+> password or GitHub PAT (it held app secrets + a credential-free localhost
+> URI), and push protection is now **verified enabled**.
 
 > **Go/No-Go: 🔴 NO-GO for production deployment.** Full evidence:
 > `docs/PHASE32_ENGINEERING_REPORT.md`; runbooks below and in

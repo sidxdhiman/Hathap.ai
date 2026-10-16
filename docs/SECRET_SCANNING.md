@@ -1,4 +1,4 @@
-# Secret scanning & credential hygiene (Phase 31)
+# Secret scanning & credential hygiene (Phase 31; owner actions updated Phase 33)
 
 Added after GitHub secret-scanning **alert #1** (`secret_type=mongodb_atlas_db_uri_with_credentials`,
 created 2026-10-15T12:40:54Z, 14 seconds after the Phase 30 push) matched a
@@ -79,26 +79,39 @@ The scanner is dependency-free (Node stdlib only, CommonJS, no install step).
 
 Phase 32 added validated tooling for the AES rotation; procedures are also
 summarized in `DEPLOYMENT_CHECKLIST.md` → Phase 32 with evidence in
-`docs/PHASE32_ENGINEERING_REPORT.md`. **Neither rotation has been executed.**
+`docs/PHASE32_ENGINEERING_REPORT.md`. **No production rotation has been
+executed** (nothing is deployed). Phase 33 executed the AES re-keying of the
+local dev database off the exposed historical key only — see
+`docs/PHASE33_ENGINEERING_REPORT.md`. The CLI is runnable as
+`npm run rotate:api-keys -- --dry-run` (or via `ts-node`/`dist`) from `server/`.
 
 | Credential | Procedure | Blast radius |
 |---|---|---|
 | `JWT_SECRET` | Generate ≥16 random chars; replace the env value on the deployment platform; restart; verify a login round-trip and confirm an old (pre-rotation) token is rejected. Rollback = restore the previous value + restart. Single signing secret: all replicas must switch together (this repo is single-replica) | All existing sessions/JWTs become invalid; users must re-authenticate. Covered by `server/src/tests/credentialRotation.test.ts` |
-| `API_KEY_ENCRYPTION_SECRET` | Use the migration tool — never swap the value alone. (1) `mongodump` backup; (2) **stop the app**; (3) `API_KEY_ENCRYPTION_SECRET=<NEW> API_KEY_ENCRYPTION_SECRET_OLD=<OLD> node dist/scripts/rotateApiKeyEncryption.js --dry-run`; (4) re-run with `--yes`; (5) `--verify-only` until `plaintext=0` and undecryptable matches only pre-existing failures; (6) switch the platform env to the NEW value, start, verify a model call; (7) retire the OLD secret only after step 6 succeeds | Blind rotation = stored model API keys permanently unreadable. Records neither key can decrypt are reported by id and never overwritten. A running instance still holds the OLD key — migrating while it runs would make re-keyed records unreadable to it |
-| `MONGODB_URI` | Atlas: rotate the DB user password (or create a new user), update env, restart, verify health endpoint + one DB write path | Existing URI breaks once rotated; single-instance repo, restart is sufficient |
-| `A2A_API_KEY`, `BRAVE_SEARCH_API_KEY` | Standard env replacement + restart + verify the dependent path (`/api/a2a/*`, research provider mode) | A2A peers / Brave queries fail until updated on both sides |
+| `API_KEY_ENCRYPTION_SECRET` | Use the migration tool — never swap the value alone. (1) `mongodump` backup; (2) **stop the app**; (3) `npm run rotate:api-keys -- --dry-run` with the new secret in `API_KEY_ENCRYPTION_SECRET` and the old one in `API_KEY_ENCRYPTION_SECRET_OLD`; (4) re-run with `--yes`; (5) `--verify-only` until `plaintext=0` and undecryptable matches only pre-existing failures; (6) switch the platform env to the NEW value, start, verify a model call; (7) retire the OLD secret only after step 6 succeeds | Blind rotation = stored model API keys permanently unreadable. Records neither key can decrypt are reported by id and never overwritten. A running instance still holds the OLD key — migrating while it runs would make re-keyed records unreadable to it |
+| `MONGODB_URI` | Atlas: rotate the DB user password (or create a new user), update env, restart, verify health endpoint + one DB write path. *(Phase 33 evidence: no Atlas credential ever lived in the historical `server/.env` — its URI was a credential-free localhost address)* | Existing URI breaks once rotated; single-instance repo, restart is sufficient |
+| `A2A_API_KEY`, `BRAVE_SEARCH_API_KEY` | Standard env replacement + restart + verify the dependent path (`/api/a2a/*`, research provider mode). *(Neither key was present in the historical `server/.env` — Phase 33 verified by key enumeration)* | A2A peers / Brave queries fail until updated on both sides |
+| Model provider keys (OpenRouter et al.) | Regenerate in the provider console if their ciphertext was ever encrypted under an exposed encryption key (Phase 33: local records `6a3cd154…`/`6a3cd170…`/`6a59cbfd…` were, until the local migration) | Provider-side key abuse; ciphertext alone requires a DB copy to exploit |
 
-## Open owner actions (Phases 31–32)
+## Open owner actions (updated Phase 33)
 
 - [ ] **Dismiss GitHub secret-scanning alert #1** as `false_positive` after
-  reviewing the Phase 31 fix. Phase 32 could not re-read the alert via API
-  (404 while adjacent endpoints succeed) — verify current state in the GitHub
-  UI (Security → Secret scanning) before dismissing. No phase has changed any
-  GitHub security state.
-- [ ] **Rotate the historical `JWT_SECRET` and `API_KEY_ENCRYPTION_SECRET`**
-  (probable pre-Phase-12.2 exposure). Tooling and exact steps:
-  `DEPLOYMENT_CHECKLIST.md` → Phase 32 §B. Rotation NOT performed by any phase.
-- [ ] **Check/enable push protection** (status unverifiable via API with the
-  available credential) — Settings → Code security and analysis, or
-  `gh api /repos/OWNER/REPO` → `security_and_analysis` with an
-  admin-capable session.
+  reviewing the Phase 31 fix. Phase 33 re-verified via API (2026-10-16): the
+  alert is **still open** (`state=open`, no resolution). No phase has changed
+  any GitHub security state — dismissal is a manual UI action
+  (Security → Secret scanning).
+- [x] **Push protection** — Phase 33 verified via repo metadata that
+  `secret_scanning_push_protection.status=enabled` (and secret scanning
+  itself enabled; 0 push-protection alerts). Status was unknown in Phases
+  31–32.
+- [ ] **Historical `server/.env` exposure** — Phase 33 **confirmed** the
+  pre-cleanup commits (`46aa067…`, `aeb6930…`, `9a7dbb6…`) and their
+  `server/.env` blobs are still retrievable on GitHub by SHA. The exposed
+  values are the old app `JWT_SECRET` and `API_KEY_ENCRYPTION_SECRET` (no
+  Atlas/GitHub/Brave credential was ever in the file). Local containment is
+  done (current local secrets differ; local DB re-keyed off the exposed
+  AES key). Owner remains: rotate/regenerate anything at production
+  provisioning, rotate the old OpenRouter provider keys if still active, and
+  optionally ask GitHub Support to purge the unreachable objects.
+- [ ] Re-run `node scripts/secret-scan.cjs --history` after any future
+  history operation.
