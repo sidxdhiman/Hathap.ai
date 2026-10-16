@@ -235,7 +235,7 @@ config or production hostname in the tree.
 |---|---|---|
 | `NODE_ENV=production` | **Required** (not enforced) | Exact-string match switches on every production rule. Unset ⇒ silently development: fallback JWT secret allowed, dev CORS origins allowed, raw error messages returned to clients. The server now prints a boot warning when it is unset (`index.ts`). |
 | `JWT_SECRET` (≥ 16 chars) | Required in production | Server exits(1) at boot if missing or short when `NODE_ENV=production`. Development falls back to a non-secret value with a warning. |
-| `API_KEY_ENCRYPTION_SECRET` (≥ 32 chars) | Required in **every** environment | Server exits(1) at boot; AES-256-GCM key derivation also re-checks per call. **Changing it later makes every stored model key undecryptable — there is no rotation tool.** |
+| `API_KEY_ENCRYPTION_SECRET` (≥ 32 chars) | Required in **every** environment | Server exits(1) at boot; AES-256-GCM key derivation also re-checks per call. **Changing it later makes every stored model key undecryptable unless they are migrated first** — rotation requires the migration tool (see Credential rotation below). |
 | `MONGODB_URI` | Required in practice | Silent default `mongodb://localhost:27017/hathap`; a connect failure exits(1) after the driver timeout. Format is not validated at boot. |
 | `PORT` | Optional (default `4000`) | `app.listen(PORT)` with **no host argument** — it binds all interfaces. There is no `HOST` variable. |
 | `CORS_ORIGINS` | Required when client and API are on different origins | Comma-separated allow-list. Production reflects **no** browser origin when unset; requests without an `Origin` header are always allowed. No credentials header is ever emitted. |
@@ -253,6 +253,30 @@ Secret generation: any strong random value, e.g. `openssl rand -base64 48` for
 `API_KEY_ENCRYPTION_SECRET`. Placeholders in `server/.env.example` satisfy the
 length checks but are public — replace them. Never commit real values
 (`server/.env` is git-ignored).
+
+### Credential rotation (Phase 32)
+
+Both rotation procedures are documented with evidence in
+[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) → Phase 32 and
+[`docs/PHASE32_ENGINEERING_REPORT.md`](docs/PHASE32_ENGINEERING_REPORT.md).
+Neither has been executed against any environment — both are pending owner
+action.
+
+- **`JWT_SECRET`:** replace the value in the deployment environment and
+  restart. There is a single signing secret (no key rollover, no `kid`), so
+  rotation **invalidates every outstanding token** and all users re-auth.
+  All replicas must receive the same value together (this repo is
+  single-replica). Rollback = restore the previous value and restart — tokens
+  signed under it become valid again. Regression coverage:
+  `server/src/tests/credentialRotation.test.ts`.
+- **`API_KEY_ENCRYPTION_SECRET`:** never swap the value alone — stored model
+  keys would become permanently unreadable. With the app **stopped**, run
+  `server/src/scripts/rotateApiKeyEncryption.ts`
+  (`--dry-run` → `--yes` → `--verify-only`) with the new secret in
+  `API_KEY_ENCRYPTION_SECRET` and the old one in
+  `API_KEY_ENCRYPTION_SECRET_OLD`, after taking a database backup. Only after
+  `--verify-only` reports `undecryptable=0 plaintext=0` may the deployment
+  environment switch to the new value and the old secret be retired.
 
 ### Startup, health, shutdown
 
@@ -356,6 +380,12 @@ npm run build        # build client/dist
   `npm run typecheck:config`, `npm run build`) — both the application source project
   (`tsconfig.json`) and the Vite build-config project (`tsconfig.node.json` /
   `vite.config.ts`) are typechecked separately.
+- **Secret-scan job** (`node scripts/secret-scan.cjs`) — dependency-free scan of
+  every tracked file for credential-shaped material. Findings are printed as
+  `file:line [rule] fingerprint=… length=…` — matched values are never printed.
+  The same scanner is enforced inside the server test suite
+  (`repoSecretHygiene.test.ts`) and supports `--history` for git-history scans
+  (see [`docs/SECRET_SCANNING.md`](docs/SECRET_SCANNING.md)).
 - CI uses fake/test-only values only; no real credentials are stored in the workflow or
   required to pass.
 

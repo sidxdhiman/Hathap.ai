@@ -77,21 +77,28 @@ The scanner is dependency-free (Node stdlib only, CommonJS, no install step).
 
 ## Rotation procedures (owner-run; never commit replacement values)
 
+Phase 32 added validated tooling for the AES rotation; procedures are also
+summarized in `DEPLOYMENT_CHECKLIST.md` → Phase 32 with evidence in
+`docs/PHASE32_ENGINEERING_REPORT.md`. **Neither rotation has been executed.**
+
 | Credential | Procedure | Blast radius |
 |---|---|---|
-| `JWT_SECRET` | Generate ≥64 random chars; replace the env value; restart; re-login and verify an auth round-trip | All existing sessions/JWTs become invalid; users must re-authenticate |
-| `API_KEY_ENCRYPTION_SECRET` | **Do not rotate without a re-encryption plan.** Steps: (1) inventory encrypted fields (`server/src/config/…` AES usage), (2) one-off maintenance-window script that decrypts with the old key and re-encrypts with the new, (3) swap env, (4) run migration, (5) verify decryption of every stored provider key, (6) retire the old key | Blind rotation = stored model API keys become permanently unreadable. Until migration tooling exists, rotation means losing encrypted provider keys |
+| `JWT_SECRET` | Generate ≥16 random chars; replace the env value on the deployment platform; restart; verify a login round-trip and confirm an old (pre-rotation) token is rejected. Rollback = restore the previous value + restart. Single signing secret: all replicas must switch together (this repo is single-replica) | All existing sessions/JWTs become invalid; users must re-authenticate. Covered by `server/src/tests/credentialRotation.test.ts` |
+| `API_KEY_ENCRYPTION_SECRET` | Use the migration tool — never swap the value alone. (1) `mongodump` backup; (2) **stop the app**; (3) `API_KEY_ENCRYPTION_SECRET=<NEW> API_KEY_ENCRYPTION_SECRET_OLD=<OLD> node dist/scripts/rotateApiKeyEncryption.js --dry-run`; (4) re-run with `--yes`; (5) `--verify-only` until `plaintext=0` and undecryptable matches only pre-existing failures; (6) switch the platform env to the NEW value, start, verify a model call; (7) retire the OLD secret only after step 6 succeeds | Blind rotation = stored model API keys permanently unreadable. Records neither key can decrypt are reported by id and never overwritten. A running instance still holds the OLD key — migrating while it runs would make re-keyed records unreadable to it |
 | `MONGODB_URI` | Atlas: rotate the DB user password (or create a new user), update env, restart, verify health endpoint + one DB write path | Existing URI breaks once rotated; single-instance repo, restart is sufficient |
 | `A2A_API_KEY`, `BRAVE_SEARCH_API_KEY` | Standard env replacement + restart + verify the dependent path (`/api/a2a/*`, research provider mode) | A2A peers / Brave queries fail until updated on both sides |
 
-## Open owner actions (Phase 31)
+## Open owner actions (Phases 31–32)
 
 - [ ] **Dismiss GitHub secret-scanning alert #1** as `false_positive` after
-  reviewing this phase's fix (left open intentionally; Phase 31 made no GitHub
-  security-state changes).
+  reviewing the Phase 31 fix. Phase 32 could not re-read the alert via API
+  (404 while adjacent endpoints succeed) — verify current state in the GitHub
+  UI (Security → Secret scanning) before dismissing. No phase has changed any
+  GitHub security state.
 - [ ] **Rotate the historical `JWT_SECRET` and `API_KEY_ENCRYPTION_SECRET`**
-  (probable pre-Phase-12.2 exposure; see the Phase 31 report). Blocked on a
-  re-encryption plan for the AES key.
-- [ ] **Consider enabling push protection** (not verifiable from this repo;
-  the push-protection-alerts API is unavailable, so whether pushes are blocked
-  today is unknown).
+  (probable pre-Phase-12.2 exposure). Tooling and exact steps:
+  `DEPLOYMENT_CHECKLIST.md` → Phase 32 §B. Rotation NOT performed by any phase.
+- [ ] **Check/enable push protection** (status unverifiable via API with the
+  available credential) — Settings → Code security and analysis, or
+  `gh api /repos/OWNER/REPO` → `security_and_analysis` with an
+  admin-capable session.

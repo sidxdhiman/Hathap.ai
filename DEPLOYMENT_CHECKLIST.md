@@ -1,11 +1,70 @@
 # 🚀 Deployment Checklist
 
-> **Phase 30 — authoritative section.** The material below this divider
-> predates Phase 30 (it is a token-budget era record from 2024) and is kept
-> only as history. For anything release-related, this Phase 30 section is the
-> source of truth. Evidence for every ✅ is a command actually executed in
-> this repository on 2026-10-15 against commit `604f8df` (plus this phase's
-> diff); evidence for every ⬜ is the absence of that execution.
+> **Phase 32 — production security gate (authoritative for go/no-go and
+> credential-rotation status).** Phase 30 remains authoritative for release
+> items, Phase 31 for credential-hygiene items. The material below the Phase
+> 30 divider predates Phase 30 (a token-budget era record from 2024) and is
+> kept only as history. Evidence for every ✅ is a command actually executed in
+> this repository; evidence for every ⬜ is the absence of that execution.
+
+---
+
+## Phase 32 — Credential Rotation & Production Security Gate
+
+> **Go/No-Go: 🔴 NO-GO for production deployment.** Full evidence:
+> `docs/PHASE32_ENGINEERING_REPORT.md`; runbooks below and in
+> `docs/SECRET_SCANNING.md`.
+
+### A. Verified implementation and tests (this phase — no production effect)
+
+| Item | Evidence |
+|---|---|
+| Encryption architecture documented with code evidence | scrypt(secret, fixed salt `hathap-api-key-v1`) → AES-256-GCM, 12-byte random IV, 16-byte auth tag, format `enc:v1:`+base64url(iv‖tag‖ct); **format version only — no key identifier** in ciphertext (`server/src/utils/encryption.ts`) |
+| Key-injectable encrypt/decrypt (minimum justified change) | `encryptApiKey`/`decryptApiKey` accept an optional secret or 32-byte derived key; default env behavior byte-identical; backward compatible (`encryption.ts`) |
+| Migration service | `server/src/services/encryptionKeyMigration.ts`: new-key-first classification, old-key fallback, undecryptable records preserved byte-for-byte, per-record failure isolation, read-back verification, dry-run, idempotent resume; counts/ids only in all output |
+| Operator CLI | `server/src/scripts/rotateApiKeyEncryption.ts`: `--dry-run` (default-safe), requires `--yes` to write, `--verify-only` completeness check; prints counts and record ids only |
+| Regression tests | `server/src/tests/credentialRotation.test.ts` — **15/15 pass**: JWT rotation invalidation + rollback recovery + production refusal; AES wrong-key/tamper/truncation fail-closed; encrypt idempotency hazard; migration dry-run/real/idempotent-re-run/persist-failure-resume/verify (corrupted ciphertext, interrupted migration, duplicate execution, partial failure all covered) |
+| CLI refusal paths exercised locally | missing/short `API_KEY_ENCRYPTION_SECRET_OLD` → exit 1 with redacted message (no value echoed) |
+| Local dev DB enumerated read-only (`--verify-only`) | 8 records with keys: 5 decrypt under the current local secret, **0 plaintext, 3 undecryptable** — concrete proof the undecryptable-record hazard is real (old local secrets); records preserved, never overwritten. Not production data; nothing deployed |
+
+### B. Operator actions still required (pending authorization / secure access)
+
+- [ ] **Rotate `JWT_SECRET`** (probable historical exposure, Phase 31 §B):
+  generate ≥16-char random, set in the deployment platform, restart, verify a
+  login round-trip; all existing sessions become invalid (by design).
+  Rollback: restore the previous value + restart.
+- [ ] **Rotate `API_KEY_ENCRYPTION_SECRET`** (only with re-encryption):
+  1. `mongodump` backup (recovery path).
+  2. **Stop the app** (a running instance still holds the old key).
+  3. `API_KEY_ENCRYPTION_SECRET=<NEW> API_KEY_ENCRYPTION_SECRET_OLD=<OLD> node dist/scripts/rotateApiKeyEncryption.js --dry-run`
+  4. Re-run with `--yes`, then `--verify-only` (must report
+     `undecryptable=<pre-existing failures> plaintext=0`).
+  5. Set the new secret in the platform, start the app, verify model calls.
+  6. Only then retire the OLD secret. Rollback = restore env + restart (or
+     restore the backup) — no plaintext exposure needed at any step.
+- [ ] **Verify and dismiss GitHub secret-scanning alert #1** as
+  `false_positive` in the UI (Phase 32 could not re-read it via API: both
+  alert endpoints returned 404 while `rate_limit`/repo-meta succeeded —
+  status now only verifiable in the GitHub UI → Security → Secret scanning).
+- [ ] **Check push protection** in repo Settings → Code security and analysis
+  (not readable via API with the available credential; `security_and_analysis`
+  empty, admin endpoints 403). Enable if off.
+
+### C. Production blockers (🔴 NO-GO — all must clear before deployment)
+
+1. Historical `server/.env` exposure **unaddressed**: neither rotation in §B
+   has been executed and verified. Classification stays
+   **probable/unverified historical exposure** — clean scans do not downgrade it.
+2. Encryption-key migration **not executed anywhere with real data** (tooling
+   validated by tests + local read-only verification only).
+3. Deployment-platform configuration **unknown/unverified** (NODE_ENV, secrets
+   present, single replica) — nothing has ever been deployed from this repo.
+4. Push-protection status **unknown**; alert #1 dismissal pending owner action.
+5. No staging, TLS, hostname, or backup procedure exists in this repository
+   (Phase 30 §B items remain open).
+
+**The security incident stays OPEN** until §B rotation items are completed
+with evidence and confirmed by the owner.
 
 ---
 
