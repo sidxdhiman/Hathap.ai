@@ -99,7 +99,9 @@ Verified against code (nothing deployed; no Dockerfile/PaaS/proxy config exists)
 | CLI dry-run (spawned, test DB) | new regression test | ✅ exit 0, counts correct, record byte-identical afterwards |
 | Local migration | dry-run → `--yes` → `--verify-only` → backup compare (Section 5) | ✅ all steps verified; counts recorded |
 | Boot guards (dist) | `NODE_ENV=production` × {missing JWT, short JWT, missing AES} | ✅ exit 1 each, no listener opened |
-| CI after push | run recorded in the Phase 33 commit follow-up | see below |
+| CI after push | run `38881284343` on `adc101f` | ✅ Server ✓, Client ✓, Secret scan ✓ (conclusion=success) |
+
+Final Git state: `main` == `origin/main`, working tree clean, no force-push, no history rewrite. Baseline `dc44ffb` → Phase 33 commit `adc101f` (+ this CI-evidence follow-up).
 
 ## 9. Final production go/no-go decision
 
