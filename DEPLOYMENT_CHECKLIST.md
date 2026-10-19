@@ -1,8 +1,9 @@
 # 🚀 Deployment Checklist
 
-> **Phase 33 — credential containment & release gate (authoritative for
-> go/no-go and credential status).** Phase 32 remains the record of the
-> rotation tooling; Phase 30 for release items, Phase 31 for credential
+> **Phase 34 — production secret provisioning & final release gate
+> (authoritative for go/no-go and credential status).** Phase 33 remains the
+> record of the confirmed historical exposure and the local AES migration;
+> Phase 32 the rotation tooling; Phase 30 release items; Phase 31 credential
 > hygiene. The material below the Phase 30 divider predates Phase 30 (a
 > token-budget era record from 2024) and is kept only as history. Evidence for
 > every ✅ is a command actually executed in this repository; evidence for
@@ -10,7 +11,80 @@
 
 ---
 
+## Phase 34 — Production Secret Provisioning & Final Release Gate
+
+> **Go/No-Go: 🔴 NO-GO for production deployment.** Full evidence:
+> `docs/PHASE34_ENGINEERING_REPORT.md`. The production secret-management
+> contract is now written down (`docs/PRODUCTION_SECRET_CONTRACT.md`) and the
+> last silent development fallback (`MONGODB_URI` → localhost) is closed, but
+> the incident is **not** closed: provider-key verification and production
+> secret provisioning remain owner/platform-blocked (§B).
+
+### A. Owner-action reconciliation (evidence-backed, 2026-10-19)
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 1 | Rotate/revoke the three OpenRouter keys (records `6a3cd154…`, `6a3cd170…`, `6a59cbfd…`) | **Owner action required** | No authorized OpenRouter console/API access exists in this environment, so key status cannot be verified remotely — and credentials must never be probed from shell commands. The keys lived encrypted (AES) inside the local MongoDB only (never in git); ciphertext alone is not enough to use them, but if still active they remain valid provider credentials. Exact owner steps: §B2 |
+| 2 | Dismiss GitHub secret-scanning alert #1 as `false_positive` | **Owner action required (still OPEN)** | API 2026-10-19: `state=open`, `resolution=null`, `secret_type=mongodb_atlas_db_uri_with_credentials`, `updated_at=2026-10-15`; open=1, resolved=0 — still the only alert ever. Synthetic Atlas-URI fixture (Phase 31/32) remains the proven false positive; literal no longer exists in source |
+| 3 | Fresh production `JWT_SECRET` | **Blocked on platform choice** | No hosting platform/secret manager is selected (no Dockerfile/PaaS/proxy descriptor in tree), so there is nowhere to provision it. Startup guards live-verified (Phase 33): production missing/short → exit 1 before `listen`. Contract + generation rules: `docs/PRODUCTION_SECRET_CONTRACT.md` §2/§5 |
+| 4 | Fresh production `API_KEY_ENCRYPTION_SECRET` | **Blocked on platform choice** | Same as #3. Guard verified in every env (≥32 or exit 1). AES rotation requires the migration CLI runbook (`docs/PRODUCTION_SECRET_CONTRACT.md` §6) — never a bare value swap |
+| 5 | Production encrypted records / AES-key provenance | **No production data exists (verified by evidence); owner attestation item** | Verified: nothing has ever been deployed (no platform descriptor, CI DBs ephemeral); no remote `MONGODB_URI` exists in any tracked file, environment example, or scanned history (1302 history sources, 0 findings); local dev DB was the only database re-keyed (Phase 33). Residual uncertainty: any database the owner maintains **outside this repository's visibility** cannot be enumerated — owner must attest none exists before go-live; if one does, its provenance is unverified and migration planning is mandatory |
+| 6 | GitHub push protection | **Verified complete** | API 2026-10-19: `secret_scanning=enabled`, `secret_scanning_push_protection=enabled`; 0 open push-protection alerts. Verified in Phases 33–34 (was "unknown" in 31–32) |
+| 7 | Phase 33 local migration backup | **Deleted (owner-accepted 2026-10-19; safeguards executed)** | Owner accepted the verified migration and authorized deletion. Pre-deletion checks all passed: backup exists at `%TEMP%\opencode\hathap_local_key_backup.json` (3571 B, purpose=`Phase 33 local AES key migration rollback (local dev DB, ciphertext only)`, recordCount=8, all 8 `apiKey` values `enc:v1:` ciphertext-only); DB target re-verified credential-free `mongodb://localhost:27017`; `--verify-only` → `total=8 decryptable=8 plaintext=0 undecryptable=0` exit 0; backup-vs-DB compare → `present=8 identical=5 changed=3 missing=0 extra=0` (exactly the 3 expected migrations, 0 unexpected). Deletion: `Remove-Item -Force`; post-check `Test-Path`=false. Honest limitation: ordinary deletion does not guarantee physical erasure on SSDs/copy-on-write filesystems/volume snapshots — residual risk accepted (ciphertext-only content, key not stored in the file) |
+| 8 | GitHub Support purge of unreachable objects | **Not implemented (optional owner action)** | No support request evidence exists (none can be created from this environment). Pre-cleanup commits `46aa067…`, `aeb6930…`, `9a7dbb6…` and `server/.env` blobs remain retrievable by SHA (Phase 33 evidence). Force-push cannot remove unreachable objects |
+
+### B. Remaining owner actions (incident stays OPEN until done)
+
+- [ ] **Verify and rotate the OpenRouter provider keys** behind local records
+      `6a3cd154…`, `6a3cd170…`, `6a59cbfd…` if still active. Steps: OpenRouter
+      dashboard → Keys → compare created timestamps (2026-06-25/07-17) →
+      delete/regenerate any still-valid key → update the model entries in the
+      app (Models → edit → new key) so future calls use the replacement.
+      Replacement keys must never be printed, committed, or passed as command
+      arguments. If the keys were already rotated/deleted, record that here.
+- [ ] **Dismiss secret-scanning alert #1** as `false_positive` in the GitHub
+      UI (Security → Secret scanning) — still open per §A2.
+- [ ] **At production provisioning** (blocked until a platform is chosen;
+      `docs/PRODUCTION_SECRET_CONTRACT.md`): generate **fresh** `JWT_SECRET`
+      (≥16) and `API_KEY_ENCRYPTION_SECRET` (≥32) in the platform's secret
+      manager; set `NODE_ENV=production` and an explicit `MONGODB_URI`
+      (production now refuses to start without it); never reuse any
+      historical value.
+- [ ] **Attest that no production or external database exists** beyond this
+      repository's visibility (§A5). If one exists, its AES-key provenance
+      must be established before go-live.
+- [ ] **Optional: GitHub Support request** to purge the unreachable
+      pre-cleanup commits/blobs (`46aa067…`, `aeb6930…`, `9a7dbb6…`, blobs
+      `99282f1…`, `2a4a6be…`).
+- [ ] **Decide the platform** (hosting, secret manager, TLS/hostname,
+      proxy hops, MongoDB provisioning + backups, client hosting) — the
+      platform-neutral contract and the decision list are in
+      `docs/PRODUCTION_SECRET_CONTRACT.md` §9.
+
+### C. Production blockers (🔴 NO-GO — all must clear before deployment)
+
+1. Potentially active exposed provider keys (§A1/§B1) — cannot be verified
+   from this environment.
+2. No production environment exists; hosting platform, TLS, hostname,
+   backups, proxy topology all undecided (§A3/§B5; Phase 30 §B/§C).
+3. Production secrets cannot be provisioned until the platform exists
+   (§A3/§A4) — the contract is written, the values are not.
+4. Alert #1 still open (§A2); GitHub Support purge optional/undone (§A8).
+5. External-database attestation outstanding (§A5).
+
+**The security incident stays OPEN** until §B is completed with evidence and
+confirmed by the owner. Local engineering completion ≠ incident closure ≠
+deployment readiness. This phase performed **no deployment, no production
+secret change, no live migration, no history rewrite, and no GitHub state
+change**.
+
+---
+
 ## Phase 33 — Credential Containment & Production Release Gate
+
+> **Status superseded by Phase 34 (above).** Kept as the record of the
+> confirmed historical exposure, the owner-authorized local AES migration,
+> and the verification evidence behind Phase 34's reconciliation.
 
 > **Go/No-Go: 🔴 NO-GO for production deployment.** Full evidence:
 > `docs/PHASE33_ENGINEERING_REPORT.md`. Statuses below are evidence-backed;

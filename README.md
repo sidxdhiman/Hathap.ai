@@ -208,7 +208,14 @@ npm run build
 ```
 The compiled build will be in the `server/dist` directory.
 
-## 🚀 Production Configuration Contract (Phase 30)
+## 🚀 Production Configuration Contract (Phase 30; secrets updated Phase 34)
+
+> The authoritative **production secret-management contract** — generation,
+> injection, uniqueness, rotation hygiene, build-vs-runtime split, and the
+> platform decisions still blocking provisioning — is
+> [`docs/PRODUCTION_SECRET_CONTRACT.md`](docs/PRODUCTION_SECRET_CONTRACT.md)
+> (Phase 34). This section remains the operational reference for the
+> variables themselves.
 
 Everything below is read from the implementation (`server/src/index.ts`,
 `server/src/config/security.ts`, `server/src/utils/encryption.ts`,
@@ -236,7 +243,7 @@ config or production hostname in the tree.
 | `NODE_ENV=production` | **Required** (not enforced) | Exact-string match switches on every production rule. Unset ⇒ silently development: fallback JWT secret allowed, dev CORS origins allowed, raw error messages returned to clients. The server now prints a boot warning when it is unset (`index.ts`). |
 | `JWT_SECRET` (≥ 16 chars) | Required in production | Server exits(1) at boot if missing or short when `NODE_ENV=production`. Development falls back to a non-secret value with a warning. |
 | `API_KEY_ENCRYPTION_SECRET` (≥ 32 chars) | Required in **every** environment | Server exits(1) at boot; AES-256-GCM key derivation also re-checks per call. **Changing it later makes every stored model key undecryptable unless they are migrated first** — rotation requires the migration tool (see Credential rotation below). |
-| `MONGODB_URI` | Required in practice | Silent default `mongodb://localhost:27017/hathap`; a connect failure exits(1) after the driver timeout. Format is not validated at boot. |
+| `MONGODB_URI` | Required in production | **Phase 34:** production exits(1) when unset (`resolveMongoUri` in `config/security.ts`) — the previous silent localhost default is development-only. A connect failure exits(1) after the driver timeout. Format is not validated at boot; connection-string credentials are redacted from driver error logs. |
 | `PORT` | Optional (default `4000`) | `app.listen(PORT)` with **no host argument** — it binds all interfaces. There is no `HOST` variable. |
 | `CORS_ORIGINS` | Required when client and API are on different origins | Comma-separated allow-list. Production reflects **no** browser origin when unset; requests without an `Origin` header are always allowed. No credentials header is ever emitted. |
 | `TRUST_PROXY` | Required **behind** a reverse proxy | Opt-in hop count (`1`), `true/false`, `loopback`/`linklocal`/`uniquelocal`; unset ⇒ `X-Forwarded-For` ignored (secure default). Unset behind a proxy collapses the auth rate limiter (30 req/15 min) into one site-wide bucket. |
@@ -286,7 +293,8 @@ operator CLI is registered as `npm run rotate:api-keys -- --dry-run` in
 ### Startup, health, shutdown
 
 - Boot order: env guards (`API_KEY_ENCRYPTION_SECRET`, then `JWT_SECRET` in
-  production) → MongoDB connect → background worker start → routes →
+  production, then `MONGODB_URI` in production) → MongoDB connect →
+  background worker start → routes →
   `GET /api/health` → listen. Any guard or connect failure logs and exits(1);
   the health route exists only after a successful connect, and the process does
   not listen before then.

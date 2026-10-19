@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getJwtSecret, isAllowedCorsOrigin, resolveTrustProxy, redactCredentials } from '../config/security';
+import { getJwtSecret, isAllowedCorsOrigin, resolveMongoUri, resolveTrustProxy, redactCredentials } from '../config/security';
 
 function withEnv(env: Record<string, string | undefined>, fn: () => void): void {
   const saved = new Map<string, string | undefined>();
@@ -41,6 +41,44 @@ describe('security config - JWT secret', () => {
   test('development keeps a convenient fallback when JWT_SECRET is unset', () => {
     withEnv({ NODE_ENV: undefined, JWT_SECRET: undefined }, () => {
       assert.equal(getJwtSecret(), 'secret');
+    });
+  });
+});
+
+describe('security config - MongoDB connection string (resolveMongoUri)', () => {
+  test('production refuses a missing MONGODB_URI instead of defaulting to localhost', () => {
+    // Regression (Phase 34): index.ts previously did
+    // `process.env.MONGODB_URI || 'mongodb://localhost:27017/hathap'` in every
+    // environment, so an unconfigured production process would silently target
+    // a local development database. Production must fail closed.
+    withEnv({ NODE_ENV: 'production', MONGODB_URI: undefined }, () => {
+      assert.throws(() => resolveMongoUri(undefined), /MONGODB_URI must be set in the environment/);
+    });
+  });
+
+  test('production refuses a blank or whitespace MONGODB_URI', () => {
+    withEnv({ NODE_ENV: 'production', MONGODB_URI: undefined }, () => {
+      assert.throws(() => resolveMongoUri(''), /MONGODB_URI must be set in the environment/);
+      assert.throws(() => resolveMongoUri('   '), /MONGODB_URI must be set in the environment/);
+    });
+  });
+
+  test('production accepts an explicit MONGODB_URI and returns it unchanged', () => {
+    withEnv({ NODE_ENV: 'production', MONGODB_URI: undefined }, () => {
+      const uri = 'mongodb://db.internal:27017/hathap-prod?retryWrites=true';
+      assert.equal(resolveMongoUri(uri), uri);
+    });
+  });
+
+  test('development keeps the localhost fallback when MONGODB_URI is unset', () => {
+    withEnv({ NODE_ENV: undefined, MONGODB_URI: undefined }, () => {
+      assert.equal(resolveMongoUri(undefined), 'mongodb://localhost:27017/hathap');
+    });
+  });
+
+  test('development uses an explicit MONGODB_URI when provided', () => {
+    withEnv({ NODE_ENV: undefined, MONGODB_URI: undefined }, () => {
+      assert.equal(resolveMongoUri('mongodb://localhost:27017/hathap_test'), 'mongodb://localhost:27017/hathap_test');
     });
   });
 });

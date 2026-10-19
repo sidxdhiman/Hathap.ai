@@ -5,6 +5,7 @@ import {
   verifyModelApiKeys,
 } from '../services/encryptionKeyMigration';
 import { deriveEncryptionKey } from '../utils/encryption';
+import { resolveMongoUri } from '../config/security';
 
 /**
  * Operator CLI for rotating API_KEY_ENCRYPTION_SECRET.
@@ -56,7 +57,15 @@ async function main(): Promise<void> {
     fail(`API_KEY_ENCRYPTION_SECRET is not usable: ${err?.message || err}`);
   }
 
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/hathap';
+  let uri: string;
+  try {
+    // Same resolution as server startup: in production a missing MONGODB_URI
+    // is fatal — a migration must never silently target the development
+    // default and rewrite the wrong database.
+    uri = resolveMongoUri(process.env.MONGODB_URI);
+  } catch (err: any) {
+    fail(`MONGODB_URI is not configured: ${err?.message || err}`);
+  }
   await mongoose.connect(uri);
 
   try {

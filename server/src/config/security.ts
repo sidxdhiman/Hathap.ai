@@ -1,13 +1,18 @@
 /**
  * Central, deliberately-small configuration for security-sensitive settings:
- * the JWT signing secret, the CORS origin policy, the reverse-proxy trust
- * setting, and log redaction of embedded credentials.
+ * the JWT signing secret, the MongoDB connection-string resolution, the CORS
+ * origin policy, the reverse-proxy trust setting, and log redaction of
+ * embedded credentials.
  *
  * Rules:
  *  - Production requires an explicit, strong `JWT_SECRET`. There is NO
  *    predictable/default signing secret in production — missing or weak
  *    configuration is a hard error (the server refuses to start).
- *  - Development keeps a conventional (non-secret) fallback so local tooling
+ *  - Production requires an explicit `MONGODB_URI`. There is NO default
+ *    database target in production — missing configuration is a hard error,
+ *    so a misconfigured deployment can never silently write to a local
+ *    development database.
+ *  - Development keeps convenient (non-secret) fallbacks so local tooling
  *    and tests work out of the box, clearly separated from production.
  *  - Express `trust proxy` stays disabled unless the operator opts in, because
  *    trusting `X-Forwarded-For` from an untrusted peer lets a client forge its
@@ -68,6 +73,38 @@ export function getJwtSecret(): string {
   }
 
   return fromEnv;
+}
+
+const DEV_FALLBACK_MONGODB_URI = 'mongodb://localhost:27017/hathap';
+
+/**
+ * Resolve the MongoDB connection string for this process.
+ *
+ * In production there is no default: a missing (or blank) `MONGODB_URI` is a
+ * configuration error that must stop startup. The previous behavior — silently
+ * falling back to `mongodb://localhost:27017/hathap` in every environment —
+ * meant an unconfigured production process would quietly target whatever local
+ * database happened to be listening (or fail with a confusing connection error
+ * after a long driver timeout). Development keeps the localhost fallback so
+ * `npm run dev` and the test suites continue to work without extra setup.
+ *
+ * The value is not validated further here (scheme, credentials, TLS options):
+ * `mongoose.connect` owns that, and connection-string credentials are redacted
+ * from driver error logs by `redactCredentials`.
+ */
+export function resolveMongoUri(raw: string | undefined): string {
+  const value = (raw ?? '').trim();
+  if (value) return value;
+
+  if (isProductionEnvironment()) {
+    throw new Error(
+      `MONGODB_URI must be set in the environment to the production database ` +
+        `connection string. Refusing to fall back to the development default ` +
+        `(${DEV_FALLBACK_MONGODB_URI}).`
+    );
+  }
+
+  return DEV_FALLBACK_MONGODB_URI;
 }
 
 /** Comma-separated CORS allow-list from the environment (trailing slashes normalized). */

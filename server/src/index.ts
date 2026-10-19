@@ -13,7 +13,7 @@ import evaluationsRoutes from './routes/evaluations';
 import researchRoutes from './routes/research';
 import { setupA2A } from './a2a/setupA2A';
 import { worker } from './tasks/worker';
-import { isProductionEnvironment, getJwtSecret, resolveTrustProxy, redactCredentials } from './config/security';
+import { isProductionEnvironment, getJwtSecret, resolveMongoUri, resolveTrustProxy, redactCredentials } from './config/security';
 import { corsMiddleware } from './middleware/cors';
 import { serverErrorMessage } from './utils/httpError';
 
@@ -81,7 +81,18 @@ app.use(corsMiddleware);
 app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/hathap';
+
+// Production refuses to start without an explicit MONGODB_URI. The previous
+// unconditional localhost fallback meant an unconfigured production process
+// would silently target a local development database (or hang on a driver
+// timeout). Development keeps the localhost default for out-of-the-box use.
+let MONGODB_URI: string;
+try {
+  MONGODB_URI = resolveMongoUri(process.env.MONGODB_URI);
+} catch (err: any) {
+  console.error(`FATAL: ${err?.message || 'MONGODB_URI is not configured for production.'}`);
+  process.exit(1);
+}
 
 // Conservative limiter for authentication endpoints only. Intentionally not
 // applied globally so it cannot interfere with the task scheduler, SSE,
