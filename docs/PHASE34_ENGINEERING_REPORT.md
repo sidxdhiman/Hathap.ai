@@ -99,7 +99,7 @@ Owner accepted the Phase 33 migration and authorized deletion with nine safeguar
 | Client build | `npm run build` | ✅ exit 0 |
 | Secret scan (tracked) | `node scripts/secret-scan.cjs` | ✅ 297 sources, **0 errors**, 5 known fixture warnings → PASS |
 | Secret scan (history) | `node scripts/secret-scan.cjs --history` | ✅ 1302 sources, **0 errors**, 18 known fixture warnings → PASS |
-| CI after push | recorded in the final-state update below | (see §12) |
+| CI after push | run `39217623637` on `728ceb5` | ✅ Server ✓, Client ✓, Secret scan ✓ (conclusion=success, 2026-10-19) |
 
 ## 10. Final production GO/NO-GO decision
 
@@ -126,6 +126,7 @@ Engineering completion ≠ incident closure ≠ deployment readiness. **The inci
 
 ## 12. Git state
 
-- Phase 34 commit: `security: phase 34 production secret contract, MONGODB_URI production guard, and final release gate` (hash recorded in the repository history; CI run verified on push — see `git log` / Actions).
+- Phase 34 commit: `728ceb5` (`security: phase 34 production secret contract, MONGODB_URI production guard, and final release gate`), pushed to `origin/main`; CI run `39217623637` on that commit: **success** (Server ✓, Client ✓, Secret scan ✓). This report's CI-evidence line was added in a follow-up docs commit.
+- Final state: `HEAD == origin/main`, working tree clean (verified after push).
 - No force-push, no history rewrite, no deployment, no production secret change, no GitHub security-state change.
 - **Secret-handling record:** no credential value was printed, committed, transmitted in command arguments, or written to any tracked file. Backup verification was structure/count-only; the deleted backup was ciphertext-only. The local dev `MONGODB_URI` was inspected for scheme/host/userinfo-presence only.
